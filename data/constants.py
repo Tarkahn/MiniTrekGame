@@ -17,6 +17,16 @@ WARP_INITIATION_COST = 20  # from PRD
 # Energy Regeneration
 ENERGY_REGEN_RATE_PER_TURN = 10  # Energy regenerated per turn
 
+# Shield Systems
+SHIELD_ENERGY_COST_PER_LEVEL = 5  # Energy consumed to activate/maintain one level of shield
+
+# Torpedo Systems
+TORPEDO_ENERGY_COST = 100  # Energy consumed per torpedo fired
+TORPEDO_MAX_POWER = 50  # Maximum damage a torpedo can deal
+
+# Sensor Systems
+SENSOR_ENERGY_COST_PER_SCAN = 50  # Energy consumed per scan operation
+
 # Game State
 INITIAL_GAME_STATE = {
 }

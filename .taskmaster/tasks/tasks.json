@@ -155,7 +155,7 @@
         "dependencies": [
           3
         ],
-        "status": "in-progress",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -163,7 +163,7 @@
             "description": "Create the design specifications for the phaser system, including power requirements and operational parameters.",
             "dependencies": [],
             "details": "Focus on the range, damage output, and energy consumption of the phaser system.",
-            "status": "in-progress",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -172,7 +172,7 @@
             "description": "Outline the functionality and structure of the shield system, detailing its protective capabilities and recharge mechanisms.",
             "dependencies": [],
             "details": "Consider the types of threats the shields will protect against and the energy efficiency of the system.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -181,7 +181,7 @@
             "description": "Draft the specifications for the torpedo system, including types of torpedoes and launch mechanisms.",
             "dependencies": [],
             "details": "Include guidance systems, payload options, and launch protocols in the design.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -190,7 +190,7 @@
             "description": "Define the capabilities and architecture of the sensor system, focusing on detection range and data processing.",
             "dependencies": [],
             "details": "Address the types of sensors needed for various missions and their integration with other systems.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -252,7 +252,7 @@
           3,
           5
         ],
-        "status": "pending",
+        "status": "in-progress",
         "subtasks": [
           {
             "id": 1,
@@ -496,7 +496,7 @@
     ],
     "metadata": {
       "created": "2025-07-01T08:54:00.599Z",
-      "updated": "2025-07-01T09:48:20.040Z",
+      "updated": "2025-07-01T09:50:37.115Z",
       "description": "Tasks for master context"
     }
   }
