@@ -377,7 +377,7 @@
         "dependencies": [
           7
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -385,7 +385,7 @@
             "description": "Define and code the logic for determining when a player has achieved victory in the game.",
             "dependencies": [],
             "details": "This includes setting up conditions based on score, objectives completed, or other criteria specific to the game.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -394,7 +394,7 @@
             "description": "Define and code the logic for determining when a player has been defeated in the game.",
             "dependencies": [],
             "details": "This involves setting up conditions such as player health reaching zero, time running out, or other game-specific defeat criteria.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -406,7 +406,7 @@
               2
             ],
             "details": "This includes designing the user interface for notifications and ensuring that messages are triggered appropriately based on the game state.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -496,7 +496,7 @@
     ],
     "metadata": {
       "created": "2025-07-01T08:54:00.599Z",
-      "updated": "2025-07-01T09:54:26.236Z",
+      "updated": "2025-07-01T09:55:58.464Z",
       "description": "Tasks for master context"
     }
   }
