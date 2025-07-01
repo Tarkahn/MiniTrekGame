@@ -297,7 +297,7 @@
         "dependencies": [
           5
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -305,7 +305,7 @@
             "description": "Develop the short-range scanning feature to detect nearby objects and obstacles.",
             "dependencies": [],
             "details": "This subtask involves coding the algorithms for short-range detection, integrating sensors, and ensuring accurate readings.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -316,7 +316,7 @@
               1
             ],
             "details": "This subtask involves coding the algorithms for long-range detection, optimizing sensor data processing, and ensuring reliability over distance.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -496,7 +496,7 @@
     ],
     "metadata": {
       "created": "2025-07-01T08:54:00.599Z",
-      "updated": "2025-07-01T09:55:58.464Z",
+      "updated": "2025-07-01T09:56:41.364Z",
       "description": "Tasks for master context"
     }
   }
