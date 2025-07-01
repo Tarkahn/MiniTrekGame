@@ -27,6 +27,17 @@ TORPEDO_MAX_POWER = 50  # Maximum damage a torpedo can deal
 # Sensor Systems
 SENSOR_ENERGY_COST_PER_SCAN = 50  # Energy consumed per scan operation
 
+# Enemy Ship Weaponry
+ENEMY_PHASER_POWER = 40
+ENEMY_PHASER_RANGE = 7
+ENEMY_TORPEDO_POWER = 80
+ENEMY_TORPEDO_SPEED = 10
+ENEMY_TORPEDO_ACCURACY = 0.7
+
+# Critical Hit System
+CRITICAL_HIT_CHANCE = 0.15  # 15% chance for a critical hit
+CRITICAL_HIT_MULTIPLIER = 1.5 # 1.5x damage on critical hit
+
 # Game State
 INITIAL_GAME_STATE = {
 }

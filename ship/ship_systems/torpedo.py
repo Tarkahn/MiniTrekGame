@@ -1,4 +1,5 @@
 import time
+import random
 from data import constants
 from ship.base_ship import BaseShip
 
@@ -27,6 +28,12 @@ class Torpedo:
         
         if hit_chance > 0 and time.time() % 1 < hit_chance:  # Simple random hit/miss for demonstration
             damage = self.power
+            
+            is_critical_hit = random.random() < constants.CRITICAL_HIT_CHANCE
+            if is_critical_hit:
+                damage *= constants.CRITICAL_HIT_MULTIPLIER
+                print("Critical Hit!")
+
             print(f"{self.ship.name} fired torpedo. Hit! Damage dealt: {damage}. Energy remaining: {self.ship.warp_core_energy}")
             return damage
         else:

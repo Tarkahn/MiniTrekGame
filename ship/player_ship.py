@@ -1,7 +1,7 @@
 from ship.base_ship import BaseShip
 from data import constants
-import time
 from game_logic.navigation import warp_to_sector
+from ship.ship_systems.phaser import Phaser
 
 
 class PlayerShip(BaseShip):
@@ -10,10 +10,9 @@ class PlayerShip(BaseShip):
     Extends BaseShip with player-specific actions and controls.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.phaser_cooldown_end_time = 0
-        self.shield_power_level = 0  # Player-controlled shield power
+    def __init__(self, name, max_shield_strength, hull_strength, energy, max_energy, weapons=None, position=None):
+        super().__init__(name, max_shield_strength, hull_strength, energy, max_energy, weapons, position)
+        self.phaser_system = Phaser(power=50, range=9, ship=self)  # Example values for player phaser
 
     def move_ship(self, hex_count: int, shield_power: int = 0) -> bool:
         """
@@ -21,44 +20,25 @@ class PlayerShip(BaseShip):
         Consumes energy and updates shield power if provided.
         Returns True if movement is successful, False otherwise.
         """
-        energy_cost = hex_count * constants.WARP_ENERGY_COST  # Assuming 10 energy per hex for warp.
+        energy_cost = hex_count * constants.WARP_ENERGY_COST
         if not self.consume_energy(energy_cost):
             print("Insufficient energy for impulse movement.")
             return False
         
-        self.shield_power_level = shield_power  # Set shield power level for this move
+        self.shield_system.activate(shield_power)
         # Actual map movement logic would go here, which is outside this class's scope
         print(f"Moved {hex_count} hexes. Energy remaining: {self.warp_core_energy}")
         return True
 
-    def fire_phasers(self, target_distance: int, phaser_power_level: int) -> int:
+    def fire_phasers(self, target_ship, target_distance: int) -> int:
         """
-        Fires phasers at a target, considering range, power, and cooldown.
+        Fires phasers at a target, delegating to the phaser system.
         Returns damage dealt.
         """
-        if time.time() < self.phaser_cooldown_end_time:
-            print(f"Phasers on cooldown. Wait {self.phaser_cooldown_end_time - time.time():.1f} seconds.")
-            return 0
-        
-        if phaser_power_level == 0:
-            print("Phasers are at power level 0 and cannot fire.")
-            return 0
-
-        if target_distance > 9:
-            print("Target is out of phaser range (max 9 hexes).")
-            return 0
-
-        # Energy cost per shot
-        if not self.consume_energy(constants.PHASER_ENERGY_COST):
-            print("Insufficient energy to fire phasers.")
-            return 0
-
-        damage = (phaser_power_level * 10) - (target_distance * 3)
-        actual_damage = max(0, damage)
-
-        self.phaser_cooldown_end_time = time.time() + constants.PHASER_COOLDOWN_SECONDS
-        print(f"Fired phasers. Damage dealt: {actual_damage}. Energy remaining: {self.warp_core_energy}")
-        return actual_damage
+        damage_dealt = self.phaser_system.fire(target_distance)
+        if damage_dealt > 0:
+            target_ship.apply_damage(damage_dealt)
+        return damage_dealt
 
     def initiate_warp(self, sectors_to_travel: int) -> bool:
         """

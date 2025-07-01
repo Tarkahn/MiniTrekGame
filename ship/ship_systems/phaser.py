@@ -1,4 +1,5 @@
 import time
+import random
 from data import constants
 from ship.base_ship import BaseShip
 
@@ -33,6 +34,12 @@ class Phaser:
             return 0
 
         damage = (self.power * 10) - (target_distance * 3)  # Example damage calculation
+        
+        is_critical_hit = random.random() < constants.CRITICAL_HIT_CHANCE
+        if is_critical_hit:
+            damage *= constants.CRITICAL_HIT_MULTIPLIER
+            print("Critical Hit!")
+
         actual_damage = max(0, damage)
 
         self._last_fired_time = time.time()

@@ -1,4 +1,5 @@
 from data import constants
+from ship.ship_systems.shield import Shield
 
 
 class BaseShip:
@@ -7,9 +8,9 @@ class BaseShip:
     Defines common attributes and basic functionalities for ship systems.
     """
 
-    def __init__(self, name, shield_strength, hull_strength, energy, max_energy, weapons, position):
+    def __init__(self, name, max_shield_strength, hull_strength, energy, max_energy, weapons, position):
         self.name = name
-        self.shield_strength = shield_strength
+        self.shield_system = Shield(max_shield_strength, self)  # Use composition for shields
         self.max_hull_strength = hull_strength  # Initialize max_hull_strength
         self.hull_strength = hull_strength
         self.warp_core_energy = energy
@@ -17,22 +18,14 @@ class BaseShip:
         self.weapons = weapons or []
         self.position = position
 
-    def calculate_damage(self, raw_damage: int, shield_power_level: int) -> int:
-        """
-        Calculates the effective damage after shield absorption.
-        """
-        absorbed_by_shields = shield_power_level * constants.SHIELD_ABSORPTION_PER_LEVEL
-        effective_damage = max(0, raw_damage - absorbed_by_shields)
-        return effective_damage
-
-    def apply_damage(self, raw_damage: int, shield_power_level: int):
+    def apply_damage(self, raw_damage: int):
         """
         Applies damage to the ship, prioritizing shields then hull.
         """
-        damage_after_shields = self.calculate_damage(raw_damage, shield_power_level)
+        remaining_damage = self.shield_system.absorb_damage(raw_damage)
 
-        # Apply damage to hull
-        self.hull_strength -= damage_after_shields
+        # Apply any remaining damage to hull
+        self.hull_strength -= remaining_damage
         self.hull_strength = max(0, self.hull_strength)  # Ensure hull doesn't go below 0
 
     def reset_damage(self):
@@ -41,7 +34,7 @@ class BaseShip:
         Typically called when docking at a starbase.
         """
         self.hull_strength = self.max_hull_strength
-        self.shield_strength = 0
+        self.shield_system.current_strength = 0  # Reset shield system current strength
 
     def allocate_energy(self, system, amount: int):
         """

@@ -252,7 +252,7 @@
           3,
           5
         ],
-        "status": "in-progress",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -260,7 +260,7 @@
             "description": "Create the logic to calculate and apply damage to characters during combat.",
             "dependencies": [],
             "details": "This includes defining how damage is calculated based on character stats and weapon attributes.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -271,7 +271,7 @@
               1
             ],
             "details": "This should include how shields absorb damage and how it interacts with the damage application logic.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -282,7 +282,7 @@
               1
             ],
             "details": "This should define the conditions under which a critical hit occurs and how it affects damage output.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -496,7 +496,7 @@
     ],
     "metadata": {
       "created": "2025-07-01T08:54:00.599Z",
-      "updated": "2025-07-01T09:50:37.115Z",
+      "updated": "2025-07-01T09:54:26.236Z",
       "description": "Tasks for master context"
     }
   }
