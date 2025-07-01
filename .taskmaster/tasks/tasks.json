@@ -109,7 +109,7 @@
         "dependencies": [
           3
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -128,7 +128,7 @@
               1
             ],
             "details": "Implement different enemy types with varying strategies for attacking and evading.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -140,7 +140,7 @@
               2
             ],
             "details": "Refactor code as necessary to maintain consistency and functionality across classes.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -155,7 +155,7 @@
         "dependencies": [
           3
         ],
-        "status": "pending",
+        "status": "in-progress",
         "subtasks": [
           {
             "id": 1,
@@ -163,7 +163,7 @@
             "description": "Create the design specifications for the phaser system, including power requirements and operational parameters.",
             "dependencies": [],
             "details": "Focus on the range, damage output, and energy consumption of the phaser system.",
-            "status": "pending",
+            "status": "in-progress",
             "testStrategy": ""
           },
           {
@@ -205,7 +205,7 @@
         "dependencies": [
           1
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -213,7 +213,7 @@
             "description": "Develop the mechanics for moving within a local sector, including user input handling and movement physics.",
             "dependencies": [],
             "details": "This subtask will focus on creating the algorithms and user interface elements necessary for local navigation, ensuring smooth transitions and responsiveness.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -224,7 +224,7 @@
               1
             ],
             "details": "This subtask will involve designing the warp travel system, including visual effects and user feedback during the warp process.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -236,7 +236,7 @@
               2
             ],
             "details": "This subtask will focus on creating an energy management system that affects movement capabilities and warp travel based on available energy resources.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -496,7 +496,7 @@
     ],
     "metadata": {
       "created": "2025-07-01T08:54:00.599Z",
-      "updated": "2025-07-01T09:42:22.569Z",
+      "updated": "2025-07-01T09:48:20.040Z",
       "description": "Tasks for master context"
     }
   }

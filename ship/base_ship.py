@@ -7,15 +7,15 @@ class BaseShip:
     Defines common attributes and basic functionalities for ship systems.
     """
 
-    def __init__(self, hull_integrity: int = 100, shield_integrity: int = 0):
-        self.max_hull_integrity = 100
-        self.hull_integrity = hull_integrity  # Current hull health (0-100)
-        
-        self.max_shield_integrity = 100
-        self.shield_integrity = shield_integrity  # Current shield (0-100)
-        
-        self.warp_core_energy = 1000  # Current energy in Warp Core
-        self.max_warp_core_energy = 1000  # Maximum energy capacity
+    def __init__(self, name, shield_strength, hull_strength, energy, max_energy, weapons, position):
+        self.name = name
+        self.shield_strength = shield_strength
+        self.max_hull_strength = hull_strength  # Initialize max_hull_strength
+        self.hull_strength = hull_strength
+        self.warp_core_energy = energy
+        self.max_warp_core_energy = max_energy
+        self.weapons = weapons or []
+        self.position = position
 
     def calculate_damage(self, raw_damage: int, shield_power_level: int) -> int:
         """
@@ -32,18 +32,18 @@ class BaseShip:
         damage_after_shields = self.calculate_damage(raw_damage, shield_power_level)
 
         # Apply damage to hull
-        self.hull_integrity -= damage_after_shields
-        self.hull_integrity = max(0, self.hull_integrity)  # Ensure hull doesn't go below 0
+        self.hull_strength -= damage_after_shields
+        self.hull_strength = max(0, self.hull_strength)  # Ensure hull doesn't go below 0
 
     def reset_damage(self):
         """
         Resets hull and shield integrity to their maximum values.
         Typically called when docking at a starbase.
         """
-        self.hull_integrity = self.max_hull_integrity
-        self.shield_integrity = self.max_shield_integrity
+        self.hull_strength = self.max_hull_strength
+        self.shield_strength = 0
 
-    def allocate_energy(self, amount: int):
+    def allocate_energy(self, system, amount: int):
         """
         Adds energy to the Warp Core, up to its maximum capacity.
         """
@@ -65,3 +65,12 @@ class BaseShip:
         Typically called when docking at a starbase.
         """
         self.warp_core_energy = self.max_warp_core_energy 
+
+    def regenerate_energy_per_turn(self):
+        """
+        Regenerates a small amount of Warp Core energy each turn.
+        """
+        self.warp_core_energy = min(self.max_warp_core_energy, self.warp_core_energy + constants.ENERGY_REGEN_RATE_PER_TURN)
+
+    def is_alive(self):
+        return self.hull_strength > 0 

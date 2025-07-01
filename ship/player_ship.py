@@ -1,6 +1,7 @@
 from ship.base_ship import BaseShip
 from data import constants
 import time
+from game_logic.navigation import warp_to_sector
 
 
 class PlayerShip(BaseShip):
@@ -12,7 +13,7 @@ class PlayerShip(BaseShip):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.phaser_cooldown_end_time = 0
-        self.shield_power_level = 0 # Player-controlled shield power
+        self.shield_power_level = 0  # Player-controlled shield power
 
     def move_ship(self, hex_count: int, shield_power: int = 0) -> bool:
         """
@@ -61,16 +62,11 @@ class PlayerShip(BaseShip):
 
     def initiate_warp(self, sectors_to_travel: int) -> bool:
         """
-        Initiates warp travel to a distant sector.
-        Consumes energy and turns.
+        Initiates warp travel to a distant sector using the navigation module.
         Returns True if warp is successful, False otherwise.
         """
-        initiation_cost = 20  # from PRD
-        energy_per_sector = constants.WARP_ENERGY_COST  # 10 units per sector hex
-        total_energy_cost = initiation_cost + (sectors_to_travel * energy_per_sector)
-
-        if not self.consume_energy(total_energy_cost):
-            print("Insufficient energy for warp travel.")
+        # The energy consumption logic is now handled by warp_to_sector
+        if not warp_to_sector(self, sectors_to_travel):
             return False
         
         print(f"Initiated warp travel for {sectors_to_travel} sectors. Energy remaining: {self.warp_core_energy}")
