@@ -331,7 +331,7 @@
         "dependencies": [
           1
         ],
-        "status": "in-progress",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -339,7 +339,7 @@
             "description": "Create the layout and visual design for the hex map component of the UI.",
             "dependencies": [],
             "details": "Focus on the hexagonal grid structure, color scheme, and interactive elements.",
-            "status": "in-progress",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -350,7 +350,7 @@
               1
             ],
             "details": "Ensure it complements the hex map design and is easily readable.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -362,7 +362,7 @@
               2
             ],
             "details": "Buttons should be intuitive and match the overall UI theme.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -422,7 +422,7 @@
           6,
           7
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -430,7 +430,7 @@
             "description": "Create a real-time clock that tracks time independently of the game loop to manage time-based events.",
             "dependencies": [],
             "details": "Implement a timer that updates every second and can trigger events based on elapsed time.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -441,7 +441,7 @@
               1
             ],
             "details": "Ensure that shields regenerate over time and are influenced by the real-time clock, with specific rates and conditions.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -453,7 +453,7 @@
               2
             ],
             "details": "Develop a system that tracks phaser usage and cooldown periods, ensuring it interacts correctly with the real-time clock and shield status.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -469,7 +469,7 @@
           10,
           11
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -477,7 +477,7 @@
             "description": "Analyze and review the constants used in the gameplay mechanics to ensure they are balanced and contribute positively to the overall game experience.",
             "dependencies": [],
             "details": "Focus on numerical values that affect gameplay, such as damage, health, and resource generation rates. Document any inconsistencies or areas for improvement.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -488,7 +488,7 @@
               1
             ],
             "details": "Examine systems such as propulsion, weaponry, and defense mechanisms. Identify any imbalances or enhancements needed to improve gameplay.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -496,7 +496,7 @@
     ],
     "metadata": {
       "created": "2025-07-01T08:54:00.599Z",
-      "updated": "2025-07-01T09:57:01.997Z",
+      "updated": "2025-07-01T11:29:33.714Z",
       "description": "Tasks for master context"
     }
   }

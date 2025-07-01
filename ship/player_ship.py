@@ -12,20 +12,21 @@ class PlayerShip(BaseShip):
 
     def __init__(self, name, max_shield_strength, hull_strength, energy, max_energy, weapons=None, position=None):
         super().__init__(name, max_shield_strength, hull_strength, energy, max_energy, weapons, position)
-        self.phaser_system = Phaser(power=50, range=9, ship=self)  # Example values for player phaser
+        self.phaser_system = Phaser(power=constants.PLAYER_PHASER_POWER, range=constants.PLAYER_PHASER_RANGE, ship=self)
 
     def move_ship(self, hex_count: int, shield_power: int = 0) -> bool:
         """
         Moves the ship a specified number of hexes using Impulse Engines.
-        Consumes energy and updates shield power if provided.
+        Consumes energy.
         Returns True if movement is successful, False otherwise.
         """
-        energy_cost = hex_count * constants.WARP_ENERGY_COST
+        energy_cost = hex_count * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
         if not self.consume_energy(energy_cost):
             print("Insufficient energy for impulse movement.")
             return False
         
-        self.shield_system.activate(shield_power)
+        # Removed automatic shield activation during movement as shield management is a separate player action.
+        # self.shield_system.activate(shield_power)
         # Actual map movement logic would go here, which is outside this class's scope
         print(f"Moved {hex_count} hexes. Energy remaining: {self.warp_core_energy}")
         return True

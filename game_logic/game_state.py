@@ -1,5 +1,6 @@
 from data import constants
 from ship.player_ship import PlayerShip
+import time
 
 
 def check_victory_condition(enemy_ships: list) -> bool:
@@ -49,3 +50,16 @@ def display_notification(message: str, type: str = "info"):  # type can be "info
         print(f"\n--- DEFEAT! ---\n{message}\n------------------\n")
     else:
         print(f"\n--- NOTIFICATION ---\n{message}\n--------------------\n") 
+
+
+# Real-Time Clock Mechanism
+class RealTimeClock:
+    def __init__(self):
+        self.start_time = time.time()
+        self.elapsed_time = 0
+
+    def update(self):
+        self.elapsed_time = time.time() - self.start_time
+
+    def get_elapsed_time(self):
+        return self.elapsed_time 
