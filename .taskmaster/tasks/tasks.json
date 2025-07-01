@@ -43,7 +43,7 @@
         "dependencies": [
           1
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -51,7 +51,7 @@
             "description": "Add comments to each constant in the codebase explaining its purpose and usage.",
             "dependencies": [],
             "details": "Review each constant defined in the project and write clear, concise comments that describe what the constant represents, how it is used, and any relevant context that may help future developers understand its role.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -66,7 +66,7 @@
         "dependencies": [
           1
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -74,7 +74,7 @@
             "description": "Identify and define the necessary attributes related to damage handling in the class.",
             "dependencies": [],
             "details": "Attributes may include health points, damage resistance, and damage dealt.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -85,7 +85,7 @@
               1
             ],
             "details": "Methods should include applyDamage, calculateDamage, and resetDamage.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -94,7 +94,7 @@
             "description": "Develop methods that handle energy allocation and consumption within the class.",
             "dependencies": [],
             "details": "Methods should include allocateEnergy, consumeEnergy, and regenerateEnergy.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -117,7 +117,7 @@
             "description": "Develop methods that define the unique behaviors and actions for the player character.",
             "dependencies": [],
             "details": "Focus on movement, shooting, and special abilities that are specific to the player.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -496,7 +496,7 @@
     ],
     "metadata": {
       "created": "2025-07-01T08:54:00.599Z",
-      "updated": "2025-07-01T09:12:19.444Z",
+      "updated": "2025-07-01T09:42:22.569Z",
       "description": "Tasks for master context"
     }
   }
