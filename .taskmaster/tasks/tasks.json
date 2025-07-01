@@ -1,0 +1,503 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Setup Project Repository",
+        "description": "Initialize a Git repository for version control and set up the project structure according to the PRD specifications.",
+        "details": "Create a new Git repository and set up the following folder structure: game_logic/, ui/, data/, galaxy_generation/, event_system/. Initialize a README.md file and a .gitignore file to exclude unnecessary files.",
+        "testStrategy": "Verify that the repository is initialized correctly and the folder structure matches the specifications.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Initialize Git Repository",
+            "description": "Create a new Git repository for the project.",
+            "dependencies": [],
+            "details": "Use the command 'git init' in the project directory to initialize the repository.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Establish Folder Structure",
+            "description": "Set up the necessary folder structure for the project.",
+            "dependencies": [
+              1
+            ],
+            "details": "Create folders such as 'src', 'docs', and 'tests' to organize the project files.",
+            "status": "done",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Define Constants in constants.py",
+        "description": "Create a constants.py file to store all configurable values for gameplay balancing and modding support.",
+        "details": "Implement constants in constants.py as follows: MAX_TURNS = 1000, STARTING_ENERGY = 1000, SHIELD_REGEN_RATE = 10, WARP_ENERGY_COST = 10, SHIELD_ABSORPTION_PER_LEVEL = 10, PHASER_COOLDOWN_SECONDS = 10, KLINGON_DISRUPTOR_DAMAGE_MIN = 30, KLINGON_DISRUPTOR_DAMAGE_MAX = 50. Ensure all values are documented with comments.",
+        "testStrategy": "Run a script to import constants.py and print values to ensure they are correctly defined.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Document Constants",
+            "description": "Add comments to each constant in the codebase explaining its purpose and usage.",
+            "dependencies": [],
+            "details": "Review each constant defined in the project and write clear, concise comments that describe what the constant represents, how it is used, and any relevant context that may help future developers understand its role.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Implement Base Ship Class",
+        "description": "Create a base_ship.py file that defines the common logic for all ships in the game.",
+        "details": "Define the BaseShip class with attributes for hull integrity, shield integrity, and energy levels. Include methods for taking damage, regenerating shields, and allocating power. Use Python's OOP principles for structure.",
+        "testStrategy": "Create unit tests to validate the functionality of the BaseShip class, including damage handling and energy allocation.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Define Attributes for Damage Handling",
+            "description": "Identify and define the necessary attributes related to damage handling in the class.",
+            "dependencies": [],
+            "details": "Attributes may include health points, damage resistance, and damage dealt.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement Methods for Damage Handling",
+            "description": "Create methods that manage damage calculations and apply damage to the attributes defined.",
+            "dependencies": [
+              1
+            ],
+            "details": "Methods should include applyDamage, calculateDamage, and resetDamage.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Implement Methods for Energy Allocation",
+            "description": "Develop methods that handle energy allocation and consumption within the class.",
+            "dependencies": [],
+            "details": "Methods should include allocateEnergy, consumeEnergy, and regenerateEnergy.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Implement Player and Enemy Ship Classes",
+        "description": "Extend the BaseShip class to create player_ship.py and enemy_ship.py for player and enemy ships.",
+        "details": "In player_ship.py, implement player-specific methods such as firing weapons and initiating warp. In enemy_ship.py, implement AI behavior for enemy ships. Ensure both classes utilize the BaseShip methods appropriately.",
+        "testStrategy": "Create unit tests for both player and enemy ship classes to ensure they function correctly and interact with the BaseShip class as expected.",
+        "priority": "high",
+        "dependencies": [
+          3
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Player-Specific Methods",
+            "description": "Develop methods that define the unique behaviors and actions for the player character.",
+            "dependencies": [],
+            "details": "Focus on movement, shooting, and special abilities that are specific to the player.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Develop Enemy AI Behavior",
+            "description": "Create the logic for enemy AI to interact with the player and the environment.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement different enemy types with varying strategies for attacking and evading.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Integrate with BaseShip Class",
+            "description": "Ensure that both player-specific methods and enemy AI behaviors are compatible with the BaseShip class.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Refactor code as necessary to maintain consistency and functionality across classes.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Develop Ship Systems Classes",
+        "description": "Create individual classes for ship systems such as phasers, shields, torpedoes, and sensors.",
+        "details": "In the ship_systems/ directory, create phasers.py, shields.py, torpedoes.py, and sensors.py. Each class should manage its respective system's functionality, including energy consumption and cooldowns. Use composition to integrate these systems into the ship classes.",
+        "testStrategy": "Write unit tests for each system class to ensure they handle energy usage and cooldowns correctly.",
+        "priority": "medium",
+        "dependencies": [
+          3
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design Phaser System",
+            "description": "Create the design specifications for the phaser system, including power requirements and operational parameters.",
+            "dependencies": [],
+            "details": "Focus on the range, damage output, and energy consumption of the phaser system.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Develop Shield System",
+            "description": "Outline the functionality and structure of the shield system, detailing its protective capabilities and recharge mechanisms.",
+            "dependencies": [],
+            "details": "Consider the types of threats the shields will protect against and the energy efficiency of the system.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Implement Torpedo System",
+            "description": "Draft the specifications for the torpedo system, including types of torpedoes and launch mechanisms.",
+            "dependencies": [],
+            "details": "Include guidance systems, payload options, and launch protocols in the design.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Create Sensor System",
+            "description": "Define the capabilities and architecture of the sensor system, focusing on detection range and data processing.",
+            "dependencies": [],
+            "details": "Address the types of sensors needed for various missions and their integration with other systems.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Implement Navigation and Movement Logic",
+        "description": "Develop the navigation mechanics for both the Sector Map and System Map.",
+        "details": "Create functions to handle movement between sector hexes and system hexes. Implement logic for local sector movement and warp travel, including energy consumption and turn management. Ensure visual cues are included for transitions.",
+        "testStrategy": "Simulate movement in a test environment and verify that energy consumption and turn management work as intended.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Local Sector Movement",
+            "description": "Develop the mechanics for moving within a local sector, including user input handling and movement physics.",
+            "dependencies": [],
+            "details": "This subtask will focus on creating the algorithms and user interface elements necessary for local navigation, ensuring smooth transitions and responsiveness.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Develop Warp Travel Logic",
+            "description": "Create the logic for initiating and executing warp travel between sectors, including destination selection and travel time calculations.",
+            "dependencies": [
+              1
+            ],
+            "details": "This subtask will involve designing the warp travel system, including visual effects and user feedback during the warp process.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Manage Energy Consumption",
+            "description": "Implement a system to track and manage energy consumption during local movement and warp travel.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "This subtask will focus on creating an energy management system that affects movement capabilities and warp travel based on available energy resources.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Create Combat Mechanics",
+        "description": "Implement the combat system, including damage calculations and shield absorption.",
+        "details": "Develop functions to handle combat interactions, including damage application to hull and shields. Implement critical hit logic and ensure that damage is calculated based on shield levels and power allocation.",
+        "testStrategy": "Create test scenarios to validate combat interactions, ensuring damage calculations and critical hits function as expected.",
+        "priority": "high",
+        "dependencies": [
+          3,
+          5
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Damage Application Logic",
+            "description": "Create the logic to calculate and apply damage to characters during combat.",
+            "dependencies": [],
+            "details": "This includes defining how damage is calculated based on character stats and weapon attributes.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Develop Shield Absorption Mechanism",
+            "description": "Design the shield absorption logic to mitigate damage taken by characters.",
+            "dependencies": [
+              1
+            ],
+            "details": "This should include how shields absorb damage and how it interacts with the damage application logic.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Implement Critical Hit Functionality",
+            "description": "Create the mechanics for critical hits, including the calculation of increased damage.",
+            "dependencies": [
+              1
+            ],
+            "details": "This should define the conditions under which a critical hit occurs and how it affects damage output.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Implement Scanning Mechanics",
+        "description": "Develop short-range and long-range scanning functionalities.",
+        "details": "Create methods for short-range and long-range scans, including energy costs and the information revealed. Ensure that scanning integrates with the ship systems and updates the game state accordingly.",
+        "testStrategy": "Test scanning functionality in various scenarios to ensure energy costs and information accuracy are correct.",
+        "priority": "medium",
+        "dependencies": [
+          5
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Short-Range Scanning Functionality",
+            "description": "Develop the short-range scanning feature to detect nearby objects and obstacles.",
+            "dependencies": [],
+            "details": "This subtask involves coding the algorithms for short-range detection, integrating sensors, and ensuring accurate readings.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement Long-Range Scanning Functionality",
+            "description": "Develop the long-range scanning feature to detect objects at a greater distance.",
+            "dependencies": [
+              1
+            ],
+            "details": "This subtask involves coding the algorithms for long-range detection, optimizing sensor data processing, and ensuring reliability over distance.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Design User Interface Layout",
+        "description": "Create the visual interface layout for the game, including the hex map and control buttons.",
+        "details": "Design the UI layout to include a 20x20 hex map display, a scrollable log box, and LCARS-style controls for player input. Use a suitable UI framework like Pygame or Unity for implementation.",
+        "testStrategy": "Prototype the UI layout and conduct user testing to ensure usability and clarity of controls.",
+        "priority": "medium",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design Hex Map",
+            "description": "Create the layout and visual design for the hex map component of the UI.",
+            "dependencies": [],
+            "details": "Focus on the hexagonal grid structure, color scheme, and interactive elements.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Design Log Box",
+            "description": "Develop the design for the log box that will display game events and messages.",
+            "dependencies": [
+              1
+            ],
+            "details": "Ensure it complements the hex map design and is easily readable.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Design Control Buttons",
+            "description": "Create the design for the control buttons that will interact with the hex map and log box.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Buttons should be intuitive and match the overall UI theme.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Implement Victory and Defeat Conditions",
+        "description": "Develop the logic for victory and defeat conditions based on the game rules.",
+        "details": "Implement checks for victory conditions (destroying all Klingon ships) and defeat conditions (ship destruction, life support failure, surrender, turn limit exceeded). Integrate notifications for the player when conditions are met.",
+        "testStrategy": "Simulate various game scenarios to ensure that victory and defeat conditions trigger correctly.",
+        "priority": "high",
+        "dependencies": [
+          7
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Victory Conditions",
+            "description": "Define and code the logic for determining when a player has achieved victory in the game.",
+            "dependencies": [],
+            "details": "This includes setting up conditions based on score, objectives completed, or other criteria specific to the game.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement Defeat Conditions",
+            "description": "Define and code the logic for determining when a player has been defeated in the game.",
+            "dependencies": [],
+            "details": "This involves setting up conditions such as player health reaching zero, time running out, or other game-specific defeat criteria.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Set Up Player Notifications",
+            "description": "Create a system for notifying players of victory or defeat conditions being met.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "This includes designing the user interface for notifications and ensuring that messages are triggered appropriately based on the game state.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Integrate Real-Time Mechanics",
+        "description": "Implement real-time mechanics for shield regeneration and phaser cooldowns within the turn-based framework.",
+        "details": "Develop a real-time clock system to manage shield regeneration and phaser cooldowns. Ensure that these mechanics do not interfere with turn-based gameplay.",
+        "testStrategy": "Test the integration of real-time mechanics with turn-based actions to ensure they function without conflicts.",
+        "priority": "medium",
+        "dependencies": [
+          6,
+          7
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Develop Real-Time Clock Mechanism",
+            "description": "Create a real-time clock that tracks time independently of the game loop to manage time-based events.",
+            "dependencies": [],
+            "details": "Implement a timer that updates every second and can trigger events based on elapsed time.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement Shield Regeneration Logic",
+            "description": "Design and code the logic for shield regeneration that works in conjunction with the real-time clock.",
+            "dependencies": [
+              1
+            ],
+            "details": "Ensure that shields regenerate over time and are influenced by the real-time clock, with specific rates and conditions.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Manage Phaser Cooldown System",
+            "description": "Create a cooldown management system for phaser weapons that integrates with the real-time clock and shield regeneration.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Develop a system that tracks phaser usage and cooldown periods, ensuring it interacts correctly with the real-time clock and shield status.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Conduct Gameplay Balancing",
+        "description": "Balance gameplay mechanics based on combat and energy usage to ensure a fair challenge.",
+        "details": "Review and adjust values in constants.py and ship systems to ensure balanced gameplay. Conduct playtesting sessions to gather feedback on difficulty and adjust as necessary.",
+        "testStrategy": "Gather player feedback during playtesting sessions and adjust mechanics based on observed challenges and player experiences.",
+        "priority": "medium",
+        "dependencies": [
+          10,
+          11
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Review Constants",
+            "description": "Analyze and review the constants used in the gameplay mechanics to ensure they are balanced and contribute positively to the overall game experience.",
+            "dependencies": [],
+            "details": "Focus on numerical values that affect gameplay, such as damage, health, and resource generation rates. Document any inconsistencies or areas for improvement.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Review Ship Systems",
+            "description": "Evaluate the various ship systems in the game to assess their balance and functionality within the gameplay mechanics.",
+            "dependencies": [
+              1
+            ],
+            "details": "Examine systems such as propulsion, weaponry, and defense mechanisms. Identify any imbalances or enhancements needed to improve gameplay.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "created": "2025-07-01T08:54:00.599Z",
+      "updated": "2025-07-01T09:12:19.444Z",
+      "description": "Tasks for master context"
+    }
+  }
+}
