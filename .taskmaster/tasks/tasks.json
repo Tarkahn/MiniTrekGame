@@ -331,7 +331,7 @@
         "dependencies": [
           1
         ],
-        "status": "pending",
+        "status": "in-progress",
         "subtasks": [
           {
             "id": 1,
@@ -339,7 +339,7 @@
             "description": "Create the layout and visual design for the hex map component of the UI.",
             "dependencies": [],
             "details": "Focus on the hexagonal grid structure, color scheme, and interactive elements.",
-            "status": "pending",
+            "status": "in-progress",
             "testStrategy": ""
           },
           {
@@ -496,7 +496,7 @@
     ],
     "metadata": {
       "created": "2025-07-01T08:54:00.599Z",
-      "updated": "2025-07-01T09:56:41.364Z",
+      "updated": "2025-07-01T09:57:01.997Z",
       "description": "Tasks for master context"
     }
   }
