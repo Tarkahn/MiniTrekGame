@@ -1,0 +1,56 @@
+Star Trek Tactical Game – UI Product Requirements Document (UI-PRD)
+Version: Draft 0.1
+Purpose: Define the requirements and integration plan for a graphical user interface (GUI) for the Star Trek Tactical Game, building on the existing game logic.
+
+1. Overview
+This PRD describes the next phase of development: replacing the text-based interface with a modern, graphical UI. The UI will enhance playability, provide intuitive controls, and visually represent the game world, while maintaining compatibility with the current game mechanics.
+
+2. Goals
+- Deliver a clear, visually engaging interface for gameplay.
+- Graphically display system and sector maps.
+- Enable interactive ship controls (phasers, torpedoes, scan, move, etc.).
+- Preserve and integrate with the existing turn-based and real-time mechanics.
+
+3. UI Features (Initial Scope)
+- Main View Layout
+  - Top: 20x20 hex grid map (sector/system).
+  - Bottom Left: Scrollable event/combat log.
+  - Bottom Right: LCARS-style control panel (buttons for all ship actions).
+- Tooltip/Status Hover Info
+  - Hovering over map elements shows details (ship stats, anomalies, terrain).
+- Popup Panels
+  - Ship system status, inventory, and detected anomalies.
+- Turn & Time Indicators
+  - Display current turn and real-time elements (cooldowns, regeneration).
+
+4. UI Framework & Platform
+- Framework: Pygame (for 2D desktop rendering)
+- Platform: Desktop (Windows/macOS/Linux)
+- Optional: Future flexibility for web-based UI
+
+5. Integration Plan
+- UI communicates with core game logic modules (game_logic/, ship/, data/constants.py).
+- UI layer emits commands and receives state updates via a controller/interface class.
+- Maintain testability by isolating UI logic from core systems.
+
+6. Constraints & Considerations
+- Reuse constants and game state from existing logic.
+- All game interactions must be possible via UI (mouse and keyboard).
+- Minimum supported resolution: 1280x800.
+- No networked multiplayer in this phase.
+- Sound and animation are optional (basic placeholders for now).
+
+7. Milestones (Initial)
+- Wireframe/mockup using Pygame.
+- Map rendering engine for hex grid.
+- Event log display.
+- Control panel layout & button interactions.
+- Integration with player actions (fire, scan, move, warp).
+- System status popups.
+- Final polish (optional sound, transitions, etc).
+
+8. Future Enhancements (Out of Scope for MVP)
+- Animated transitions and effects.
+- Voiceover or sound effects.
+- Save/load system.
+- Mouse hover highlights and path previews. 
