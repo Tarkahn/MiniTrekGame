@@ -13,20 +13,79 @@ This PRD describes the next phase of development: replacing the text-based inter
 
 3. UI Features (Initial Scope)
 - Main View Layout
-  - Top: 20x20 hex grid map (sector/system).
+  - Top: Map view (switches between two modes):
+    - Sector Map: 20x20 hex grid, each hex represents a star system.
+    - System Map: Detailed view of a single star system's internal hex layout.
+  - Player moves between these two views based on travel actions.
+  - No galaxy-level map or zooming for now.
+  - Visual Style: LCARS-inspired, with flat-color hexes and clean outlined borders. No 3D or beveled elements for a retro, tactical feel.
+  - Map Elements:
+    - Ships: Unique icons (e.g., top-down silhouettes) with color-coded outlines (blue for player, red for Klingon, etc.).
+    - Anomalies & Terrain: Icon + color overlay (e.g., nebulae with purple tint + swirl icon).
+    - Fog of War: Unexplored hexes appear darkened or grayed out, becoming fully visible once scanned or visited.
   - Bottom Left: Scrollable event/combat log.
+    - Event Log Preferences:
+      - Filtering: Support optional filtering (e.g., tabs or toggles for combat, system, exploration logs, etc.).
+      - Text Copying: Not required; copying text from the log is not necessary.
+      - Visible Lines: Auto-size to available space in the Bottom Left Pane, with a minimum of 10 visible lines and scroll support for older entries.
   - Bottom Right: LCARS-style control panel (buttons for all ship actions).
 - Tooltip/Status Hover Info
-  - Hovering over map elements shows details (ship stats, anomalies, terrain).
+  - Popups:
+    - All popups (e.g., ship/system status, inventory, anomaly details) are dockable to the side of the game screen.
+    - Popups are non-modal, allowing continued interaction with the map and control panel.
+    - Each popup includes a visible "X" or standard close button for easy dismissal.
+    - This maintains visual clarity and gives players full control over interface elements.
+  - Tooltips:
+    - Tooltip data does not appear directly over map or control panel elements.
+    - All hover-based feedback is routed to a dedicated tooltip feedback field within the game UI to prevent visual clutter.
+    - Tooltip content includes:
+      - Ships: Hull/shield integrity, energy level, last action taken, cooldown timers.
+      - Anomalies/Terrain: Name and effect summary (e.g., "Nebula – Disables sensors").
+      - Planets/Stations: Name, docking availability, resources (if applicable).
 - Popup Panels
   - Ship system status, inventory, and detected anomalies.
 - Turn & Time Indicators
-  - Display current turn and real-time elements (cooldowns, regeneration).
+  - Status Display Panel:
+    - A narrow status panel is placed at the top of the game screen, serving as the centralized location for all feedback related to tooltips, cooldowns, regeneration, and game mechanics.
+    - The panel includes multiple feedback boxes, each dedicated to a specific category of information:
+      - Tooltip Feedback: Displays hover information from map elements (ships, anomalies, terrain) without obstructing gameplay.
+      - Cooldown/Regeneration Feedback: Progress bar for each relevant system (phasers, shields, torpedoes), showing time remaining for cooldown or regeneration. Optional numeric countdowns may supplement progress bars.
+      - Turn Indicator: Current turn number and total turns used are displayed in the same top panel. If real-time elements are active (e.g., shield regeneration), an active time indicator (text or icon) is included.
+- Controls & Input:
+  - All core actions accessible via both mouse and keyboard shortcuts.
+  - Mouse Input:
+    - Left-click: Movement/navigation (click-to-move on valid hex).
+    - Right-click: Scanning and targeting weapons (phasers/torpedoes).
+    - No drag-and-drop.
+  - Keyboard Shortcuts (examples, TBD):
+    - F: Fire Phasers
+    - T: Fire Torpedoes
+    - S: Scan
+    - E: Engage (Impulse/Warp)
+    - Q: Quit
+    - Enter: End Turn
+  - Control Panel: Fixed layout in the UI; not resizable at this stage.
+- Error Handling:
+  - All invalid actions are communicated via the top status panel, using a dedicated feedback box to show short error messages (e.g., "Insufficient energy to fire phasers.").
+  - The corresponding control panel button briefly highlights in red or pulses to indicate the source of the error.
+  - Optional: A short alert sound (configurable/mutable) may be played to reinforce the error notification.
+  - No modal popup windows are used for errors, to preserve gameplay flow and prevent intrusive disruptions.
+  - Errors may optionally be logged in the event log for reference, but this is not the primary method of feedback.
 
 4. UI Framework & Platform
 - Framework: Pygame (for 2D desktop rendering)
 - Platform: Desktop (Windows/macOS/Linux)
 - Optional: Future flexibility for web-based UI
+- UI/Game Logic Integration:
+  - Update Model: Event-driven — game logic pushes updates to the UI whenever state changes occur. No polling.
+  - Undo/Redo: Not implemented; not supported due to hybrid turn-based/real-time design and current scope.
+  - Hot-Reloading: Supported for UI assets (fonts, images, etc.) during development for rapid iteration; disabled in production builds. Hot-reloading will be removed during the final testing and production-ready phase to ensure stability and performance.
+    - Integration & Removal Approach:
+      - Hot-reloading is wrapped in a conditional (e.g., if DEBUG or DEV_MODE: enable_hot_reload()).
+      - Uses separate dev-only modules or config flags (e.g., dev_utility.py).
+      - Asset loaders check a flag to either watch for changes (dev) or load once and cache (prod).
+      - In production, set DEBUG = False, exclude hot-reloading code from the build/package, and remove or comment out watcher/init hooks if not already conditional.
+      - Best practice: Keep hot-reloading logic in a separate module and avoid scattering reload hooks across game logic. This ensures hot-reloading is non-invasive and easily disabled or removed for production builds.
 
 5. Integration Plan
 - UI communicates with core game logic modules (game_logic/, ship/, data/constants.py).
