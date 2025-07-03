@@ -71,6 +71,19 @@ This PRD describes the next phase of development: replacing the text-based inter
   - Optional: A short alert sound (configurable/mutable) may be played to reinforce the error notification.
   - No modal popup windows are used for errors, to preserve gameplay flow and prevent intrusive disruptions.
   - Errors may optionally be logged in the event log for reference, but this is not the primary method of feedback.
+- Automated Testing & Debugging:
+  - Automated UI Tests: Include tests for button click functionality, UI layout rendering, and basic gameplay interaction flows (e.g., fire weapon, move ship).
+  - Debug Overlay: During development, display FPS, hover state, selected object, and current game phase. Overlay is toggleable via a debug hotkey (e.g., F12).
+  - Production Consideration: Debug overlay and test utilities are excluded or disabled in the production build via a development flag (e.g., DEBUG = False).
+- Save/Load & Options:
+  - Save System:
+    - Manual save only, triggered by user command.
+    - No auto-save for now to reduce complexity and give full control to the player.
+  - Options Menu Features:
+    - Sound Settings: Volume sliders or toggles for sound effects and background music (if implemented).
+    - Controls: View and customize keybindings; option to toggle mouse-based control hints.
+    - Display Settings: Toggle fullscreen/windowed mode; resolution selector (minimum enforced: 1280×800).
+    - Accessibility (optional, if feasible later): Colorblind mode; UI scale adjustment.
 
 4. UI Framework & Platform
 - Framework: Pygame (for 2D desktop rendering)
@@ -112,4 +125,28 @@ This PRD describes the next phase of development: replacing the text-based inter
 - Animated transitions and effects.
 - Voiceover or sound effects.
 - Save/load system.
-- Mouse hover highlights and path previews. 
+- Mouse hover highlights and path previews.
+
+- Art, Audio, and Polish:
+  - Visuals:
+    - Fonts: Use the primary typeface located in the assets folder.
+    - Map Objects: Replace previous letter-based placeholders (E, S, A, P, *) with custom icons for:
+      - Enemy Ships
+      - Starbases
+      - Anomalies
+      - Planets
+      - Stars
+    - Icons should be thematically appropriate (e.g., Klingon symbol for enemies) and visually distinct in shape and color.
+    - Color Scheme/Theme: Maintain an LCARS-inspired theme (retro-futuristic, flat colors, clean outlines). Avoid gradients, beveling, or modern neon aesthetics.
+  - Sound:
+    - Include basic sound effects for:
+      - Firing weapons
+      - Moving the ship
+      - Triggering an error (e.g., insufficient energy)
+    - Background music is not required initially, but support can be added later.
+    - All sound effects should be toggleable/mutable via an options/settings menu.
+
+- Accessibility & Platform:
+  - Colorblind modes: Not required.
+  - Font scaling: Feature from the start.
+  - Platform: Windows desktop only; no intention to port to other OS. 
