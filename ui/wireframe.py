@@ -1,5 +1,12 @@
 import pygame
 import math
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from galaxy_generation.object_placement import place_objects_by_system
+from ui.hex_map import draw_hex_grid, hex_to_pixel
+from ui.button_panel import draw_button_panel
+import traceback
 
 # Fixed window dimensions
 WIDTH, HEIGHT = 1075, 1408
@@ -54,93 +61,177 @@ grid_height = vert_spacing * (HEX_ROWS - 1) + hex_height
 grid_x_offset = map_x + (map_size - grid_width) / 2  # center in pane
 grid_y_offset = map_y + (map_size - grid_height) / 2
 
-def hex_corner(center, radius, i):
-    angle_deg = 60 * i - 30
-    angle_rad = math.radians(angle_deg)
-    return (
-        center[0] + radius * math.cos(angle_rad),
-        center[1] + radius * math.sin(angle_rad)
-    )
+# Generate map objects by system
+systems, current_system, all_objects = place_objects_by_system()
 
+# Map mode state
+map_mode = 'sector'  # or 'system'
 
-def draw_hex(surface, center, radius, color, outline):
-    points = [hex_corner(center, radius, i) for i in range(6)]
-    pygame.draw.polygon(surface, color, points)
-    pygame.draw.polygon(surface, outline, points, 1)
+# Button panel parameters
+BUTTON_W, BUTTON_H = 120, 40
+BUTTON_GAP = 20
+TOGGLE_BTN_W, TOGGLE_BTN_H = 200, 40
+TOGGLE_BTN_Y = bottom_pane_y + 30 + 4 * (BUTTON_H + BUTTON_GAP)
+BUTTON_COLOR = (100, 100, 180)
 
+# Button state tracking
+button_pressed = [False, False, False, False]
+toggle_btn_pressed = [False]  # Use list for mutability in handler
 
-running = True
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+try:
+    running = True
+    while running:
+        screen.fill(COLOR_BG)
+        # Status/Tooltip Panel (top)
+        status_rect = pygame.Rect(0, 0, WIDTH, STATUS_HEIGHT)
+        pygame.draw.rect(screen, COLOR_STATUS, status_rect)
+        status_label = font.render('Status/Tooltip Panel', True, COLOR_TEXT)
+        screen.blit(status_label, (10, 8))
 
-    screen.fill(COLOR_BG)
+        # Main Map Area (perfect square, flush left)
+        map_rect = pygame.Rect(map_x, map_y, map_size, map_size)
+        pygame.draw.rect(screen, COLOR_MAP, map_rect)
+        map_label = font.render('Sector/System Map (20x20)', True, COLOR_TEXT)
+        screen.blit(map_label, (map_x + 20, map_y + 20))
 
-    # Status/Tooltip Panel (top)
-    status_rect = pygame.Rect(0, 0, WIDTH, STATUS_HEIGHT)
-    pygame.draw.rect(screen, COLOR_STATUS, status_rect)
-    status_label = font.render('Status/Tooltip Panel', True, COLOR_TEXT)
-    screen.blit(status_label, (10, 8))
+        # --- MAP LABEL (show current map mode) ---
+        map_mode_label = font.render(
+            f"{'Sector Map' if map_mode == 'sector' else 'System Map'}",
+            True, COLOR_TEXT
+        )
+        screen.blit(
+            map_mode_label,
+            (map_x + map_size // 2 - 60, map_y + 8)
+        )
 
-    # Main Map Area (perfect square, flush left)
-    map_rect = pygame.Rect(map_x, map_y, map_size, map_size)
-    pygame.draw.rect(screen, COLOR_MAP, map_rect)
-    map_label = font.render('Sector/System Map (20x20)', True, COLOR_TEXT)
-    screen.blit(map_label, (map_x + 20, map_y + 20))
+        # Debug: Draw red rectangle around map pane
+        pygame.draw.rect(screen, COLOR_MAP_DEBUG, map_rect, 2)
 
-    # Debug: Draw red rectangle around map pane
-    pygame.draw.rect(screen, COLOR_MAP_DEBUG, map_rect, 2)
+        # Debug: Draw green rectangle around grid bounding box
+        grid_rect = pygame.Rect(
+            int(grid_x_offset), int(grid_y_offset),
+            int(grid_width), int(grid_height)
+        )
+        pygame.draw.rect(screen, COLOR_GRID_DEBUG, grid_rect, 2)
 
-    # Debug: Draw green rectangle around grid bounding box
-    grid_rect = pygame.Rect(
-        int(grid_x_offset), int(grid_y_offset),
-        int(grid_width), int(grid_height)
-    )
-    pygame.draw.rect(screen, COLOR_GRID_DEBUG, grid_rect, 2)
+        # Draw hex grid inside map area (no gaps)
+        draw_hex_grid(
+            screen, HEX_ROWS, HEX_COLS, grid_x_offset, grid_y_offset,
+            hex_width, vert_spacing, hex_radius, HEX_BG, HEX_OUTLINE,
+            highlight=current_system if map_mode == 'sector' else None
+        )
 
-    # Draw hex grid inside map area (no gaps)
-    for row in range(HEX_ROWS):
-        for col in range(HEX_COLS):
-            x = grid_x_offset + hex_width * (col + 0.5 * (row % 2))
-            y = grid_y_offset + vert_spacing * row + hex_radius
-            draw_hex(screen, (x, y), hex_radius, HEX_BG, HEX_OUTLINE)
+        if map_mode == 'sector':
+            for (q, r), objs in systems.items():
+                if objs:
+                    px, py = hex_to_pixel(
+                        q, r, grid_x_offset, grid_y_offset, hex_width, vert_spacing, hex_radius
+                    )
+                    pygame.draw.circle(screen, (180, 180, 180), (px, py), 6)
+        else:
+            for obj in systems.get(current_system, []):
+                px, py = hex_to_pixel(
+                    obj.q, obj.r, grid_x_offset, grid_y_offset, hex_width, vert_spacing, hex_radius
+                )
+                if obj.type == 'star':
+                    pygame.draw.circle(screen, (255, 230, 40), (px, py), 14)
+                elif obj.type == 'planet':
+                    pygame.draw.circle(screen, (60, 120, 255), (px, py), 12)
+                elif obj.type == 'starbase':
+                    rect = pygame.Rect(
+                        px - 10, py - 10, 20, 20
+                    )
+                    pygame.draw.rect(screen, (180, 180, 180), rect)
+                elif obj.type == 'enemy':
+                    points = [
+                        (px, py - 14),
+                        (px - 12, py + 10),
+                        (px + 12, py + 10)
+                    ]
+                    pygame.draw.polygon(screen, (255, 80, 80), points)
+                elif obj.type == 'anomaly':
+                    points = [
+                        (px, py - 12),
+                        (px - 12, py),
+                        (px, py + 12),
+                        (px + 12, py)
+                    ]
+                    pygame.draw.polygon(screen, (180, 80, 255), points)
+                elif obj.type == 'player':
+                    pygame.draw.circle(screen, (0, 220, 255), (px, py), 15)
+                    pygame.draw.circle(screen, (255, 255, 255), (px, py), 15, 2)
 
-    # Docked Popup (right side, full height below status bar)
-    docked_rect = pygame.Rect(
-        WIDTH - DOCKED_POPUP_WIDTH,
-        STATUS_HEIGHT,
-        DOCKED_POPUP_WIDTH,
-        HEIGHT - STATUS_HEIGHT
-    )
-    pygame.draw.rect(screen, COLOR_DOCKED_POPUP, docked_rect)
-    docked_label = font.render('Docked Popup', True, COLOR_TEXT)
-    screen.blit(
-        docked_label,
-        (WIDTH - DOCKED_POPUP_WIDTH + 20, STATUS_HEIGHT + 20)
-    )
+        # Docked Popup (right side, full height below status bar)
+        docked_rect = pygame.Rect(
+            WIDTH - DOCKED_POPUP_WIDTH,
+            STATUS_HEIGHT,
+            DOCKED_POPUP_WIDTH,
+            HEIGHT - STATUS_HEIGHT
+        )
+        pygame.draw.rect(screen, COLOR_DOCKED_POPUP, docked_rect)
+        docked_label = font.render('Docked Popup', True, COLOR_TEXT)
+        screen.blit(
+            docked_label,
+            (WIDTH - DOCKED_POPUP_WIDTH + 20, STATUS_HEIGHT + 20)
+        )
 
-    # Event Log (bottom left, half the map width)
-    event_log_rect = pygame.Rect(
-        0, bottom_pane_y, event_log_width, bottom_pane_height)
-    pygame.draw.rect(screen, COLOR_EVENT_LOG, event_log_rect)
-    event_log_label = font.render('Event Log', True, COLOR_TEXT)
-    screen.blit(
-        event_log_label,
-        (20, bottom_pane_y + 20)
-    )
+        # Event Log (bottom left, half the map width)
+        event_log_rect = pygame.Rect(
+            0, bottom_pane_y, event_log_width, bottom_pane_height)
+        pygame.draw.rect(screen, COLOR_EVENT_LOG, event_log_rect)
+        event_log_label = font.render('Event Log', True, COLOR_TEXT)
+        screen.blit(
+            event_log_label,
+            (20, bottom_pane_y + 20)
+        )
 
-    # Control Panel (bottom right, half the map width)
-    control_panel_rect = pygame.Rect(
-        event_log_width, bottom_pane_y,
-        control_panel_width, bottom_pane_height)
-    pygame.draw.rect(screen, COLOR_CONTROL_PANEL, control_panel_rect)
-    control_panel_label = font.render('Control Panel', True, COLOR_TEXT)
-    screen.blit(
-        control_panel_label,
-        (event_log_width + 20, bottom_pane_y + 20)
-    )
+        # --- PLACEHOLDER EVENT LOG ENTRIES ---
+        for i, log in enumerate([
+            "[INFO] Game started.",
+            "[EVENT] Ship moved to (10, 10)",
+            "[ALERT] Enemy detected!"
+        ]):
+            lx = 20
+            ly = bottom_pane_y + 30 + i * 32
+            log_label = font.render(log, True, (220, 220, 180))
+            screen.blit(log_label, (lx, ly))
 
-    pygame.display.flip()
+        # Control Panel (bottom right, half the map width)
+        control_panel_rect = pygame.Rect(
+            event_log_width, bottom_pane_y,
+            control_panel_width, bottom_pane_height)
+        pygame.draw.rect(screen, COLOR_CONTROL_PANEL, control_panel_rect)
+        control_panel_label = font.render('Control Panel', True, COLOR_TEXT)
+        screen.blit(
+            control_panel_label,
+            (event_log_width + 20, bottom_pane_y + 20)
+        )
+        # Draw the button panel LAST so buttons are on top
+        button_rects, toggle_btn_rect = draw_button_panel(
+            screen, event_log_width, bottom_pane_y, BUTTON_W, BUTTON_H, BUTTON_GAP,
+            font, BUTTON_COLOR, COLOR_TEXT, map_mode, TOGGLE_BTN_W, TOGGLE_BTN_H,
+            TOGGLE_BTN_Y
+        )
 
-pygame.quit() 
+        # Event handling (moved here for clarity)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            # Only handle button events if button_rects and toggle_btn_rect exist
+            if button_rects and toggle_btn_rect:
+                from ui.button_panel import handle_button_events
+                button_pressed, toggle_btn_pressed, clicked_index, toggle_clicked = handle_button_events(
+                    event, button_rects, toggle_btn_rect, button_pressed, toggle_btn_pressed
+                )
+                if clicked_index is not None:
+                    print(f"Button {clicked_index} clicked")
+                if toggle_clicked:
+                    print("Toggle button clicked")
+                    map_mode = 'system' if map_mode == 'sector' else 'sector'
+
+        pygame.display.flip()
+    pygame.quit()
+except Exception as e:
+    print("\n--- GAME CRASHED ---")
+    traceback.print_exc()
+    pygame.quit() 
