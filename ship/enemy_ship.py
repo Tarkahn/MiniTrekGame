@@ -2,11 +2,13 @@ from .base_ship import BaseShip
 from data import constants
 from ship.ship_systems.phaser import Phaser
 from ship.ship_systems.torpedo import Torpedo
+from ship.ship_systems.shield import Shield
 
 
 class EnemyShip(BaseShip):
     def __init__(self, name, max_shield_strength, hull_strength, energy, max_energy, weapons=None, position=None):
-        super().__init__(name, max_shield_strength, hull_strength, energy, max_energy, weapons, position)
+        enemy_shield = Shield(max_shield_strength, self)
+        super().__init__(name, enemy_shield, hull_strength, energy, max_energy, weapons, position)
         self.target = None
         self.aggression_level = "medium"  # Can be "low", "medium", "high"
         self.pursuit_range = 500

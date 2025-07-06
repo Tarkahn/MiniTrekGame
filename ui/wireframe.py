@@ -3,10 +3,12 @@ import math
 import sys
 import os
 import traceback
+import logging
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from galaxy_generation.object_placement import place_objects_by_system
+from galaxy_generation.object_placement import place_objects_by_system, generate_system_objects
 from ui.hex_map import create_hex_grid_for_map
 from ui.button_panel import draw_button_panel, handle_button_events
+from galaxy_generation.map_object import MapObject
 
 # Fixed window dimensions
 WIDTH, HEIGHT = 1075, 1408
@@ -45,8 +47,27 @@ control_panel_width = map_size - event_log_width
 # Create the hex grid
 hex_grid = create_hex_grid_for_map(map_x, map_y, map_size, 20, 20)
 
-# Generate map objects by system
-systems, current_system, all_objects = place_objects_by_system()
+# Generate map objects by system (now returns systems, star_coords, lazy_object_coords)
+systems, star_coords, lazy_object_coords = place_objects_by_system()
+
+# Set initial player position from lazy_object_coords['player']
+player_hexes = list(lazy_object_coords['player'])
+if player_hexes:
+    ship_q, ship_r = player_hexes[0]
+    current_system = (ship_q, ship_r)
+else:
+    ship_q, ship_r = 0, 0
+    current_system = (0, 0)
+
+# Ensure systems[current_system] always contains at least a star object
+if current_system not in systems or not any(obj.type == 'star' for obj in systems[current_system]):
+    print(f"[INIT] Adding missing star object to systems at {current_system}")
+    systems[current_system] = [MapObject('star', ship_q, ship_r)]
+
+print(f"[INIT] ship_q: {ship_q}, ship_r: {ship_r}, current_system: {current_system}")
+print(f"[INIT] star_coords: {star_coords}")
+print(f"[INIT] lazy_object_coords: {lazy_object_coords}")
+print(f"[INIT] systems: {systems}")
 
 # Map mode state
 map_mode = 'sector'  # or 'system'
@@ -67,14 +88,6 @@ button_pressed = [False, False, False, False]
 toggle_btn_pressed = [False]  # Use list for mutability in handler
 button_rects, toggle_btn_rect = [], None
 
-# --- Ship navigation state ---
-# Find initial player position (sector coordinates)
-player_obj = next((obj for obj in all_objects if obj.type == 'player'), None)
-if player_obj:
-    ship_q, ship_r = player_obj.q, player_obj.r
-else:
-    ship_q, ship_r = 0, 0  # fallback
-
 # Animated position (float, in pixels)
 ship_anim_x, ship_anim_y = hex_grid.get_hex_center(ship_q, ship_r)
 
@@ -94,6 +107,15 @@ SHIP_SPEED = max_distance / (2 * FPS)  # pixels per frame for 2s travel
 move_ship_speed = None  # pixels per frame for current move
 move_frames = 2 * FPS  # 2 seconds at 60 FPS
 
+# Persistent system object state for scanned systems (for future save/load)
+system_object_states = {}
+
+clock = pygame.time.Clock()
+move_start_time = None  # Time when movement started (in ms)
+move_duration_ms = 2000  # Always 2 seconds
+
+logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
+
 try:
     running = True
     while running:
@@ -103,6 +125,10 @@ try:
         pygame.draw.rect(screen, COLOR_STATUS, status_rect)
         status_label = font.render('Status/Tooltip Panel', True, COLOR_TEXT)
         screen.blit(status_label, (10, 8))
+        # FPS Counter
+        fps = clock.get_fps()
+        fps_label = font.render(f'FPS: {fps:.1f}', True, COLOR_TEXT)
+        screen.blit(fps_label, (WIDTH - 120, 8))
 
         # Main Map Area (perfect square, flush left)
         map_rect = pygame.Rect(map_x, map_y, map_size, map_size)
@@ -123,54 +149,93 @@ try:
         # Draw the hex grid
         hex_grid.draw_grid(screen, HEX_OUTLINE)
 
+        # --- FOG OF WAR OVERLAY (SECTOR MAP) ---
+        if map_mode == 'sector':
+            for row in range(hex_grid.rows):
+                for col in range(hex_grid.cols):
+                    if (col, row) not in scanned_systems:
+                        cx, cy = hex_grid.get_hex_center(col, row)
+                        hex_grid.draw_fog_hex(screen, cx, cy, color=(200, 200, 200), alpha=153)
+
         # Draw objects on the grid
         if map_mode == 'sector':
             # Only draw system indicators if a sector scan has been done
             if sector_scan_active:
-                occupied_hexes = {(obj.q, obj.r) for obj in all_objects}
+                # Show indicator for any hex with a star or any lazy object
+                occupied_hexes = set(star_coords)
+                for coords_set in lazy_object_coords.values():
+                    occupied_hexes.update(coords_set)
                 for q, r in occupied_hexes:
                     px, py = hex_grid.get_hex_center(q, r)
-                    # Use a subtle color for scanned system locations
-                    pygame.draw.circle(screen, (100, 100, 130),
-                                       (int(px), int(py)), 6)
+                    pygame.draw.circle(
+                        screen, (100, 100, 130), (int(px), int(py)), 6
+                    )
+                logging.debug(f"[SECTOR] Drawing indicators for {len(occupied_hexes)} occupied hexes.")
         else:
-            # In system view, always draw the central star
-            star = next((obj for obj in systems.get(current_system, [])
-                         if obj.type == 'star'), None)
-            if star:
+            # In system view, always draw the central star(s)
+            for star in [obj for obj in systems.get(current_system, []) if obj.type == 'star']:
                 px, py = hex_grid.get_hex_center(star.q, star.r)
-                pygame.draw.circle(screen, (255, 255, 0), (int(px), int(py)), 10)
+                pygame.draw.circle(
+                    screen, (255, 255, 0), (int(px), int(py)), 10
+                )
 
             # Draw other objects only if the system has been scanned
             if current_system in scanned_systems:
-                for obj in systems.get(current_system, []):
-                    if obj.type == 'star':
-                        continue  # Already drawn
+                # Ensure non-star objects are present (restore or generate)
+                if current_system in system_object_states:
+                    non_star_objs = [
+                        MapObject(d['type'], d['q'], d['r'], **(d.get('props', {})))
+                        for d in system_object_states[current_system]
+                    ]
+                    logging.debug(f"[SYSTEM] Restored non-star objects: {non_star_objs}")
+                else:
+                    non_star_objs = generate_system_objects(
+                        current_system[0], current_system[1], lazy_object_coords
+                    )
+                    logging.debug(f"[SYSTEM] Generated non-star objects: {non_star_objs}")
+                # Draw non-star objects
+                for obj in non_star_objs:
                     px, py = hex_grid.get_hex_center(obj.q, obj.r)
                     if obj.type == 'planet':
                         pygame.draw.circle(
-                            screen, (0, 255, 0), (int(px), int(py)), 6)
+                            screen, (0, 255, 0), (int(px), int(py)), 6
+                        )
                     elif obj.type == 'starbase':
                         pygame.draw.rect(
-                            screen, (0, 0, 255), (int(px)-6, int(py)-6, 12, 12))
+                            screen, (0, 0, 255), (int(px)-6, int(py)-6, 12, 12)
+                        )
                     elif obj.type == 'enemy':
-                        pygame.draw.polygon(screen, (255, 0, 0), [
-                            (int(px), int(py)-8),
-                            (int(px)-6, int(py)+4),
-                            (int(px)+6, int(py)+4)
-                        ])
+                        pygame.draw.polygon(
+                            screen, (255, 0, 0), [
+                                (int(px), int(py)-8),
+                                (int(px)-6, int(py)+4),
+                                (int(px)+6, int(py)+4)
+                            ]
+                        )
                     elif obj.type == 'anomaly':
                         pygame.draw.circle(
-                            screen, (255, 0, 255), (int(px), int(py)), 5)
+                            screen, (255, 0, 255), (int(px), int(py)), 5
+                        )
+                    elif obj.type == 'player':
+                        pygame.draw.circle(
+                            screen, (0, 255, 255), (int(px), int(py)), 8
+                        )
 
         # Draw player ship
         if map_mode == 'sector':
-            pygame.draw.circle(screen, (0, 255, 255), (int(ship_anim_x), int(ship_anim_y)), 8)
+            pygame.draw.circle(
+                screen, (0, 255, 255), (int(ship_anim_x), int(ship_anim_y)), 8
+            )
         else:
-            player_in_system = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
+            player_in_system = next(
+                (obj for obj in systems.get(current_system, []) if obj.type == 'player'),
+                None
+            )
             if player_in_system:
                 px, py = hex_grid.get_hex_center(player_in_system.q, player_in_system.r)
-                pygame.draw.circle(screen, (0, 255, 255), (int(px), int(py)), 8)
+                pygame.draw.circle(
+                    screen, (0, 255, 255), (int(px), int(py)), 8
+                )
 
         # Docked Popup (right side, full height below status bar)
         docked_rect = pygame.Rect(
@@ -242,7 +307,19 @@ try:
                         elif map_mode == 'system':
                             if current_system not in scanned_systems:
                                 scanned_systems.add(current_system)
-                                print(f"System at {current_system} scanned. Objects revealed.")
+                                # Store non-star objects for this system for persistence (as dicts)
+                                non_star_objs = generate_system_objects(
+                                    current_system[0], current_system[1], lazy_object_coords
+                                )
+                                system_object_states[current_system] = [
+                                    {
+                                        'type': obj.type,
+                                        'q': obj.q,
+                                        'r': obj.r,
+                                        'props': obj.props
+                                    } for obj in non_star_objs
+                                ]
+                                print(f"System at {current_system} scanned. Objects revealed and state saved.")
                             else:
                                 print(f"System at {current_system} was already scanned.")
 
@@ -253,54 +330,60 @@ try:
             # Then handle map click events
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
-                # Check if click is in map area
                 if map_rect.collidepoint(mx, my) and map_mode == 'sector':
-                    # Convert to hex coordinates
                     q, r = hex_grid.pixel_to_hex(mx, my)
                     if q is not None and r is not None:
-                        # Set new destination
                         dest_q, dest_r = q, r
                         ship_moving = True
-                        dest_x, dest_y = hex_grid.get_hex_center(dest_q, dest_r)
-                        dx = dest_x - ship_anim_x
-                        dy = dest_y - ship_anim_y
-                        distance = math.hypot(dx, dy)
-                        move_ship_speed = distance / move_frames
+                        move_start_time = pygame.time.get_ticks()
+                        start_x, start_y = ship_anim_x, ship_anim_y
+                        end_x, end_y = hex_grid.get_hex_center(dest_q, dest_r)
                         print(f"Ship moving to hex ({q}, {r})")
 
-        # Update ship position
+        # Update ship position (delta time based)
         if ship_moving and dest_q is not None and dest_r is not None:
-            dest_x, dest_y = hex_grid.get_hex_center(dest_q, dest_r)
-            dx = dest_x - ship_anim_x
-            dy = dest_y - ship_anim_y
-            distance = math.hypot(dx, dy)
-            
-            if distance < move_ship_speed:
+            now = pygame.time.get_ticks()
+            elapsed = now - move_start_time if move_start_time is not None else 0
+            start_x, start_y = hex_grid.get_hex_center(ship_q, ship_r)
+            end_x, end_y = hex_grid.get_hex_center(dest_q, dest_r)
+            t = min(elapsed / move_duration_ms, 1.0)
+            ship_anim_x = start_x + (end_x - start_x) * t
+            ship_anim_y = start_y + (end_y - start_y) * t
+            if t >= 1.0:
                 # Arrived at destination
-                ship_anim_x, ship_anim_y = dest_x, dest_y
+                ship_anim_x, ship_anim_y = end_x, end_y
                 ship_q, ship_r = dest_q, dest_r
                 ship_moving = False
-                print(f"Ship arrived at ({ship_q}, {ship_r})")
-                
-                # Check if there's a system here
-                system_here = any(obj.q == ship_q and obj.r == ship_r for obj in all_objects)
+                move_start_time = None
+                logging.info(f"[MOVE] Ship arrived at ({ship_q}, {ship_r})")
+                # Check if there's a system here (star or any lazy object)
+                system_here = (
+                    (ship_q, ship_r) in star_coords or
+                    any((ship_q, ship_r) in coords_set for coords_set in lazy_object_coords.values())
+                )
                 if system_here:
-                    # Switch to system map
+                    logging.info(f"[MOVE] Entering system at ({ship_q}, {ship_r})")
                     map_mode = 'system'
                     current_system = (ship_q, ship_r)
-                    print(f"Entering system at ({ship_q}, {ship_r})")
-            else:
-                # Move toward destination
-                ship_anim_x += move_ship_speed * dx / distance
-                ship_anim_y += move_ship_speed * dy / distance
+                    if current_system in scanned_systems and current_system in system_object_states:
+                        # Restore non-star objects for this system
+                        pass  # Already handled in draw logic
 
         # Draw destination indicator (red circle)
         if ship_moving and dest_q is not None and dest_r is not None and map_mode == 'sector':
             dest_x, dest_y = hex_grid.get_hex_center(dest_q, dest_r)
             pygame.draw.circle(screen, (255, 0, 0), (int(dest_x), int(dest_y)), 8)
 
+        # --- FOG OF WAR OVERLAY (SYSTEM MAP) ---
+        if map_mode == 'system' and current_system not in scanned_systems:
+            for row in range(hex_grid.rows):
+                for col in range(hex_grid.cols):
+                    cx, cy = hex_grid.get_hex_center(col, row)
+                    hex_grid.draw_fog_hex(screen, cx, cy, color=(200, 200, 200), alpha=153)
+
         pygame.display.flip()
-        pygame.time.Clock().tick(FPS)
+        clock.tick(FPS)
+        logging.debug(f"[LOOP] Frame complete. FPS: {clock.get_fps():.1f}")
 
 except Exception as e:
     print("--- GAME CRASHED ---")

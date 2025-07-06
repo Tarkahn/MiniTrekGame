@@ -2,6 +2,7 @@ from ship.base_ship import BaseShip
 from data import constants
 from game_logic.navigation import warp_to_sector
 from ship.ship_systems.phaser import Phaser
+from ship.ship_systems.shield import Shield
 
 
 class PlayerShip(BaseShip):
@@ -11,7 +12,8 @@ class PlayerShip(BaseShip):
     """
 
     def __init__(self, name, max_shield_strength, hull_strength, energy, max_energy, weapons=None, position=None):
-        super().__init__(name, max_shield_strength, hull_strength, energy, max_energy, weapons, position)
+        player_shield = Shield(max_shield_strength, self)
+        super().__init__(name, player_shield, hull_strength, energy, max_energy, weapons, position)
         self.phaser_system = Phaser(power=constants.PLAYER_PHASER_POWER, range=constants.PLAYER_PHASER_RANGE, ship=self)
 
     def move_ship(self, hex_count: int, shield_power: int = 0) -> bool:

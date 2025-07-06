@@ -57,12 +57,12 @@ def draw_button_panel(
     label_rect = btn_label.get_rect(center=toggle_btn_rect.center)
     surface.blit(btn_label, label_rect)
     # Debug: Draw a bright yellow rectangle at the toggle button's position
-    pygame.draw.rect(surface, (255, 255, 0), toggle_btn_rect, 3)
+    # pygame.draw.rect(surface, (255, 255, 0), toggle_btn_rect, 3)
     # Print the toggle button's position and size
-    print(
-        f"Toggle button at x={toggle_btn_x}, y={toggle_btn_y}, "
-        f"w={button_w}, h={button_h}"
-    )
+    # print(
+    #     f"Toggle button at x={toggle_btn_x}, y={toggle_btn_y}, "
+    #     f"w={button_w}, h={button_h}"
+    # )
     return button_rects, toggle_btn_rect
 
 # Handles button press/release events

@@ -1,5 +1,5 @@
 from data import constants
-from ship.ship_systems.shield import Shield
+# Removed: from ship.ship_systems.shield import Shield # Circular import dependency
 
 
 class BaseShip:
@@ -8,9 +8,9 @@ class BaseShip:
     Defines common attributes and basic functionalities for ship systems.
     """
 
-    def __init__(self, name, max_shield_strength, hull_strength, energy, max_energy, weapons, position):
+    def __init__(self, name, shield_system, hull_strength, energy, max_energy, weapons, position):
         self.name = name
-        self.shield_system = Shield(max_shield_strength, self)  # Use composition for shields
+        self.shield_system = shield_system  # Accept pre-instantiated Shield object
         self.max_hull_strength = hull_strength  # Initialize max_hull_strength
         self.hull_strength = hull_strength
         self.warp_core_energy = energy

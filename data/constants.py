@@ -48,3 +48,22 @@ INITIAL_GAME_STATE = {
 
 # New constant for shield regeneration rate per second
 SHIELD_REGEN_RATE_PER_SECOND = 5  # Example: 5 points per second
+
+# Map grid size
+GRID_ROWS = 20
+GRID_COLS = 20
+
+# Object counts
+NUM_STARS = 50
+NUM_PLANETS = 100
+NUM_STARBases = 150
+NUM_ENEMY_SHIPS = 1
+NUM_ANOMALIES = 1
+
+# Placement rules
+MIN_STAR_PLANET_DISTANCE = 3  # Minimum hexes between any star and any planet
+
+# --- System object limits ---
+MAX_STARS_PER_SYSTEM = 2  # No more than 2 stars per system
+MAX_PLANETS_PER_SYSTEM = 4  # No more than 4 planets per system
+MAX_STARBases_PER_SYSTEM = 1  # Only 1 starbase per system
