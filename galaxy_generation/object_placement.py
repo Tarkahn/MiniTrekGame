@@ -5,10 +5,12 @@ from data.constants import (
     NUM_STARS, NUM_PLANETS, NUM_STARBases, NUM_ENEMY_SHIPS, NUM_ANOMALIES,
     MAX_STARS_PER_SYSTEM,
     MAX_PLANETS_PER_SYSTEM,
-    MAX_STARBases_PER_SYSTEM
+    MAX_STARBases_PER_SYSTEM,
+    MIN_STAR_PLANET_DISTANCE
 )
 from .map_object import MapObject
 import logging
+import math
 
 
 def hex_distance(a, b):
@@ -34,14 +36,15 @@ def place_objects_by_system():
     all_coords = set(all_hexes())
     all_objects = []
 
-    # Place stars (eagerly, always present)
+    # Place stars with minimum separation
     star_coords = set()
     attempts = 0
-    while len(star_coords) < NUM_STARS:
-        if attempts > 1000:
+    while len(star_coords) < NUM_STARS and attempts < 2000:
+        if len(all_coords - occupied) == 0:
             logging.warning(
-                f"[PLACEMENT] Could only place {len(star_coords)} out of "
-                f"{NUM_STARS} stars after 1000 attempts."
+                f"[PLACEMENT] No more available coordinates. Placed {
+                    len(star_coords)} out of "
+                f"{NUM_STARS} stars."
             )
             break
         candidate = random.choice(list(all_coords - occupied))
@@ -51,38 +54,222 @@ def place_objects_by_system():
         systems[candidate].append(obj)
         all_objects.append(obj)
         attempts += 1
+
+    if attempts >= 2000:
+        logging.warning(
+            f"[PLACEMENT] Could only place {len(star_coords)} out of "
+            f"{NUM_STARS} stars after 2000 attempts."
+        )
+
     logging.info(f"[PLACEMENT] Placed {len(star_coords)} stars.")
 
-    # Only store star objects in systems at startup
-    # All other objects will be generated lazily
-
-    # For lazy loading, store the coordinates for each object type
+    # Planets: Place up to NUM_PLANETS, distributing across all stars,
+    # up to MAX_PLANETS_PER_SYSTEM per star
     planet_coords = set()
-    starbase_coords = set()
-    enemy_coords = set()
-    anomaly_coords = set()
-    player_coord = None
-
-    # Planets: Only place planets in systems with a star, up to MAX_PLANETS_PER_SYSTEM per star system
+    planet_orbits = []  # List of dicts: {star, planet, radius, angle, speed}
     total_planets_placed = 0
-    star_list = list(star_coords)
-    random.shuffle(star_list)
-    for star in star_list:
-        if total_planets_placed >= NUM_PLANETS:
-            break
-        num_planets = min(
-            random.randint(0, MAX_PLANETS_PER_SYSTEM),
-            NUM_PLANETS - total_planets_placed
-        )
-        # Place up to num_planets in this star system
-        for _ in range(num_planets):
-            planet_coords.add(star)
-            total_planets_placed += 1
+    planets_per_star = {star: 0 for star in star_coords}
+    # Track orbital distances per star to ensure proper spacing
+    orbital_distances_per_star = {star: [] for star in star_coords}
+
+    # Ensure we have stars to place planets around
+    if not star_coords:
+        logging.warning("[PLACEMENT] No stars available for planet placement.")
+    else:
+        star_list = list(star_coords)
+
+        # PHASE 1: Ensure each star gets at least one planet
+        logging.info(f"[PLACEMENT] Phase 1: Ensuring each star gets at least one planet...")
+        stars_without_planets = star_list.copy()
+        
+        for star in stars_without_planets:
             if total_planets_placed >= NUM_PLANETS:
                 break
-    logging.info(
-        f"[PLACEMENT] Placed {len(planet_coords)} planets."
-    )
+                
+            # Try to place a planet for this star
+            placed = False
+            for attempt in range(50):  # More attempts for the first planet
+                # Generate orbital parameters
+                orbit_angle = random.uniform(0, 2 * math.pi)
+                
+                # For the first planet of each star, choose from available distances
+                existing_distances = orbital_distances_per_star[star]
+                available_distances = []
+                for dist in range(6, 16):  # 6 to 15 hexes
+                    if dist not in existing_distances:
+                        available_distances.append(dist)
+                
+                if not available_distances:
+                    break  # No available distances for this star
+                
+                # Prefer closer distances for the first planet
+                hex_dist = min(available_distances)
+                
+                # Calculate planet position
+                dq = int(round(hex_dist * math.cos(orbit_angle)))
+                dr = int(round(hex_dist * math.sin(orbit_angle)))
+                planet_q = star[0] + dq
+                planet_r = star[1] + dr
+                planet_pos = (planet_q, planet_r)
+                
+                # Check if position is valid
+                if (0 <= planet_q < GRID_COLS and 0 <= planet_r < GRID_ROWS and
+                    planet_pos not in planet_coords and
+                    planet_pos not in star_coords and
+                    planet_pos not in occupied):
+                    
+                    actual_distance = hex_distance(planet_pos, star)
+                    if 6 <= actual_distance <= 15:
+                        # Check that the planet doesn't overlap with other stars (but can be closer than MIN_STAR_PLANET_DISTANCE)
+                        # This allows planets to orbit their star even if other stars are nearby
+                        overlaps_with_other_star = any(
+                            hex_distance(planet_pos, other_star) == 0
+                            for other_star in star_coords if other_star != star
+                        )
+                        
+                        if not overlaps_with_other_star:
+                            # Also check that the actual distance is unique for this star
+                            if actual_distance not in orbital_distances_per_star[star]:
+                                planet_coords.add(planet_pos)
+                                occupied.add(planet_pos)
+                                orbital_distances_per_star[star].append(actual_distance)
+                                
+                                # Create orbit data (speeds in radians per second)
+                                # Base speed: closer planets orbit faster (inverse square law)
+                                base_speed = 0.2 / (actual_distance * actual_distance)
+                                speed_variation = random.uniform(0.7, 1.3)
+                                orbit_speed = base_speed * speed_variation
+                                # Clamp to reasonable bounds (radians per second)
+                                orbit_speed = max(0.005, min(0.3, orbit_speed))
+                                
+                                planet_orbits.append({
+                                    'star': star,
+                                    'planet': planet_pos,
+                                    'hex_radius': actual_distance,
+                                    'angle': orbit_angle,
+                                    'speed': orbit_speed
+                                })
+                                planets_per_star[star] += 1
+                                total_planets_placed += 1
+                                placed = True
+                                break
+            
+            if not placed:
+                logging.warning(f"[PLACEMENT] Could not place initial planet for star at {star}")
+        
+        # PHASE 2: Distribute remaining planets
+        logging.info(f"[PLACEMENT] Phase 2: Distributing {NUM_PLANETS - total_planets_placed} remaining planets...")
+        max_total_attempts = (NUM_PLANETS - total_planets_placed) * 10
+        total_attempts = 0
+
+        while total_planets_placed < NUM_PLANETS and star_list and total_attempts < max_total_attempts:
+            # Pick a random star that hasn't reached its planet limit
+            available_stars = [
+                s for s in star_list if planets_per_star[s] < MAX_PLANETS_PER_SYSTEM]
+            if not available_stars:
+                logging.warning(f"[PLACEMENT] All stars have reached maximum planet capacity. Placed {
+                                total_planets_placed} planets.")
+                break
+
+            star = random.choice(available_stars)
+
+            # Try to find a valid planet position for this star
+            placed_for_star = False
+            for attempt in range(20):  # Try 20 times per star
+                # Generate orbital parameters with proper spacing
+                orbit_angle = random.uniform(0, 2 * math.pi)
+                
+                # Calculate a unique orbital distance for this star
+                existing_distances = orbital_distances_per_star[star]
+                
+                # Try to find a unique orbital distance
+                available_distances = []
+                for dist in range(6, 16):  # 6 to 15 hexes
+                    if dist not in existing_distances:
+                        available_distances.append(dist)
+                
+                if not available_distances:
+                    continue  # No available unique distances for this star
+                
+                # Choose a random available distance
+                hex_dist = random.choice(available_distances)
+
+                # Calculate planet position using proper hex coordinate math
+                # For hex grids, we need to convert the polar coordinates properly
+                dq = int(round(hex_dist * math.cos(orbit_angle)))
+                dr = int(round(hex_dist * math.sin(orbit_angle)))
+
+                planet_q = star[0] + dq
+                planet_r = star[1] + dr
+                planet_pos = (planet_q, planet_r)
+
+                # Check if position is valid
+                if (0 <= planet_q < GRID_COLS and 0 <= planet_r < GRID_ROWS and
+                    planet_pos not in planet_coords and
+                    planet_pos not in star_coords and
+                        planet_pos not in occupied):
+
+                    # Verify the planet is actually within the desired orbital distance from its host star
+                    actual_distance = hex_distance(planet_pos, star)
+                    # Respect minimum distance requirement (5 hexes minimum, max 15)
+                    if 6 <= actual_distance <= 15:
+
+                        # Check that the planet doesn't overlap with other stars (but can be closer than MIN_STAR_PLANET_DISTANCE)
+                        # This allows planets to orbit their star even if other stars are nearby
+                        overlaps_with_other_star = any(
+                            hex_distance(planet_pos, other_star) == 0
+                            for other_star in star_coords if other_star != star
+                        )
+
+                        # Simplified: only check no overlap with other stars
+                        if not overlaps_with_other_star:
+                            # Also check that the actual distance is unique for this star
+                            if actual_distance not in orbital_distances_per_star[star]:
+                                planet_coords.add(planet_pos)
+                                occupied.add(planet_pos)  # Mark as occupied
+
+                                # Track this orbital distance
+                                orbital_distances_per_star[star].append(actual_distance)
+
+                                # Create orbit data (speeds in radians per second)
+                                # Make orbital speed inversely related to distance (farther = slower, more realistic)
+                                # Inverse square relationship
+                                base_speed = 0.2 / (actual_distance * actual_distance)
+                                speed_variation = random.uniform(0.7, 1.3)  # ±30% variation
+                                orbit_speed = base_speed * speed_variation
+                                # Clamp to reasonable bounds (radians per second)
+                                orbit_speed = max(0.005, min(0.3, orbit_speed))
+                                planet_orbits.append({
+                                    'star': star,
+                                    'planet': planet_pos,
+                                    'hex_radius': actual_distance,
+                                    'angle': orbit_angle,
+                                    'speed': orbit_speed
+                                })
+                                planets_per_star[star] += 1
+                                total_planets_placed += 1
+                                placed_for_star = True
+                                break
+
+                total_attempts += 1
+
+            if not placed_for_star:
+                logging.debug(f"[PLACEMENT] Could not place planet around star {
+                              star} after 20 attempts.")
+
+        if total_attempts >= max_total_attempts:
+            logging.warning(f"[PLACEMENT] Reached maximum placement attempts. Placed {
+                            total_planets_placed} of {NUM_PLANETS} planets.")
+
+    logging.info(f"[PLACEMENT] Placed {len(planet_coords)} planets with {
+                 len(planet_orbits)} orbits.")
+    
+    # Log stars without planets
+    stars_without_planets = [star for star in star_coords if planets_per_star[star] == 0]
+    if stars_without_planets:
+        logging.warning(f"[PLACEMENT] {len(stars_without_planets)} stars have no planets: {stars_without_planets}")
+    else:
+        logging.info("[PLACEMENT] All stars have at least one planet.")
 
     # Starbases
     attempts = 0
@@ -103,26 +290,7 @@ def place_objects_by_system():
         attempts += 1
     logging.info(f"[PLACEMENT] Placed {len(starbase_coords)} starbases.")
 
-    # Enemies
-    attempts = 0
-    enemy_coords = set()
-    enemy_placed = 0
-    for _ in range(NUM_ENEMY_SHIPS):
-        if attempts > 1000:
-            logging.warning(
-                f"[PLACEMENT] Could only place {enemy_placed} out of "
-                f"{NUM_ENEMY_SHIPS} enemies after 1000 attempts."
-            )
-            break
-        candidate = random.choice(list(all_coords - occupied))
-        if candidate not in occupied:
-            enemy_coords.add(candidate)
-            occupied.add(candidate)
-            enemy_placed += 1
-        attempts += 1
-    logging.info(f"[PLACEMENT] Placed {len(enemy_coords)} enemies.")
-
-    # Anomalies
+    # Anomalies (moved up before enemies)
     attempts = 0
     anomaly_coords = set()
     anomaly_placed = 0
@@ -141,12 +309,42 @@ def place_objects_by_system():
         attempts += 1
     logging.info(f"[PLACEMENT] Placed {len(anomaly_coords)} anomalies.")
 
+    # Enemies
+    attempts = 0
+    enemy_coords = set()
+    enemy_placed = 0
+    player_coord = None  # Initialize player_coord before using it
+    # For enemy placement, only consider as occupied: enemies, starbases, anomalies, player
+    enemy_blocked = set()
+    enemy_blocked.update(enemy_coords)
+    enemy_blocked.update(starbase_coords)
+    enemy_blocked.update(anomaly_coords)
+    if player_coord:
+        enemy_blocked.add(player_coord)
+    for _ in range(NUM_ENEMY_SHIPS):
+        if attempts > 1000:
+            logging.warning(
+                f"[PLACEMENT] Could only place {enemy_placed} out of "
+                f"{NUM_ENEMY_SHIPS} enemies after 1000 attempts."
+            )
+            break
+        candidate = random.choice(list(all_coords - enemy_blocked))
+        if candidate not in enemy_blocked:
+            enemy_coords.add(candidate)
+            enemy_blocked.add(candidate)
+            enemy_placed += 1
+        attempts += 1
+    logging.info(
+        f"[PLACEMENT] Placed {len(enemy_coords)} enemies."
+    )
+
     # Player
     attempts = 0
     player_coord = None
     while player_coord is None:
         if attempts > 1000:
-            logging.warning("[PLACEMENT] Could not place player after 1000 attempts.")
+            logging.warning(
+                "[PLACEMENT] Could not place player after 1000 attempts.")
             break
         candidate = random.choice(list(all_coords - occupied))
         if candidate not in occupied:
@@ -159,18 +357,18 @@ def place_objects_by_system():
         logging.warning("[PLACEMENT] Player not placed.")
 
     # Store the coordinates for lazy loading (only those actually placed)
+    # Note: planets are handled separately in planet_orbits, not in lazy_object_coords
     lazy_object_coords = {
-        'planet': planet_coords,
         'starbase': starbase_coords,
         'enemy': enemy_coords,
         'anomaly': anomaly_coords,
         'player': {player_coord} if player_coord else set()
     }
 
-    return systems, star_coords, lazy_object_coords
+    return systems, star_coords, lazy_object_coords, planet_orbits
 
 
-def generate_system_objects(q, r, lazy_object_coords, star_coords=None, grid_size=20):
+def generate_system_objects(q, r, lazy_object_coords, star_coords=None, planet_orbits=None, grid_size=20):
     """Generate all objects for a given system hex (q, r), with random local positions and no overlaps."""
     objects_to_place = []
     # Add up to MAX_STARS_PER_SYSTEM if present in this system
@@ -182,17 +380,18 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, grid_siz
         for _ in range(star_count):
             objects_to_place.append(('star', {}))
     # Add up to MAX_PLANETS_PER_SYSTEM planets if present
-    if 'planet' in lazy_object_coords and (q, r) in lazy_object_coords['planet']:
-        planet_count = min(
-            sum(1 for coord in lazy_object_coords['planet'] if coord == (q, r)),
-            MAX_PLANETS_PER_SYSTEM
-        )
+    # Planets are now stored in planet_orbits, not lazy_object_coords
+    if planet_orbits:
+        planets_in_system = [
+            orbit for orbit in planet_orbits if orbit['star'] == (q, r)]
+        planet_count = min(len(planets_in_system), MAX_PLANETS_PER_SYSTEM)
         for _ in range(planet_count):
             objects_to_place.append(('planet', {}))
     # Add up to MAX_STARBases_PER_SYSTEM starbases if present
     if 'starbase' in lazy_object_coords and (q, r) in lazy_object_coords['starbase']:
         starbase_count = min(
-            sum(1 for coord in lazy_object_coords['starbase'] if coord == (q, r)),
+            sum(1 for coord in lazy_object_coords['starbase'] if coord == (
+                q, r)),
             MAX_STARBases_PER_SYSTEM
         )
         for _ in range(starbase_count):
@@ -200,7 +399,8 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, grid_siz
     # Add all other objects (no per-system limit)
     for obj_type in ['enemy', 'anomaly', 'player']:
         if obj_type in lazy_object_coords and (q, r) in lazy_object_coords[obj_type]:
-            count = sum(1 for coord in lazy_object_coords[obj_type] if coord == (q, r))
+            count = sum(
+                1 for coord in lazy_object_coords[obj_type] if coord == (q, r))
             for _ in range(count):
                 objects_to_place.append((obj_type, {}))
     # Randomize unique positions for all objects
@@ -229,4 +429,48 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, grid_siz
                 **props
             )
         )
-    return result 
+    return result
+
+
+def place_objects():
+    """
+    Backward compatibility wrapper for place_objects_by_system.
+    Returns (map_objects, objects_by_type) as expected by tests.
+    """
+    systems, star_coords, lazy_object_coords, planet_orbits = place_objects_by_system()
+
+    # Create list of all map objects
+    map_objects = []
+    objects_by_type = {}
+
+    # Add stars
+    for star_coord in star_coords:
+        star_obj = MapObject('star', star_coord[0], star_coord[1])
+        map_objects.append(star_obj)
+        objects_by_type.setdefault('star', []).append(star_obj)
+
+    # Add planets from orbits (this is the authoritative source)
+    for orbit in planet_orbits:
+        planet_coord = orbit['planet']
+        planet_obj = MapObject('planet', planet_coord[0], planet_coord[1])
+        map_objects.append(planet_obj)
+        objects_by_type.setdefault('planet', []).append(planet_obj)
+
+    # Add other objects (excluding planets since they're in orbits)
+    for obj_type, coords_set in lazy_object_coords.items():
+        if obj_type in ['planet', 'player']:
+            continue  # Skip planets (handled above) and player (handled below)
+        for coord in coords_set:
+            obj = MapObject(obj_type, coord[0], coord[1])
+            map_objects.append(obj)
+            objects_by_type.setdefault(obj_type, []).append(obj)
+
+    # Add player
+    player_coords = lazy_object_coords.get('player', set())
+    if player_coords:
+        player_coord = next(iter(player_coords))
+        player_obj = MapObject('player', player_coord[0], player_coord[1])
+        map_objects.append(player_obj)
+        objects_by_type.setdefault('player', []).append(player_obj)
+
+    return map_objects, objects_by_type
