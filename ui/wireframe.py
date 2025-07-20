@@ -5,6 +5,8 @@ import os
 import traceback
 import logging
 import random
+import time
+import glob
 
 # Adjust the path to ensure imports work correctly
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -15,6 +17,7 @@ from galaxy_generation.object_placement import place_objects_by_system, generate
 from ui.hex_map import create_hex_grid_for_map
 from ui.button_panel import draw_button_panel, handle_button_events
 from galaxy_generation.map_object import MapObject
+from ui.sound_manager import get_sound_manager
 
 # Calculate compact window dimensions based on layout needs
 RIGHT_EVENT_LOG_WIDTH = 300
@@ -47,8 +50,12 @@ COLOR_GRID_DEBUG = (0, 255, 0)     # Green for grid bounding box
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('Star Trek Tactical Game - UI Wireframe')
-font = pygame.font.SysFont(None, 28)
-label_font = pygame.font.SysFont(None, 22)  # Smaller font for panel labels
+
+# Use clean sans-serif system fonts for better readability
+font = pygame.font.SysFont('arial', 18)  # Regular font for general text
+label_font = pygame.font.SysFont('arial', 16, bold=True)  # Bold font for panel labels
+title_font = pygame.font.SysFont('arial', 20)  # Font for titles
+small_font = pygame.font.SysFont('arial', 14)  # Small font
 
 # Calculate layout once
 # Map size already calculated above
@@ -106,7 +113,19 @@ if current_system not in systems or not any(obj.type == 'star' for obj in system
 
 # Ensure only one player object exists in the starting system
 if not any(obj.type == 'player' for obj in systems[current_system]):
-    systems[current_system].append(MapObject('player', ship_q, ship_r))
+    player_obj = MapObject('player', ship_q, ship_r)
+    # Give player ship initial system coordinates
+    player_obj.system_q = 10  # Center of 20x20 grid
+    player_obj.system_r = 10
+    systems[current_system].append(player_obj)
+else:
+    # Ensure existing player has system coordinates
+    player_obj = next(obj for obj in systems[current_system] if obj.type == 'player')
+    if not hasattr(player_obj, 'system_q') or not hasattr(player_obj, 'system_r'):
+        player_obj.system_q = 10  # Center of 20x20 grid
+        player_obj.system_r = 10
+
+# Note: scanned_systems will be initialized later
 
 print(f"[INIT] ship_q: {ship_q}, ship_r: {ship_r}, current_system: {current_system}")
 print(f"[INIT] star_coords: {star_coords}")
@@ -119,6 +138,8 @@ map_mode = 'sector'  # or 'system'
 # Scan states
 sector_scan_active = False
 scanned_systems = set()
+# Automatically scan the starting system so player can move
+scanned_systems.add(current_system)
 
 # Button panel parameters
 BUTTON_W, BUTTON_H = 110, 35
@@ -169,6 +190,134 @@ clock = pygame.time.Clock()
 move_start_time = None  # Time when movement started (in ms)
 move_duration_ms = 2000  # Always 2 seconds
 
+# Stardate system
+class Stardate:
+    def __init__(self, start_stardate=2387.0):
+        """Initialize stardate system. Standard stardate format: YYYY.DDD where DDD is day of year."""
+        self.start_time = time.time()
+        self.start_stardate = start_stardate
+        self.time_factor = 100.0  # How fast stardate advances (1 real second = 100 stardate units)
+    
+    def get_current_stardate(self):
+        """Get current stardate based on elapsed time."""
+        elapsed_time = time.time() - self.start_time
+        stardate_advance = elapsed_time * self.time_factor / 86400  # Convert to days
+        return self.start_stardate + stardate_advance
+    
+    def format_stardate(self):
+        """Format stardate for display."""
+        current = self.get_current_stardate()
+        return f"Stardate: {current:.1f}"
+
+stardate_system = Stardate()
+
+# Background, Star, and Planet image system
+class BackgroundAndStarLoader:
+    def __init__(self):
+        self.star_images = {}
+        self.planet_images = {}
+        self.background_image = None
+        self.scaled_background = None
+        self.load_images()
+    
+    def load_images(self):
+        """Load background image, all star images, and all planet images."""
+        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')
+        
+        # Load background image
+        bg_path = os.path.join(assets_dir, 'MapBackground.jpg')
+        if os.path.exists(bg_path):
+            try:
+                self.background_image = pygame.image.load(bg_path)
+                logging.debug(f"[BACKGROUND] Loaded background image: MapBackground.jpg")
+            except Exception as e:
+                logging.error(f"[BACKGROUND] Failed to load background: {e}")
+        else:
+            logging.warning(f"[BACKGROUND] Background image not found: {bg_path}")
+        
+        # Load star images
+        stars_dir = os.path.join(assets_dir, 'stars')
+        if os.path.exists(stars_dir):
+            star_files = glob.glob(os.path.join(stars_dir, '*.jpg'))
+            for star_file in star_files:
+                star_name = os.path.splitext(os.path.basename(star_file))[0]
+                try:
+                    image = pygame.image.load(star_file)
+                    self.star_images[star_name] = image
+                    logging.debug(f"[STARS] Loaded star image: {star_name}")
+                except Exception as e:
+                    logging.error(f"[STARS] Failed to load {star_file}: {e}")
+        else:
+            logging.warning(f"[STARS] Stars directory not found: {stars_dir}")
+        
+        # Load planet images
+        planets_dir = os.path.join(assets_dir, 'planets')
+        if os.path.exists(planets_dir):
+            planet_files = glob.glob(os.path.join(planets_dir, '*.jpg'))
+            for planet_file in planet_files:
+                planet_name = os.path.splitext(os.path.basename(planet_file))[0]
+                try:
+                    image = pygame.image.load(planet_file)
+                    self.planet_images[planet_name] = image
+                    logging.debug(f"[PLANETS] Loaded planet image: {planet_name}")
+                except Exception as e:
+                    logging.error(f"[PLANETS] Failed to load {planet_file}: {e}")
+            logging.info(f"[PLANETS] Loaded {len(self.planet_images)} planet images for maximum variety")
+        else:
+            logging.warning(f"[PLANETS] Planets directory not found: {planets_dir}")
+    
+    def get_scaled_background(self, width, height):
+        """Get background image scaled to fit the map area."""
+        if self.background_image and (self.scaled_background is None or 
+                                     self.scaled_background.get_size() != (width, height)):
+            try:
+                self.scaled_background = pygame.transform.scale(self.background_image, (width, height))
+                logging.debug(f"[BACKGROUND] Scaled background to {width}x{height}")
+            except Exception as e:
+                logging.error(f"[BACKGROUND] Failed to scale background: {e}")
+                return None
+        return self.scaled_background
+    
+    def get_random_star_image(self):
+        """Get a random star image."""
+        if self.star_images:
+            return random.choice(list(self.star_images.values()))
+        return None
+    
+    def get_star_image_by_name(self, name):
+        """Get a specific star image by name."""
+        return self.star_images.get(name)
+    
+    def scale_star_image(self, image, radius):
+        """Scale star image to appropriate size for given radius."""
+        if image:
+            # Scale image to be roughly 2x the hex radius for proper coverage
+            target_size = int(radius * 4)
+            return pygame.transform.scale(image, (target_size, target_size))
+        return None
+    
+    def get_random_planet_image(self):
+        """Get a random planet image for maximum variety."""
+        if self.planet_images:
+            return random.choice(list(self.planet_images.values()))
+        return None
+    
+    def get_planet_image_by_name(self, name):
+        """Get a specific planet image by name."""
+        return self.planet_images.get(name)
+    
+    def scale_planet_image(self, image, base_radius, size_multiplier=1.0):
+        """Scale planet image to variable size based on multiplier."""
+        if image:
+            # Base size is 60% of hex radius (minimum), up to 2 hex widths (maximum)
+            # size_multiplier ranges from 1.0 (minimum) to ~3.3 (2 hex widths)
+            base_size = base_radius * 0.6  # Current minimum size
+            target_size = int(base_size * size_multiplier)
+            return pygame.transform.scale(image, (target_size, target_size))
+        return None
+
+background_and_star_loader = BackgroundAndStarLoader()
+
 # Event log for displaying messages
 EVENT_LOG_MAX_LINES = 25  # Increased to accommodate wrapped text
 
@@ -186,6 +335,8 @@ next_enemy_id = 1      # Counter for unique enemy IDs
 planet_anim_state = { (orbit['star'], orbit['planet']): orbit['angle'] for orbit in planet_orbits }
 # Planet color storage
 planet_colors = {}
+# Planet image storage
+planet_images_assigned = {}  # Dictionary: (star, planet) -> (image, scaled_image, size_multiplier)
 
 # Color generation functions
 def get_star_color():
@@ -228,7 +379,7 @@ def create_enemy_popup(enemy_id, enemy_obj):
     # Position popups in the dedicated dock area
     popup_dock_x = map_size + RIGHT_EVENT_LOG_WIDTH  # Start of popup dock area
     popup_x = popup_dock_x + 10  # 10px padding from dock edge
-    popup_y = STATUS_HEIGHT + 50 + (len(enemy_popups) * (popup_height + 10))  # Stack vertically below header
+    popup_y = STATUS_HEIGHT + 50 + (len(enemy_popups) * (popup_height + 10))  # Stack vertically below "Scan Results" label
     
     # Initialize enemy stats if not present
     if not hasattr(enemy_obj, 'health'):
@@ -254,9 +405,9 @@ def create_enemy_popup(enemy_id, enemy_obj):
         'window': None,  # Will be created when needed
         'surface': None,
         'rect': pygame.Rect(popup_x, popup_y, popup_width, popup_height),
-        'font': pygame.font.SysFont(None, 24),
-        'small_font': pygame.font.SysFont(None, 20),
-        'title_font': pygame.font.SysFont(None, 28),
+        'font': font,  # Use loaded custom font
+        'small_font': small_font,  # Use loaded custom small font
+        'title_font': title_font,  # Use loaded custom title font
         'enemy_obj': enemy_obj,
         'enemy_id': enemy_id,
         'visible': False
@@ -617,6 +768,9 @@ def add_event_log(message):
 
 logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
 
+# Initialize sound manager
+sound_manager = get_sound_manager()
+
 # Add initial welcome message
 add_event_log("Welcome to Star Trek Tactical Game")
 add_event_log("Click to navigate, scan for objects")
@@ -630,29 +784,73 @@ try:
         pygame.draw.rect(screen, COLOR_STATUS, status_rect)
         status_label = label_font.render('Status/Tooltip Panel', True, COLOR_TEXT)
         screen.blit(status_label, (10, 8))
-        # FPS Counter
-        fps = clock.get_fps()
-        fps_label = font.render(f'FPS: {fps:.1f}', True, COLOR_TEXT)
-        screen.blit(fps_label, (WIDTH - 120, 8))
+        # Stardate Display
+        stardate_label = font.render(stardate_system.format_stardate(), True, COLOR_TEXT)
+        screen.blit(stardate_label, (WIDTH - 180, 8))
 
         # Main Map Area (perfect square, flush left)
         map_rect = pygame.Rect(map_x, map_y, map_size, map_size)
         pygame.draw.rect(screen, COLOR_MAP, map_rect)
-        map_label = label_font.render('Sector/System Map (20x20)', True, COLOR_TEXT)
-        screen.blit(map_label, (map_x + 20, map_y + 20))
 
-        # --- MAP LABEL (show current map mode) ---
-        map_mode_label = label_font.render(
-            f"{'Sector Map' if map_mode == 'sector' else 'System Map'}",
-            True, COLOR_TEXT
-        )
-        screen.blit(
-            map_mode_label,
-            (map_x + map_size // 2 - 60, map_y + 8)
-        )
+        # --- Removed map mode label as requested ---
 
-        # Draw the hex grid
-        hex_grid.draw_grid(screen, HEX_OUTLINE)
+        # Draw background image (lowest layer)
+        background_img = background_and_star_loader.get_scaled_background(map_size, map_size)
+        if background_img:
+            screen.blit(background_img, (map_x, map_y))
+
+        # Draw stars in background (before hex grid) for system view
+        if map_mode == 'system':
+            # Draw stars that occupy 4 hexes - in background
+            for obj in systems.get(current_system, []):
+                if obj.type == 'star':
+                    if not hasattr(obj, 'system_q') or not hasattr(obj, 'system_r'):
+                        obj.system_q = random.randint(1, hex_grid.cols - 2)
+                        obj.system_r = random.randint(1, hex_grid.rows - 2)
+                    # Draw star across multiple hexes
+                    star_hexes = get_star_hexes(obj.system_q, obj.system_r)
+                    # Calculate center of mass for the star
+                    sum_x, sum_y = 0, 0
+                    valid_hexes = []
+                    for hq, hr in star_hexes:
+                        if 0 <= hq < hex_grid.cols and 0 <= hr < hex_grid.rows:
+                            hx, hy = hex_grid.get_hex_center(hq, hr)
+                            sum_x += hx
+                            sum_y += hy
+                            valid_hexes.append((hx, hy))
+                    if valid_hexes:
+                        center_x = sum_x / len(valid_hexes)
+                        center_y = sum_y / len(valid_hexes)
+                        # Get or assign star image
+                        if not hasattr(obj, 'star_image'):
+                            # Assign a random star image to this star object
+                            obj.star_image = background_and_star_loader.get_random_star_image()
+                            obj.scaled_star_image = None  # Will be scaled when needed
+                        
+                        # Draw star image if available, otherwise fallback to circle
+                        if obj.star_image:
+                            # Scale image if not already done or if radius changed
+                            if obj.scaled_star_image is None:
+                                obj.scaled_star_image = background_and_star_loader.scale_star_image(obj.star_image, hex_grid.radius * 3.6)
+                            
+                            if obj.scaled_star_image:
+                                # Center the image
+                                image_rect = obj.scaled_star_image.get_rect()
+                                image_rect.center = (int(center_x), int(center_y))
+                                screen.blit(obj.scaled_star_image, image_rect)
+                            else:
+                                # Fallback to circle if image scaling failed
+                                if not hasattr(obj, 'color'):
+                                    obj.color = get_star_color()
+                                pygame.draw.circle(screen, obj.color, (int(center_x), int(center_y)), int(hex_grid.radius * 3.6))
+                        else:
+                            # Fallback to circle if no image available
+                            if not hasattr(obj, 'color'):
+                                obj.color = get_star_color()
+                            pygame.draw.circle(screen, obj.color, (int(center_x), int(center_y)), int(hex_grid.radius * 3.6))
+
+        # Draw the hex grid with 25% transparency
+        hex_grid.draw_grid(screen, HEX_OUTLINE, alpha=64)
 
         # --- FOG OF WAR OVERLAY (draw early to hide objects) ---
         # Only apply fog of war to sector map, not system maps
@@ -754,31 +952,7 @@ try:
                 add_event_log(f"  Object types: {', '.join(obj_types)}")
             
             # Draw all objects (fog of war removed for system maps)
-            # Draw stars that occupy 4 hexes
-            for obj in systems.get(current_system, []):
-                if obj.type == 'star':
-                    if not hasattr(obj, 'system_q') or not hasattr(obj, 'system_r'):
-                        obj.system_q = random.randint(1, hex_grid.cols - 2)
-                        obj.system_r = random.randint(1, hex_grid.rows - 2)
-                    # Draw star across multiple hexes
-                    star_hexes = get_star_hexes(obj.system_q, obj.system_r)
-                    # Calculate center of mass for the star
-                    sum_x, sum_y = 0, 0
-                    valid_hexes = []
-                    for hq, hr in star_hexes:
-                        if 0 <= hq < hex_grid.cols and 0 <= hr < hex_grid.rows:
-                            hx, hy = hex_grid.get_hex_center(hq, hr)
-                            sum_x += hx
-                            sum_y += hy
-                            valid_hexes.append((hx, hy))
-                    if valid_hexes:
-                        center_x = sum_x / len(valid_hexes)
-                        center_y = sum_y / len(valid_hexes)
-                        # Get or generate star color
-                        if not hasattr(obj, 'color'):
-                            obj.color = get_star_color()
-                        # Draw star as single uniform circle (doubled size)
-                        pygame.draw.circle(screen, obj.color, (int(center_x), int(center_y)), int(hex_grid.radius * 3.6))
+            # Note: Stars are now drawn in background before hex grid
                 
             # Animate and draw all planets associated with stars in this system
             planets_in_system = [orbit for orbit in planet_orbits if orbit['star'] == current_system]
@@ -811,14 +985,39 @@ try:
                 planet_py = star_py + orbit_radius_px * math.sin(angle)
                 
                 # Draw planet at exact orbital position (no hex snapping)
-                # Get or generate planet color
                 planet_key = (orbit['star'], orbit['planet'])
-                if planet_key not in planet_colors:
-                    planet_colors[planet_key] = get_planet_color()
-                planet_color = planet_colors[planet_key]
                 
-                # Draw planet as circle at exact position
-                pygame.draw.circle(screen, planet_color, (int(planet_px), int(planet_py)), int(hex_grid.radius * 1.8))
+                # Get or assign planet image and size for maximum variety
+                if planet_key not in planet_images_assigned:
+                    # Assign a random planet image for maximum variety
+                    planet_image = background_and_star_loader.get_random_planet_image()
+                    # Assign random size: 1.0 (minimum/current size) to 3.3 (roughly 2 hex widths)
+                    size_multiplier = random.uniform(1.0, 3.3)
+                    scaled_planet_image = None
+                    if planet_image:
+                        scaled_planet_image = background_and_star_loader.scale_planet_image(
+                            planet_image, hex_grid.radius * 1.8, size_multiplier
+                        )
+                    planet_images_assigned[planet_key] = (planet_image, scaled_planet_image, size_multiplier)
+                    logging.debug(f"[PLANETS] Assigned random planet image to {planet_key} with size multiplier {size_multiplier:.2f}")
+                else:
+                    planet_image, scaled_planet_image, size_multiplier = planet_images_assigned[planet_key]
+                
+                # Draw planet image if available, otherwise fallback to circle
+                if scaled_planet_image:
+                    # Center the planet image
+                    image_rect = scaled_planet_image.get_rect()
+                    image_rect.center = (int(planet_px), int(planet_py))
+                    screen.blit(scaled_planet_image, image_rect)
+                else:
+                    # Fallback to circle if no image available
+                    if planet_key not in planet_colors:
+                        planet_colors[planet_key] = get_planet_color()
+                    planet_color = planet_colors[planet_key]
+                    # Use the same variable sizing for consistency
+                    base_radius = hex_grid.radius * 1.8 * 0.6  # Base size
+                    variable_radius = int(base_radius * size_multiplier)
+                    pygame.draw.circle(screen, planet_color, (int(planet_px), int(planet_py)), variable_radius)
             
             # Draw other objects (starbase, enemy, anomaly, player) with system positions
             for obj in systems.get(current_system, []):
@@ -901,9 +1100,9 @@ try:
         dock_label = label_font.render('Scan Results', True, COLOR_TEXT)
         screen.blit(dock_label, (popup_dock_x + 20, STATUS_HEIGHT + 20))
         # Draw event log lines with text wrapping
-        log_font = pygame.font.SysFont(None, 20)  # Slightly smaller font
+        log_font = small_font  # Use custom small font
         log_area_width = event_log_width - 40  # Account for padding
-        y_offset = event_log_y + 50
+        y_offset = event_log_y + 50  # Account for Event Log label
         line_height = 20  # Tighter line spacing
         
         # Process and render each log entry with wrapping
@@ -1016,88 +1215,77 @@ try:
                                 if current_system not in scanned_systems:
                                     scanned_systems.add(current_system)
                                     add_event_log("System scan complete. No enemies targeted - right-click enemies to target them for detailed scans.")
-                                # Diagnostic logging for scan
-                                logging.info(f"[SCAN] current_system: {current_system}")
-                                for obj_type, coords_set in lazy_object_coords.items():
-                                    logging.info(f"[SCAN] {obj_type}: current_system in set? {current_system in coords_set}")
-                                    logging.info(f"[SCAN] {obj_type} set: {coords_set}")
-                                # Store all objects (including star) for this system for persistence (as dicts)
-                                system_objs = generate_system_objects(
-                                    current_system[0],
-                                    current_system[1],
-                                    lazy_object_coords,
-                                    star_coords=star_coords,
-                                    planet_orbits=planet_orbits,
-                                    grid_size=hex_grid.cols
-                                )
-                                # Assign random system positions to all objects
-                                for obj in system_objs:
-                                    obj.system_q = random.randint(0, hex_grid.cols - 1)
-                                    obj.system_r = random.randint(0, hex_grid.rows - 1)
-                                
-                                # Fix planet visibility: ensure planets in this hex are added to planet_orbits
-                                # Note: planets are now stored in planet_orbits, not lazy_object_coords
-                                planets_in_hex = [orbit['planet'] for orbit in planet_orbits if orbit['star'] == current_system]
-                                for planet_coord in planets_in_hex:
-                                    # Check if this planet is already in planet_orbits (it should be)
-                                    existing_orbit = next((orbit for orbit in planet_orbits if orbit['planet'] == planet_coord), None)
-                                    if not existing_orbit:
-                                        # This should not happen with the new system, but keep as fallback
-                                        new_orbit = {
-                                            'star': current_system,
-                                            'planet': planet_coord,
-                                            'hex_radius': random.randint(3, 9),  # Increased max distance to 9
-                                            'angle': random.uniform(0, 2 * math.pi),
-                                            'speed': random.uniform(0.02, 0.1)  # Speed in radians per second
-                                        }
-                                        planet_orbits.append(new_orbit)
-                                        # Add to animation state
-                                        planet_anim_state[(current_system, planet_coord)] = new_orbit['angle']
-                                        logging.info(f"[SCAN] Added missing planet {planet_coord} to orbit around star {current_system}")
-                                
-                                systems[current_system] = system_objs
-                                system_object_states[current_system] = [
-                                    {
-                                        'type': obj.type,
-                                        'q': obj.q,
-                                        'r': obj.r,
-                                        'system_q': obj.system_q,
-                                        'system_r': obj.system_r,
-                                        'props': obj.props
-                                    } for obj in system_objs
-                                ]
-                                # --- Ensure player object exists and is placed at a random, unoccupied hex (after scan) ---
-                                player_obj = next((obj for obj in systems[current_system] if obj.type == 'player'), None)
-                                if player_obj is None:
-                                    occupied = set((getattr(obj, 'system_q', None), getattr(obj, 'system_r', None))
-                                                   for obj in systems[current_system] if hasattr(obj, 'system_q') and hasattr(obj, 'system_r'))
-                                    max_attempts = 100
-                                    for _ in range(max_attempts):
-                                        rand_q = random.randint(0, hex_grid.cols - 1)
-                                        rand_r = random.randint(0, hex_grid.rows - 1)
-                                        # Check both occupied set and blocked hexes
-                                        blocked, _ = is_hex_blocked(rand_q, rand_r, current_system, systems, planet_orbits, hex_grid)
-                                        if (rand_q, rand_r) not in occupied and not blocked:
-                                            player_obj = MapObject('player', current_system[0], current_system[1])
-                                            player_obj.system_q = rand_q
-                                            player_obj.system_r = rand_r
-                                            systems[current_system].append(player_obj)
-                                            break
-                                    else:
-                                        # Find any unblocked hex as fallback
-                                        for q in range(hex_grid.cols):
-                                            for r in range(hex_grid.rows):
-                                                blocked, _ = is_hex_blocked(q, r, current_system, systems, planet_orbits, hex_grid)
-                                                if not blocked and (q, r) not in occupied:
-                                                    player_obj = MapObject('player', current_system[0], current_system[1])
-                                                    player_obj.system_q = q
-                                                    player_obj.system_r = r
-                                                    systems[current_system].append(player_obj)
-                                                    break
-                                            if player_obj:
-                                                break
-                                else:
-                                    if not hasattr(player_obj, 'system_q') or not hasattr(player_obj, 'system_r'):
+                                    
+                                    # Only generate/modify system objects if not already scanned
+                                    # Diagnostic logging for scan
+                                    logging.info(f"[SCAN] current_system: {current_system}")
+                                    for obj_type, coords_set in lazy_object_coords.items():
+                                        logging.info(f"[SCAN] {obj_type}: current_system in set? {current_system in coords_set}")
+                                        logging.info(f"[SCAN] {obj_type} set: {coords_set}")
+                                    
+                                    # Store all objects (including star) for this system for persistence (as dicts)
+                                    system_objs = generate_system_objects(
+                                        current_system[0],
+                                        current_system[1],
+                                        lazy_object_coords,
+                                        star_coords=star_coords,
+                                        planet_orbits=planet_orbits,
+                                        grid_size=hex_grid.cols
+                                    )
+                                    
+                                    # Preserve existing player ship position if it exists
+                                    existing_player = None
+                                    if current_system in systems:
+                                        existing_player = next((obj for obj in systems[current_system] if obj.type == 'player'), None)
+                                    
+                                    # Assign random system positions to non-player objects
+                                    for obj in system_objs:
+                                        if obj.type == 'player' and existing_player:
+                                            # Preserve existing player position
+                                            obj.system_q = existing_player.system_q
+                                            obj.system_r = existing_player.system_r
+                                        else:
+                                            # Assign random position to other objects
+                                            obj.system_q = random.randint(0, hex_grid.cols - 1)
+                                            obj.system_r = random.randint(0, hex_grid.rows - 1)
+                                    
+                                    # Fix planet visibility: ensure planets in this hex are added to planet_orbits
+                                    # Note: planets are now stored in planet_orbits, not lazy_object_coords
+                                    planets_in_hex = [orbit['planet'] for orbit in planet_orbits if orbit['star'] == current_system]
+                                    for planet_coord in planets_in_hex:
+                                        # Check if this planet is already in planet_orbits (it should be)
+                                        existing_orbit = next((orbit for orbit in planet_orbits if orbit['planet'] == planet_coord), None)
+                                        if not existing_orbit:
+                                            # This should not happen with the new system, but keep as fallback
+                                            new_orbit = {
+                                                'star': current_system,
+                                                'planet': planet_coord,
+                                                'hex_radius': random.randint(8, 15),  # Minimum 4 hex from star outer bounds
+                                                'angle': random.uniform(0, 2 * math.pi),
+                                                'speed': random.uniform(0.02, 0.1)  # Speed in radians per second
+                                            }
+                                            planet_orbits.append(new_orbit)
+                                            # Add to animation state
+                                            planet_anim_state[(current_system, planet_coord)] = new_orbit['angle']
+                                            logging.info(f"[SCAN] Added missing planet {planet_coord} to orbit around star {current_system}")
+                                    
+                                    # Only update systems if this is a first-time scan
+                                    systems[current_system] = system_objs
+                                    system_object_states[current_system] = [
+                                        {
+                                            'type': obj.type,
+                                            'q': obj.q,
+                                            'r': obj.r,
+                                            'system_q': obj.system_q,
+                                            'system_r': obj.system_r,
+                                            'props': obj.props
+                                        } for obj in system_objs
+                                    ]
+                                    
+                                    # --- Ensure player object exists and is placed at a random, unoccupied hex (after scan) ---
+                                    # Only for first-time scans
+                                    player_obj = next((obj for obj in systems[current_system] if obj.type == 'player'), None)
+                                    if player_obj is None:
                                         occupied = set((getattr(obj, 'system_q', None), getattr(obj, 'system_r', None))
                                                        for obj in systems[current_system] if hasattr(obj, 'system_q') and hasattr(obj, 'system_r'))
                                         max_attempts = 100
@@ -1107,50 +1295,27 @@ try:
                                             # Check both occupied set and blocked hexes
                                             blocked, _ = is_hex_blocked(rand_q, rand_r, current_system, systems, planet_orbits, hex_grid)
                                             if (rand_q, rand_r) not in occupied and not blocked:
+                                                player_obj = MapObject('player', current_system[0], current_system[1])
                                                 player_obj.system_q = rand_q
                                                 player_obj.system_r = rand_r
+                                                systems[current_system].append(player_obj)
                                                 break
                                         else:
                                             # Find any unblocked hex as fallback
-                                            for q in range(hex_grid.cols):
-                                                for r in range(hex_grid.rows):
-                                                    blocked, _ = is_hex_blocked(q, r, current_system, systems, planet_orbits, hex_grid)
-                                                    if not blocked and (q, r) not in occupied:
-                                                        player_obj.system_q = q
-                                                        player_obj.system_r = r
+                                            for attempt_q in range(hex_grid.cols):
+                                                for attempt_r in range(hex_grid.rows):
+                                                    blocked, _ = is_hex_blocked(attempt_q, attempt_r, current_system, systems, planet_orbits, hex_grid)
+                                                    if not blocked:
+                                                        player_obj = MapObject('player', current_system[0], current_system[1])
+                                                        player_obj.system_q = attempt_q
+                                                        player_obj.system_r = attempt_r
+                                                        systems[current_system].append(player_obj)
                                                         break
-                                                if hasattr(player_obj, 'system_q'):
+                                                if player_obj:
                                                     break
-                                
-                                # Count objects by type for a concise summary
-                                obj_counts = {}
-                                for obj in system_objs:
-                                    obj_counts[obj.type] = obj_counts.get(obj.type, 0) + 1
-                                
-                                # Count planets associated with this star in planet_orbits
-                                planets_in_system = [orbit for orbit in planet_orbits if orbit['star'] == current_system]
-                                planet_count = len(planets_in_system)
-                                
-                                # Create concise summary
-                                if obj_counts or planet_count > 0:
-                                    scan_parts = []
-                                    for obj_type, count in obj_counts.items():
-                                        scan_parts.append(f"{count} {obj_type}{'s' if count > 1 else ''}")
-                                    
-                                    if scan_parts:
-                                        summary = f"System scan complete: {', '.join(scan_parts)}"
-                                    else:
-                                        summary = "System scan complete"
-                                    
-                                    if planet_count > 0:
-                                        summary += f". {planet_count} planet{'s' if planet_count > 1 else ''} orbiting"
                                 else:
-                                    summary = "System scan complete: Empty space detected"
-                                
-                                add_event_log(summary)
-                                print(
-                                    f"System at {current_system} scanned. Objects revealed and state saved."
-                                )
+                                    # System already scanned, just inform user
+                                    add_event_log("System already scanned. Right-click enemies to target them for detailed scans.")
                     elif label == "Fire":
                         print(f"[DEBUG] Entered Fire button handler: map_mode={map_mode}, selected_enemy={selected_enemy}")
                         # Fire phasers at selected enemy (only works in system mode)
@@ -1195,6 +1360,8 @@ try:
                                         print("[DEBUG] Enemy in range. Starting phaser animation.")
                                         phaser_animating = True
                                         phaser_anim_start = pygame.time.get_ticks()
+                                        # Play phaser sequence: shot followed by explosion
+                                        sound_manager.play_phaser_sequence()
                                         add_event_log(f"Firing phasers! Range: {distance:.1f} hexes")
                                     else:
                                         print("[DEBUG] Enemy out of range. No phaser animation.")
@@ -1238,7 +1405,6 @@ try:
                             if blocked:
                                 if block_type == 'planet':
                                     # Show orbital dialog for planets
-                                    font = pygame.font.SysFont(None, 24)
                                     wants_orbit = show_orbit_dialog(screen, font)
                                     if wants_orbit:
                                         # Find the planet at this location

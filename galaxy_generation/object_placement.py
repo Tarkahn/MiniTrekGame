@@ -95,7 +95,7 @@ def place_objects_by_system():
                 # For the first planet of each star, choose from available distances
                 existing_distances = orbital_distances_per_star[star]
                 available_distances = []
-                for dist in range(6, 16):  # 6 to 15 hexes
+                for dist in range(8, 16):  # 8 to 15 hexes (minimum 4 hex from star outer bounds)
                     if dist not in existing_distances:
                         available_distances.append(dist)
                 
@@ -119,7 +119,7 @@ def place_objects_by_system():
                     planet_pos not in occupied):
                     
                     actual_distance = hex_distance(planet_pos, star)
-                    if 6 <= actual_distance <= 15:
+                    if 8 <= actual_distance <= 15:
                         # Check that the planet doesn't overlap with other stars (but can be closer than MIN_STAR_PLANET_DISTANCE)
                         # This allows planets to orbit their star even if other stars are nearby
                         overlaps_with_other_star = any(
@@ -184,7 +184,7 @@ def place_objects_by_system():
                 
                 # Try to find a unique orbital distance
                 available_distances = []
-                for dist in range(6, 16):  # 6 to 15 hexes
+                for dist in range(8, 16):  # 8 to 15 hexes (minimum 4 hex from star outer bounds)
                     if dist not in existing_distances:
                         available_distances.append(dist)
                 
@@ -211,8 +211,8 @@ def place_objects_by_system():
 
                     # Verify the planet is actually within the desired orbital distance from its host star
                     actual_distance = hex_distance(planet_pos, star)
-                    # Respect minimum distance requirement (5 hexes minimum, max 15)
-                    if 6 <= actual_distance <= 15:
+                    # Respect minimum distance requirement (8 hexes minimum, max 15)
+                    if 8 <= actual_distance <= 15:
 
                         # Check that the planet doesn't overlap with other stars (but can be closer than MIN_STAR_PLANET_DISTANCE)
                         # This allows planets to orbit their star even if other stars are nearby
