@@ -309,33 +309,50 @@ def place_objects_by_system():
         attempts += 1
     logging.info(f"[PLACEMENT] Placed {len(anomaly_coords)} anomalies.")
 
-    # Enemies
+    # Enemies - Place in pairs within systems
     attempts = 0
-    enemy_coords = set()
+    enemy_coords = []  # Changed to list to allow duplicates for pairs
+    enemy_coords_set = set()  # Track unique systems with enemies
     enemy_placed = 0
     player_coord = None  # Initialize player_coord before using it
     # For enemy placement, only consider as occupied: enemies, starbases, anomalies, player
     enemy_blocked = set()
-    enemy_blocked.update(enemy_coords)
     enemy_blocked.update(starbase_coords)
     enemy_blocked.update(anomaly_coords)
     if player_coord:
         enemy_blocked.add(player_coord)
-    for _ in range(NUM_ENEMY_SHIPS):
-        if attempts > 1000:
-            logging.warning(
-                f"[PLACEMENT] Could only place {enemy_placed} out of "
-                f"{NUM_ENEMY_SHIPS} enemies after 1000 attempts."
-            )
+    
+    # Place enemies in pairs - we need NUM_ENEMY_SHIPS total, so NUM_ENEMY_SHIPS/2 systems with pairs
+    enemy_systems_needed = NUM_ENEMY_SHIPS // 2
+    if NUM_ENEMY_SHIPS % 2 == 1:
+        enemy_systems_needed += 1  # If odd number, we'll have one system with a single enemy
+    
+    # Get list of available coordinates that aren't blocked
+    available_coords = list(all_coords - enemy_blocked)
+    random.shuffle(available_coords)
+    
+    # Select systems for enemy pairs
+    enemy_systems = []
+    for i in range(min(enemy_systems_needed, len(available_coords))):
+        if enemy_placed >= NUM_ENEMY_SHIPS:
             break
-        candidate = random.choice(list(all_coords - enemy_blocked))
-        if candidate not in enemy_blocked:
-            enemy_coords.add(candidate)
-            enemy_blocked.add(candidate)
+        system_coord = available_coords[i]
+        enemy_systems.append(system_coord)
+        enemy_coords_set.add(system_coord)
+        
+        # Place first enemy in this system
+        enemy_coords.append(system_coord)
+        enemy_placed += 1
+        
+        # Place second enemy in same system (if we haven't reached the limit)
+        if enemy_placed < NUM_ENEMY_SHIPS:
+            # For the second enemy, we use the same system coordinate
+            # The actual positions within the system will be randomized when the system is generated
+            enemy_coords.append(system_coord)
             enemy_placed += 1
-        attempts += 1
+    
     logging.info(
-        f"[PLACEMENT] Placed {len(enemy_coords)} enemies."
+        f"[PLACEMENT] Placed {enemy_placed} enemies across {len(enemy_systems)} systems (in pairs)."
     )
 
     # Player
@@ -358,9 +375,10 @@ def place_objects_by_system():
 
     # Store the coordinates for lazy loading (only those actually placed)
     # Note: planets are handled separately in planet_orbits, not in lazy_object_coords
+    # Enemy coords is now a list to support multiple enemies per system
     lazy_object_coords = {
         'starbase': starbase_coords,
-        'enemy': enemy_coords,
+        'enemy': enemy_coords,  # This is now a list with duplicates for pairs
         'anomaly': anomaly_coords,
         'player': {player_coord} if player_coord else set()
     }
@@ -398,9 +416,13 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, planet_o
             objects_to_place.append(('starbase', {}))
     # Add all other objects (no per-system limit)
     for obj_type in ['enemy', 'anomaly', 'player']:
-        if obj_type in lazy_object_coords and (q, r) in lazy_object_coords[obj_type]:
-            count = sum(
-                1 for coord in lazy_object_coords[obj_type] if coord == (q, r))
+        if obj_type in lazy_object_coords:
+            if obj_type == 'enemy':
+                # Enemy coords is a list, count occurrences
+                count = lazy_object_coords[obj_type].count((q, r))
+            else:
+                # Other types are sets
+                count = sum(1 for coord in lazy_object_coords[obj_type] if coord == (q, r))
             for _ in range(count):
                 objects_to_place.append((obj_type, {}))
     # Randomize unique positions for all objects
@@ -457,13 +479,23 @@ def place_objects():
         objects_by_type.setdefault('planet', []).append(planet_obj)
 
     # Add other objects (excluding planets since they're in orbits)
-    for obj_type, coords_set in lazy_object_coords.items():
+    for obj_type, coords_data in lazy_object_coords.items():
         if obj_type in ['planet', 'player']:
             continue  # Skip planets (handled above) and player (handled below)
-        for coord in coords_set:
-            obj = MapObject(obj_type, coord[0], coord[1])
-            map_objects.append(obj)
-            objects_by_type.setdefault(obj_type, []).append(obj)
+        
+        # Handle enemy coords as list, others as sets
+        if obj_type == 'enemy':
+            # Enemy coords is a list with potential duplicates
+            for coord in coords_data:
+                obj = MapObject(obj_type, coord[0], coord[1])
+                map_objects.append(obj)
+                objects_by_type.setdefault(obj_type, []).append(obj)
+        else:
+            # Other types are sets
+            for coord in coords_data:
+                obj = MapObject(obj_type, coord[0], coord[1])
+                map_objects.append(obj)
+                objects_by_type.setdefault(obj_type, []).append(obj)
 
     # Add player
     player_coords = lazy_object_coords.get('player', set())

@@ -18,11 +18,12 @@ from galaxy_generation.map_object import MapObject
 
 # Calculate compact window dimensions based on layout needs
 RIGHT_EVENT_LOG_WIDTH = 300
+POPUP_DOCK_WIDTH = 300  # Dedicated space for enemy popups
 BOTTOM_PANEL_HEIGHT = 200
 STATUS_HEIGHT = 40
-# Calculate minimum width needed: map + event log panel
+# Calculate minimum width needed: map + event log panel + popup dock
 map_size = min(980, 960 - STATUS_HEIGHT - BOTTOM_PANEL_HEIGHT)  # Targeting ~720px map
-WIDTH = map_size + RIGHT_EVENT_LOG_WIDTH
+WIDTH = map_size + RIGHT_EVENT_LOG_WIDTH + POPUP_DOCK_WIDTH
 HEIGHT = 1020
 
 # Pane constants
@@ -176,6 +177,11 @@ event_log = []
 # Track last system for debug print
 last_debug_system = None
 
+# Enemy targeting system
+targeted_enemies = {}  # Dictionary: enemy_id -> enemy_object
+enemy_popups = {}      # Dictionary: enemy_id -> popup_window_info
+next_enemy_id = 1      # Counter for unique enemy IDs
+
 # Planet animation state dictionary
 planet_anim_state = { (orbit['star'], orbit['planet']): orbit['angle'] for orbit in planet_orbits }
 # Planet color storage
@@ -213,6 +219,187 @@ def get_planet_color():
         (188, 143, 143),  # Rosy brown
     ]
     return random.choice(planet_colors)
+
+def create_enemy_popup(enemy_id, enemy_obj):
+    """Create a popup window for enemy ship stats."""
+    # Calculate popup window dimensions and position
+    popup_width = 280
+    popup_height = 350
+    # Position popups in the dedicated dock area
+    popup_dock_x = map_size + RIGHT_EVENT_LOG_WIDTH  # Start of popup dock area
+    popup_x = popup_dock_x + 10  # 10px padding from dock edge
+    popup_y = STATUS_HEIGHT + 50 + (len(enemy_popups) * (popup_height + 10))  # Stack vertically below header
+    
+    # Initialize enemy stats if not present
+    if not hasattr(enemy_obj, 'health'):
+        enemy_obj.health = 100
+    if not hasattr(enemy_obj, 'max_health'):
+        enemy_obj.max_health = 100
+    if not hasattr(enemy_obj, 'energy'):
+        enemy_obj.energy = 1000
+    if not hasattr(enemy_obj, 'max_energy'):
+        enemy_obj.max_energy = 1000
+    if not hasattr(enemy_obj, 'shields'):
+        enemy_obj.shields = 50
+    if not hasattr(enemy_obj, 'max_shields'):
+        enemy_obj.max_shields = 50
+    if not hasattr(enemy_obj, 'ship_name'):
+        enemy_obj.ship_name = f"Enemy Vessel {enemy_id}"
+    if not hasattr(enemy_obj, 'ship_class'):
+        ship_classes = ["Klingon Bird of Prey", "Romulan Warbird", "Gorn Destroyer", "Tholian Web Spinner"]
+        enemy_obj.ship_class = random.choice(ship_classes)
+    
+    # Create popup window info
+    popup_info = {
+        'window': None,  # Will be created when needed
+        'surface': None,
+        'rect': pygame.Rect(popup_x, popup_y, popup_width, popup_height),
+        'font': pygame.font.SysFont(None, 24),
+        'small_font': pygame.font.SysFont(None, 20),
+        'title_font': pygame.font.SysFont(None, 28),
+        'enemy_obj': enemy_obj,
+        'enemy_id': enemy_id,
+        'visible': False
+    }
+    
+    return popup_info
+
+def draw_enemy_popup(popup_info):
+    """Draw the enemy ship stats popup window."""
+    if not popup_info['visible']:
+        return
+    
+    enemy = popup_info['enemy_obj']
+    rect = popup_info['rect']
+    font = popup_info['font']
+    small_font = popup_info['small_font']
+    title_font = popup_info['title_font']
+    
+    # Create a separate surface for the popup (if we want to move it outside main window later)
+    popup_surface = pygame.Surface((rect.width, rect.height))
+    popup_surface.fill((40, 40, 60))
+    
+    # Draw border
+    pygame.draw.rect(popup_surface, (100, 100, 150), popup_surface.get_rect(), 3)
+    
+    y_offset = 10
+    
+    # Ship name and class
+    name_text = title_font.render(enemy.ship_name, True, (255, 255, 255))
+    popup_surface.blit(name_text, (10, y_offset))
+    y_offset += 35
+    
+    class_text = small_font.render(f"Class: {enemy.ship_class}", True, (200, 200, 200))
+    popup_surface.blit(class_text, (10, y_offset))
+    y_offset += 30
+    
+    # Position
+    pos_text = small_font.render(f"Position: ({enemy.system_q}, {enemy.system_r})", True, (200, 200, 200))
+    popup_surface.blit(pos_text, (10, y_offset))
+    y_offset += 30
+    
+    # Hull integrity
+    hull_text = font.render("Hull Integrity:", True, (255, 255, 255))
+    popup_surface.blit(hull_text, (10, y_offset))
+    y_offset += 25
+    
+    hull_percent = (enemy.health / enemy.max_health) * 100
+    hull_color = (0, 255, 0) if hull_percent > 60 else (255, 255, 0) if hull_percent > 30 else (255, 0, 0)
+    hull_value_text = font.render(f"{enemy.health}/{enemy.max_health} ({hull_percent:.0f}%)", True, hull_color)
+    popup_surface.blit(hull_value_text, (20, y_offset))
+    y_offset += 35
+    
+    # Shields
+    shield_text = font.render("Shields:", True, (255, 255, 255))
+    popup_surface.blit(shield_text, (10, y_offset))
+    y_offset += 25
+    
+    shield_percent = (enemy.shields / enemy.max_shields) * 100
+    shield_color = (0, 150, 255)
+    shield_value_text = font.render(f"{enemy.shields}/{enemy.max_shields} ({shield_percent:.0f}%)", True, shield_color)
+    popup_surface.blit(shield_value_text, (20, y_offset))
+    y_offset += 35
+    
+    # Energy
+    energy_text = font.render("Energy:", True, (255, 255, 255))
+    popup_surface.blit(energy_text, (10, y_offset))
+    y_offset += 25
+    
+    energy_percent = (enemy.energy / enemy.max_energy) * 100
+    energy_color = (255, 255, 0)
+    energy_value_text = font.render(f"{enemy.energy}/{enemy.max_energy} ({energy_percent:.0f}%)", True, energy_color)
+    popup_surface.blit(energy_value_text, (20, y_offset))
+    y_offset += 35
+    
+    # Weapons status
+    weapons_text = font.render("Weapons:", True, (255, 255, 255))
+    popup_surface.blit(weapons_text, (10, y_offset))
+    y_offset += 25
+    
+    phaser_status = small_font.render("• Phasers: Online", True, (0, 255, 0))
+    popup_surface.blit(phaser_status, (20, y_offset))
+    y_offset += 20
+    
+    torpedo_status = small_font.render("• Torpedoes: Online", True, (0, 255, 0))
+    popup_surface.blit(torpedo_status, (20, y_offset))
+    y_offset += 30
+    
+    # Threat assessment
+    threat_text = font.render("Threat Level:", True, (255, 255, 255))
+    popup_surface.blit(threat_text, (10, y_offset))
+    y_offset += 25
+    
+    if hull_percent > 80:
+        threat_level = "HIGH"
+        threat_color = (255, 0, 0)
+    elif hull_percent > 50:
+        threat_level = "MODERATE"
+        threat_color = (255, 255, 0)
+    else:
+        threat_level = "LOW"
+        threat_color = (0, 255, 0)
+    
+    threat_level_text = font.render(threat_level, True, threat_color)
+    popup_surface.blit(threat_level_text, (20, y_offset))
+    
+    # Blit popup to main screen in the designated dock area
+    screen.blit(popup_surface, rect.topleft)
+
+def update_enemy_popups():
+    """Update and clean up enemy popups for destroyed ships."""
+    global enemy_popups, targeted_enemies
+    
+    destroyed_enemies = []
+    for enemy_id, popup_info in enemy_popups.items():
+        enemy = popup_info['enemy_obj']
+        # Check if enemy is destroyed
+        if not hasattr(enemy, 'health') or enemy.health <= 0:
+            destroyed_enemies.append(enemy_id)
+        # Check if enemy is still in current system
+        elif enemy not in systems.get(current_system, []):
+            destroyed_enemies.append(enemy_id)
+    
+    # Remove destroyed enemies from tracking
+    for enemy_id in destroyed_enemies:
+        if enemy_id in enemy_popups:
+            del enemy_popups[enemy_id]
+        if enemy_id in targeted_enemies:
+            del targeted_enemies[enemy_id]
+            add_event_log(f"Target {enemy_id} lost - popup closed")
+
+def get_enemy_id(enemy_obj):
+    """Get or assign a unique ID to an enemy object."""
+    global next_enemy_id
+    
+    # Check if this enemy already has an ID
+    for enemy_id, tracked_enemy in targeted_enemies.items():
+        if tracked_enemy is enemy_obj:
+            return enemy_id
+    
+    # Assign new ID
+    enemy_id = next_enemy_id
+    next_enemy_id += 1
+    return enemy_id
 
 # Helper functions for multi-hex objects
 def get_hex_neighbors(q, r):
@@ -705,6 +892,14 @@ try:
         pygame.draw.rect(screen, COLOR_EVENT_LOG_BORDER, right_event_rect, 2)
         event_label = label_font.render('Event Log', True, COLOR_TEXT)
         screen.blit(event_label, (event_log_x + 20, event_log_y + 20))
+        
+        # Popup Dock Area (right of event log)
+        popup_dock_x = event_log_x + event_log_width
+        popup_dock_rect = pygame.Rect(popup_dock_x, STATUS_HEIGHT, POPUP_DOCK_WIDTH, HEIGHT - STATUS_HEIGHT)
+        pygame.draw.rect(screen, (25, 25, 40), popup_dock_rect)  # Darker background for popup area
+        pygame.draw.rect(screen, COLOR_EVENT_LOG_BORDER, popup_dock_rect, 2)
+        dock_label = label_font.render('Scan Results', True, COLOR_TEXT)
+        screen.blit(dock_label, (popup_dock_x + 20, STATUS_HEIGHT + 20))
         # Draw event log lines with text wrapping
         log_font = pygame.font.SysFont(None, 20)  # Slightly smaller font
         log_area_width = event_log_width - 40  # Account for padding
@@ -795,8 +990,32 @@ try:
                             add_event_log("Long-range sensors activated. All systems revealed.")
                             print("Sector scan active. All systems revealed.")
                         elif map_mode == 'system':
-                            if current_system not in scanned_systems:
-                                scanned_systems.add(current_system)
+                            # Check if we have targeted enemies to scan
+                            if targeted_enemies:
+                                print(f"[DEBUG] Scanning {len(targeted_enemies)} targeted enemies")
+                                # Create/show popups for all targeted enemies
+                                new_popups = 0
+                                for enemy_id, enemy_obj in targeted_enemies.items():
+                                    print(f"[DEBUG] Processing enemy {enemy_id}")
+                                    if enemy_id not in enemy_popups:
+                                        # Create new popup for this enemy
+                                        popup_info = create_enemy_popup(enemy_id, enemy_obj)
+                                        enemy_popups[enemy_id] = popup_info
+                                        new_popups += 1
+                                        print(f"[DEBUG] Created popup for enemy {enemy_id}")
+                                    # Show the popup
+                                    enemy_popups[enemy_id]['visible'] = True
+                                    print(f"[DEBUG] Popup {enemy_id} visible: {enemy_popups[enemy_id]['visible']}")
+                                
+                                if new_popups > 0:
+                                    add_event_log(f"Scanning {new_popups} targeted enemies - detailed sensor data displayed")
+                                else:
+                                    add_event_log(f"Updating sensor data for {len(targeted_enemies)} targeted enemies")
+                            else:
+                                # No targeted enemies, perform system scan as before
+                                if current_system not in scanned_systems:
+                                    scanned_systems.add(current_system)
+                                    add_event_log("System scan complete. No enemies targeted - right-click enemies to target them for detailed scans.")
                                 # Diagnostic logging for scan
                                 logging.info(f"[SCAN] current_system: {current_system}")
                                 for obj_type, coords_set in lazy_object_coords.items():
@@ -932,8 +1151,6 @@ try:
                                 print(
                                     f"System at {current_system} scanned. Objects revealed and state saved."
                                 )
-                            else:
-                                print(f"System at {current_system} was already scanned.")
                     elif label == "Fire":
                         print(f"[DEBUG] Entered Fire button handler: map_mode={map_mode}, selected_enemy={selected_enemy}")
                         # Fire phasers at selected enemy (only works in system mode)
@@ -1080,7 +1297,7 @@ try:
                                 add_event_log(f"Setting course for system hex ({q}, {r})")
                                 print(f"System ship moving to hex ({q}, {r})")
             
-            # Right-click: select enemy in system mode
+            # Right-click: target enemy in system mode
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:  # Right mouse button
                 mx, my = event.pos
                 if map_rect.collidepoint(mx, my) and map_mode == 'system':
@@ -1092,15 +1309,30 @@ try:
                             print(f"  Enemy at ({obj.system_q}, {obj.system_r})")
                     if q is not None and r is not None:
                         # Find enemy at this hex
-                        selected_enemy = None
+                        found_enemy = None
                         for obj in systems.get(current_system, []):
                             if obj.type == 'enemy' and hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
                                 if obj.system_q == q and obj.system_r == r:
-                                    selected_enemy = obj
-                                    print(f"[DEBUG] Enemy selected at ({obj.system_q}, {obj.system_r})")
-                                    add_event_log(f"Target acquired at ({q}, {r})")
+                                    found_enemy = obj
                                     break
-                        if selected_enemy is None:
+                        
+                        if found_enemy is not None:
+                            # Get or assign enemy ID
+                            enemy_id = get_enemy_id(found_enemy)
+                            
+                            # Check if this enemy is already targeted
+                            if enemy_id in targeted_enemies:
+                                add_event_log(f"Target {enemy_id} already acquired")
+                                print(f"[DEBUG] Enemy {enemy_id} already in targeted_enemies")
+                            else:
+                                # Add to targeted enemies
+                                targeted_enemies[enemy_id] = found_enemy
+                                # Keep the selected_enemy for Fire button compatibility
+                                selected_enemy = found_enemy
+                                print(f"[DEBUG] Enemy {enemy_id} targeted at ({found_enemy.system_q}, {found_enemy.system_r})")
+                                print(f"[DEBUG] targeted_enemies now contains {len(targeted_enemies)} enemies")
+                                add_event_log(f"Target {enemy_id} acquired at ({q}, {r})")
+                        else:
                             add_event_log(f"No enemy at ({q}, {r})")
 
         # Update ship position (delta time based)
@@ -1313,8 +1545,24 @@ try:
                     if selected_enemy.health <= 0:
                         add_event_log("Enemy ship destroyed!")
                         systems[current_system].remove(selected_enemy)
+                        # Remove from targeting system
+                        destroyed_id = None
+                        for enemy_id, enemy_obj in targeted_enemies.items():
+                            if enemy_obj is selected_enemy:
+                                destroyed_id = enemy_id
+                                break
+                        if destroyed_id is not None:
+                            del targeted_enemies[destroyed_id]
+                            if destroyed_id in enemy_popups:
+                                del enemy_popups[destroyed_id]
+                                add_event_log(f"Target {destroyed_id} destroyed - popup closed")
                         selected_enemy = None
                     phaser_animating = False
+
+        # Update and draw enemy popups
+        update_enemy_popups()
+        for enemy_id, popup_info in enemy_popups.items():
+            draw_enemy_popup(popup_info)
 
         pygame.display.flip()
         clock.tick(FPS)
