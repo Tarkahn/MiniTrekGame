@@ -4,33 +4,36 @@ MAX_TURNS = 1000  # Maximum turns allowed in a game.
 STARTING_ENERGY = 1000  # Initial ship energy capacity.
 # SHIELD_REGEN_RATE = 10  # Shield regeneration rate (per minute).
 # Removed in favor of SHIELD_REGEN_RATE_PER_SECOND
-WARP_ENERGY_COST = 10  # Energy per sector hex during warp.
+WARP_ENERGY_COST = 3  # Energy per sector hex during warp (reduced for gameplay balance)
 SHIELD_ABSORPTION_PER_LEVEL = 10  # Damage absorbed by shields per level.
-PHASER_COOLDOWN_SECONDS = 5  # Phaser cooldown duration.
+PHASER_COOLDOWN_SECONDS = 10  # PRD: 10s real-time cooldown
 KLINGON_DISRUPTOR_DAMAGE_MIN = 30  # Minimum Klingon disruptor damage.
 KLINGON_DISRUPTOR_DAMAGE_MAX = 50  # Maximum Klingon disruptor damage.
 
-# Ship Systems and Movement
-PHASER_ENERGY_COST = 50
-LOCAL_MOVEMENT_ENERGY_COST_PER_HEX = 5  # New constant for local movement
-WARP_INITIATION_COST = 20  # from PRD
+# Ship Systems and Movement (Balanced for Gameplay)
+PHASER_ENERGY_COST = 5  # PRD: 5 units per shot
+LOCAL_MOVEMENT_ENERGY_COST_PER_HEX = 5  # Energy cost for impulse movement within systems
+WARP_INITIATION_COST = 5  # Warp initiation cost (reduced for gameplay balance)
 
-# Player Ship Systems
-PLAYER_PHASER_POWER = 50
-PLAYER_PHASER_RANGE = 9
+# Player Ship Systems (PRD Compliant)
+PLAYER_PHASER_POWER = 50  # PRD: Power level for damage calculation
+PLAYER_PHASER_RANGE = 9   # PRD: Max range 9 hexes
 
 # Energy Regeneration
-ENERGY_REGEN_RATE_PER_TURN = 10  # Energy regenerated per turn
+ENERGY_REGEN_RATE_PER_TURN = 15  # Energy regenerated per turn (increased for gameplay balance)
 
-# Shield Systems
-SHIELD_ENERGY_COST_PER_LEVEL = 5  # Energy consumed to activate shield
+# Shield Systems (PRD Compliant)
+SHIELD_ENERGY_COST_PER_LEVEL = 10  # PRD: Each level costs energy to maintain
+SHIELD_REGEN_RATE_PER_MINUTE = 10  # PRD: 10 units per minute real-time
 
-# Torpedo Systems
-TORPEDO_ENERGY_COST = 100  # Energy consumed per torpedo fired
+# Torpedo Systems (PRD Compliant)
+TORPEDO_ENERGY_COST = 1  # PRD: 1 torpedo per shot (uses ammo, not energy)
 TORPEDO_MAX_POWER = 100  # Maximum damage a torpedo can deal
 
-# Sensor Systems
-SENSOR_ENERGY_COST_PER_SCAN = 10  # Energy consumed per scan operation
+# Sensor Systems (PRD Compliant)
+SHORT_RANGE_SCAN_COST = 5   # PRD: 5 energy units
+LONG_RANGE_SCAN_COST = 20   # PRD: 20 energy units
+SENSOR_ENERGY_COST_PER_SCAN = 5  # Backward compatibility
 
 # Enemy Ship Weaponry
 ENEMY_PHASER_POWER = 40
@@ -39,8 +42,9 @@ ENEMY_TORPEDO_POWER = 80
 ENEMY_TORPEDO_SPEED = 10
 ENEMY_TORPEDO_ACCURACY = 0.7
 
-# Critical Hit System
-CRITICAL_HIT_CHANCE = 0.15  # 15% chance for a critical hit
+# Critical Hit System (PRD Compliant)
+CRITICAL_HIT_CHANCE = 0.15  # 15% base chance for a critical hit
+CRITICAL_HIT_CHANCE_SHIELDS_DOWN = 0.10  # PRD: 10% chance when shields are down
 CRITICAL_HIT_MULTIPLIER = 1.5  # 1.5x damage on critical hit
 
 # Game State
@@ -68,6 +72,7 @@ MIN_STAR_PLANET_DISTANCE = 6  # Minimum hexes between any star and planet
 MAX_STARS_PER_SYSTEM = 2  # No more than 2 stars per system
 MAX_PLANETS_PER_SYSTEM = 4  # No more than 4 planets per system
 MAX_STARBases_PER_SYSTEM = 1  # Only 1 starbase per system
+MAX_ENEMIES_PER_SYSTEM = 2  # Maximum enemy ships per system for better distribution
 
 # UI and rendering constants
 SCREEN_WIDTH = 1075

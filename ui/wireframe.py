@@ -11,6 +11,9 @@ import glob
 # Adjust the path to ensure imports work correctly
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Import debug logger
+from debug_logger import log_debug, get_log_path
+
 # No constants are currently used from data.constants, so removing the import
 
 from galaxy_generation.object_placement import place_objects_by_system, generate_system_objects
@@ -18,15 +21,21 @@ from ui.hex_map import create_hex_grid_for_map
 from ui.button_panel import draw_button_panel, handle_button_events
 from galaxy_generation.map_object import MapObject
 from ui.sound_manager import get_sound_manager
+from ui.ship_status_display import create_ship_status_display
+from ui.enemy_scan_panel import create_enemy_scan_panel
+from ship.player_ship import PlayerShip
+from data import constants
+from data.constants import STARTING_ENERGY
 
 # Calculate compact window dimensions based on layout needs
 RIGHT_EVENT_LOG_WIDTH = 300
-POPUP_DOCK_WIDTH = 300  # Dedicated space for enemy popups
+SHIP_STATUS_WIDTH = 300     # Ship status panel width
+ENEMY_SCAN_WIDTH = 280      # Enemy scan panel width
 BOTTOM_PANEL_HEIGHT = 200
 STATUS_HEIGHT = 40
-# Calculate minimum width needed: map + event log panel + popup dock
+# Calculate minimum width needed: map + event log + ship status + enemy scan
 map_size = min(980, 960 - STATUS_HEIGHT - BOTTOM_PANEL_HEIGHT)  # Targeting ~720px map
-WIDTH = map_size + RIGHT_EVENT_LOG_WIDTH + POPUP_DOCK_WIDTH
+WIDTH = map_size + RIGHT_EVENT_LOG_WIDTH + SHIP_STATUS_WIDTH + ENEMY_SCAN_WIDTH
 HEIGHT = 1020
 
 # Pane constants
@@ -84,18 +93,61 @@ print(f"[LAYOUT DEBUG] event_log_x={event_log_x}, event_log_y={event_log_y}, eve
 # Create the hex grid
 hex_grid = create_hex_grid_for_map(map_x, map_y, map_size, 20, 20)
 
+# Create ship status display
+ship_status_x = map_size + event_log_width  # To the right of event log
+ship_status_y = STATUS_HEIGHT
+ship_status_width = SHIP_STATUS_WIDTH
+ship_status_height = HEIGHT - STATUS_HEIGHT
+ship_status_display = create_ship_status_display(
+    ship_status_x, ship_status_y, 
+    ship_status_width, ship_status_height, 
+    font
+)
+
+# Create enemy scan panel to the right of ship status
+enemy_scan_x = ship_status_x + SHIP_STATUS_WIDTH  # To the right of ship status
+enemy_scan_y = STATUS_HEIGHT
+enemy_scan_width = ENEMY_SCAN_WIDTH
+enemy_scan_height = HEIGHT - STATUS_HEIGHT
+enemy_scan_panel = create_enemy_scan_panel(
+    enemy_scan_x, enemy_scan_y,
+    enemy_scan_width, enemy_scan_height,
+    font
+)
+
 # Generate map objects by system (now returns systems, star_coords, lazy_object_coords, planet_orbits)
+log_debug("Starting galaxy generation...")
 systems, star_coords, lazy_object_coords, planet_orbits = place_objects_by_system()
 
 # Debug output for verification
-print(f"[DEBUG] Number of stars: {len(star_coords)}")
-print(f"[DEBUG] Number of planets: {len(planet_orbits)}")
-print(f"[DEBUG] Star coordinates: {list(star_coords)[:5]}...")  # Show first 5
+log_debug(f"Number of stars: {len(star_coords)}")
+log_debug(f"Number of planets: {len(planet_orbits)}")
+log_debug(f"Star coordinates: {list(star_coords)[:5]}...")  # Show first 5
 if planet_orbits:
-    print(f"[DEBUG] Sample planet orbit: {planet_orbits[0]}")
+    log_debug(f"Sample planet orbit: {planet_orbits[0]}")
     # Check which stars have planets
     stars_with_planets = set(orbit['star'] for orbit in planet_orbits)
-    print(f"[DEBUG] Stars with planets: {stars_with_planets}")
+    log_debug(f"Stars with planets: {stars_with_planets}")
+
+# Debug enemy placement
+enemy_coords = lazy_object_coords.get('enemy', [])
+log_debug(f"Total enemies placed: {len(enemy_coords)}")
+star_systems_with_enemies = [coord for coord in set(enemy_coords) if coord in star_coords]
+log_debug(f"Star systems with enemies: {len(star_systems_with_enemies)} out of {len(star_coords)}")
+log_debug(f"First 5 star systems with enemies: {star_systems_with_enemies[:5]}")
+log_debug(f"First 10 enemy coordinates: {enemy_coords[:10]}")
+log_debug(f"Type of lazy_object_coords['enemy']: {type(lazy_object_coords.get('enemy'))}")
+
+# Log which systems should have enemies
+log_debug("=== SYSTEMS WITH ENEMIES (from placement) ===")
+enemy_system_counts = {}
+for coord in enemy_coords:
+    enemy_system_counts[coord] = enemy_system_counts.get(coord, 0) + 1
+for coord, count in sorted(enemy_system_counts.items())[:10]:
+    is_star = coord in star_coords
+    has_planets = any(orbit['star'] == coord for orbit in planet_orbits)
+    system_type = "STAR+PLANET" if is_star and has_planets else "STAR" if is_star else "EMPTY"
+    log_debug(f"  {coord}: {count} enemies ({system_type})")
 
 # Set initial player position from lazy_object_coords['player']
 player_hexes = list(lazy_object_coords['player'])
@@ -110,6 +162,16 @@ else:
 if current_system not in systems or not any(obj.type == 'star' for obj in systems[current_system]):
     print(f"[INIT] Adding missing star object to systems at {current_system}")
     systems[current_system] = [MapObject('star', ship_q, ship_r)]
+
+# Create proper PlayerShip instance with PRD-compliant systems
+player_ship = PlayerShip(
+    name="USS Enterprise",
+    max_shield_strength=9,  # PRD: 0-9 power levels
+    hull_strength=100,
+    energy=STARTING_ENERGY,  # PRD: 1000 units
+    max_energy=STARTING_ENERGY,
+    position=(ship_q, ship_r)
+)
 
 # Ensure only one player object exists in the starting system
 if not any(obj.type == 'player' for obj in systems[current_system]):
@@ -552,6 +614,101 @@ def get_enemy_id(enemy_obj):
     next_enemy_id += 1
     return enemy_id
 
+def perform_enemy_scan(enemy_obj, enemy_id):
+    """Perform a detailed scan of an enemy and add results to scan panel."""
+    import random
+    import math
+    
+    # Calculate distance from player
+    player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
+    if player_obj and hasattr(player_obj, 'system_q') and hasattr(player_obj, 'system_r'):
+        dx = enemy_obj.system_q - player_obj.system_q
+        dy = enemy_obj.system_r - player_obj.system_r
+        distance = math.sqrt(dx * dx + dy * dy)
+        
+        # Calculate bearing (0-360 degrees)
+        bearing = math.degrees(math.atan2(dy, dx))
+        if bearing < 0:
+            bearing += 360
+    else:
+        distance = 0
+        bearing = 0
+    
+    # Generate realistic enemy data (simulate scan results)
+    enemy_types = [
+        "Klingon Bird of Prey",
+        "Klingon Warship", 
+        "Romulan Warbird",
+        "Gorn Destroyer",
+        "Orion Raider",
+        "Tholian Vessel"
+    ]
+    
+    # Generate scan data based on enemy position (deterministic for consistency)
+    seed = enemy_obj.system_q * 1000 + enemy_obj.system_r
+    random.seed(seed)
+    
+    enemy_name = random.choice(enemy_types)
+    max_hull = random.randint(60, 120)
+    current_hull = random.randint(max_hull//2, max_hull)  # May be damaged
+    max_shields = random.randint(80, 100)
+    current_shields = random.randint(0, max_shields)
+    max_energy = random.randint(600, 1000)
+    current_energy = random.randint(max_energy//3, max_energy)
+    
+    # Determine threat level based on stats and distance
+    hull_ratio = current_hull / max_hull
+    shield_ratio = current_shields / max_shields if max_shields > 0 else 0
+    energy_ratio = current_energy / max_energy
+    
+    overall_strength = (hull_ratio + shield_ratio + energy_ratio) / 3
+    
+    if distance < 2 and overall_strength > 0.7:
+        threat_level = "Critical"
+    elif distance < 4 and overall_strength > 0.5:
+        threat_level = "High"
+    elif overall_strength > 0.3:
+        threat_level = "Medium"
+    else:
+        threat_level = "Low"
+    
+    # Generate weapon list
+    weapons = []
+    if random.random() > 0.2:  # 80% have phasers
+        weapons.append("Disruptor Arrays")
+    if random.random() > 0.4:  # 60% have torpedoes
+        weapons.append("Photon Torpedoes")
+    if random.random() > 0.8:  # 20% have special weapons
+        weapons.append("Plasma Cannons")
+    
+    # Reset random seed
+    random.seed()
+    
+    # Create scan data
+    scan_data = {
+        'name': enemy_name,
+        'position': (enemy_obj.system_q, enemy_obj.system_r),
+        'hull': current_hull,
+        'max_hull': max_hull,
+        'shields': current_shields,
+        'max_shields': max_shields,
+        'energy': current_energy,
+        'max_energy': max_energy,
+        'weapons': weapons,
+        'distance': distance,
+        'bearing': bearing,
+        'threat_level': threat_level
+    }
+    
+    # Add to enemy scan panel
+    enemy_scan_panel.add_scan_result(enemy_id, scan_data)
+    
+    # Log the scan
+    add_event_log(f"Scanning {enemy_name} - Range: {distance:.1f}km, Threat: {threat_level}")
+    
+    # Play scan sound
+    sound_manager.play_sound('scanner')
+
 # Helper functions for multi-hex objects
 def get_hex_neighbors(q, r):
     """Get all 6 neighboring hexes for a given hex coordinate."""
@@ -771,6 +928,9 @@ logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
 # Initialize sound manager
 sound_manager = get_sound_manager()
 
+# Start background music
+sound_manager.play_background_music()
+
 # Add initial welcome message
 add_event_log("Welcome to Star Trek Tactical Game")
 add_event_log("Click to navigate, scan for objects")
@@ -880,7 +1040,29 @@ try:
         else:
             # Ensure we have objects for the current system (generate but don't show until scanned)
             if current_system not in systems:
+                # Debug check before generation
+                expected_enemies = lazy_object_coords.get('enemy', []).count(current_system)
+                is_star = current_system in star_coords
+                has_planets = any(orbit['star'] == current_system for orbit in planet_orbits)
+                add_event_log(f"[RENDER GEN] Generating system {current_system}")
+                add_event_log(f"[RENDER GEN] Type: {'STAR+PLANET' if is_star and has_planets else 'STAR' if is_star else 'EMPTY'}")
+                add_event_log(f"[RENDER GEN] Expected enemies: {expected_enemies}")
+                
+                # Debug: Check the exact data being passed
+                if expected_enemies > 0:
+                    log_debug(f"[RENDER] System {current_system} should have {expected_enemies} enemies")
+                    add_event_log(f"[DEBUG] Checking lazy_object_coords['enemy'] type: {type(lazy_object_coords.get('enemy'))}")
+                    enemy_list = lazy_object_coords.get('enemy', [])
+                    if enemy_list:
+                        add_event_log(f"[DEBUG] Enemy list length: {len(enemy_list)}")
+                        add_event_log(f"[DEBUG] Count of {current_system} in list: {enemy_list.count(current_system)}")
+                        log_debug(f"[RENDER] Enemy list contains {current_system}: {enemy_list.count(current_system)} times")
+                    else:
+                        add_event_log(f"[DEBUG] Enemy list is empty or None!")
+                        log_debug(f"[RENDER] ERROR: Enemy list is empty or None!")
+                
                 # Generate objects for this system if they don't exist
+                log_debug(f"[RENDER] Calling generate_system_objects for {current_system}")
                 system_objs = generate_system_objects(
                     current_system[0],
                     current_system[1],
@@ -947,9 +1129,16 @@ try:
                 logging.info(f"[RENDER] Generated {len(system_objs)} objects for system {current_system}")
                 
                 # Debug: Show what was generated (one-time only)
-                add_event_log(f"[GEN] Generated {len(system_objs)} objects for system {current_system}")
-                obj_types = [obj.type for obj in system_objs]
-                add_event_log(f"  Object types: {', '.join(obj_types)}")
+                add_event_log(f"[RENDER GEN] Generated {len(system_objs)} objects")
+                obj_counts = {}
+                for obj in system_objs:
+                    obj_counts[obj.type] = obj_counts.get(obj.type, 0) + 1
+                add_event_log(f"[RENDER GEN] Objects: {dict(obj_counts)}")
+                
+                # Check for missing enemies
+                actual_enemies = obj_counts.get('enemy', 0)
+                if expected_enemies > 0 and actual_enemies == 0:
+                    add_event_log(f"[RENDER GEN] WARNING: Expected {expected_enemies} enemies but got {actual_enemies}!")
             
             # Draw all objects (fog of war removed for system maps)
             # Note: Stars are now drawn in background before hex grid
@@ -1094,7 +1283,7 @@ try:
         
         # Popup Dock Area (right of event log)
         popup_dock_x = event_log_x + event_log_width
-        popup_dock_rect = pygame.Rect(popup_dock_x, STATUS_HEIGHT, POPUP_DOCK_WIDTH, HEIGHT - STATUS_HEIGHT)
+        popup_dock_rect = pygame.Rect(popup_dock_x, STATUS_HEIGHT, ENEMY_SCAN_WIDTH, HEIGHT - STATUS_HEIGHT)
         pygame.draw.rect(screen, (25, 25, 40), popup_dock_rect)  # Darker background for popup area
         pygame.draw.rect(screen, COLOR_EVENT_LOG_BORDER, popup_dock_rect, 2)
         dock_label = label_font.render('Scan Results', True, COLOR_TEXT)
@@ -1184,6 +1373,8 @@ try:
                         add_event_log("Move mode: Click on a hex to navigate")
                     elif label == "Scan":
                         print("Scan initiated!")
+                        # Play scanner sound effect
+                        sound_manager.play_sound('scanner')
                         if map_mode == 'sector':
                             sector_scan_active = True
                             add_event_log("Long-range sensors activated. All systems revealed.")
@@ -1376,6 +1567,8 @@ try:
 
                 if toggle_clicked:
                     print("Toggle button clicked")
+                    # Play keypress sound effect
+                    sound_manager.play_sound('keypress')
                     new_mode = 'system' if map_mode == 'sector' else 'sector'
                     add_event_log(f"Switched to {new_mode} view")
                     map_mode = new_mode
@@ -1386,13 +1579,28 @@ try:
                 if map_rect.collidepoint(mx, my) and map_mode == 'sector':
                     q, r = hex_grid.pixel_to_hex(mx, my)
                     if q is not None and r is not None:
-                        dest_q, dest_r = q, r
-                        ship_moving = True
-                        move_start_time = pygame.time.get_ticks()
-                        start_x, start_y = ship_anim_x, ship_anim_y
-                        end_x, end_y = hex_grid.get_hex_center(dest_q, dest_r)
-                        add_event_log(f"Setting course for sector ({q}, {r})")
-                        print(f"Ship moving to hex ({q}, {r})")
+                        # Calculate distance for warp travel
+                        dx = abs(q - ship_q)
+                        dy = abs(r - ship_r)
+                        distance = max(dx, dy)  # Hex distance approximation
+                        
+                        # Calculate energy cost: 20 for initiation + 10 per sector
+                        energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
+                        
+                        # Check if player has enough energy
+                        if player_ship.warp_core_energy >= energy_cost:
+                            dest_q, dest_r = q, r
+                            ship_moving = True
+                            move_start_time = pygame.time.get_ticks()
+                            start_x, start_y = ship_anim_x, ship_anim_y
+                            end_x, end_y = hex_grid.get_hex_center(dest_q, dest_r)
+                            # Play warp sound for sector map movement
+                            sound_manager.play_sound('warp')
+                            add_event_log(f"Setting course for sector ({q}, {r}) - Energy cost: {energy_cost}")
+                            print(f"Ship moving to hex ({q}, {r}) - Energy cost: {energy_cost}")
+                        else:
+                            add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
+                            sound_manager.play_sound('error')  # Play error sound if available
                 elif map_rect.collidepoint(mx, my) and map_mode == 'system' and current_system in scanned_systems:
                     # System map navigation
                     # Find player object in current system
@@ -1451,17 +1659,32 @@ try:
                                     player_orbit_key = None
                                     add_event_log("Breaking orbit")
                                 
-                                system_dest_q, system_dest_r = q, r
-                                system_ship_moving = True
-                                system_move_start_time = pygame.time.get_ticks()
-                                # Start position in pixels (from current animated position if orbiting)
-                                if system_ship_anim_x is not None and system_ship_anim_y is not None:
-                                    # Use current orbital position as starting point
-                                    pass  # system_ship_anim_x and system_ship_anim_y are already set
+                                # Calculate distance for impulse movement
+                                dx = abs(q - player_obj.system_q)
+                                dy = abs(r - player_obj.system_r)
+                                distance = max(dx, dy)  # Hex distance approximation
+                                
+                                # Calculate energy cost: 5 per hex for impulse
+                                energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+                                
+                                # Check if player has enough energy
+                                if player_ship.warp_core_energy >= energy_cost:
+                                    system_dest_q, system_dest_r = q, r
+                                    system_ship_moving = True
+                                    system_move_start_time = pygame.time.get_ticks()
+                                    # Start position in pixels (from current animated position if orbiting)
+                                    if system_ship_anim_x is not None and system_ship_anim_y is not None:
+                                        # Use current orbital position as starting point
+                                        pass  # system_ship_anim_x and system_ship_anim_y are already set
+                                    else:
+                                        system_ship_anim_x, system_ship_anim_y = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+                                    # Play impulse sound for system map movement
+                                    sound_manager.play_sound('impulse')
+                                    add_event_log(f"Setting course for system hex ({q}, {r}) - Energy cost: {energy_cost}")
+                                    print(f"System ship moving to hex ({q}, {r}) - Energy cost: {energy_cost}")
                                 else:
-                                    system_ship_anim_x, system_ship_anim_y = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
-                                add_event_log(f"Setting course for system hex ({q}, {r})")
-                                print(f"System ship moving to hex ({q}, {r})")
+                                    add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
+                                    sound_manager.play_sound('error')  # Play error sound if available
             
             # Right-click: target enemy in system mode
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:  # Right mouse button
@@ -1486,18 +1709,24 @@ try:
                             # Get or assign enemy ID
                             enemy_id = get_enemy_id(found_enemy)
                             
-                            # Check if this enemy is already targeted
+                            # Always update selected_enemy to allow target switching
+                            selected_enemy = found_enemy
+                            
+                            # Check if this enemy is already in targeted_enemies
                             if enemy_id in targeted_enemies:
-                                add_event_log(f"Target {enemy_id} already acquired")
-                                print(f"[DEBUG] Enemy {enemy_id} already in targeted_enemies")
+                                add_event_log(f"Switching target to {enemy_id}")
+                                print(f"[DEBUG] Switched target to existing enemy {enemy_id}")
                             else:
-                                # Add to targeted enemies
+                                # Add to targeted enemies for the first time
                                 targeted_enemies[enemy_id] = found_enemy
-                                # Keep the selected_enemy for Fire button compatibility
-                                selected_enemy = found_enemy
-                                print(f"[DEBUG] Enemy {enemy_id} targeted at ({found_enemy.system_q}, {found_enemy.system_r})")
-                                print(f"[DEBUG] targeted_enemies now contains {len(targeted_enemies)} enemies")
                                 add_event_log(f"Target {enemy_id} acquired at ({q}, {r})")
+                                print(f"[DEBUG] New enemy {enemy_id} targeted at ({found_enemy.system_q}, {found_enemy.system_r})")
+                            
+                            # Perform enemy scan and add to scan panel
+                            perform_enemy_scan(found_enemy, enemy_id)
+                            
+                            print(f"[DEBUG] Active target is now enemy {enemy_id}")
+                            print(f"[DEBUG] targeted_enemies contains {len(targeted_enemies)} total enemies")
                         else:
                             add_event_log(f"No enemy at ({q}, {r})")
 
@@ -1513,10 +1742,19 @@ try:
             if t >= 1.0:
                 # Arrived at destination
                 ship_anim_x, ship_anim_y = end_x, end_y
+                
+                # Calculate and consume energy for the warp travel
+                dx = abs(dest_q - ship_q)
+                dy = abs(dest_r - ship_r)
+                distance = max(dx, dy)
+                energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
+                player_ship.consume_energy(energy_cost)
+                
                 ship_q, ship_r = dest_q, dest_r
                 ship_moving = False
                 move_start_time = None
-                logging.info(f"[MOVE] Ship arrived at ({ship_q}, {ship_r})")
+                logging.info(f"[MOVE] Ship arrived at ({ship_q}, {ship_r}), consumed {energy_cost} energy")
+                add_event_log(f"Arrived at sector ({ship_q}, {ship_r}) - Energy: {player_ship.warp_core_energy}/{player_ship.max_warp_core_energy}")
                 # Check if there's a system here (star or any lazy object, but not individual planets)
                 system_here = (
                     (ship_q, ship_r) in star_coords or
@@ -1540,31 +1778,30 @@ try:
                     system_ship_anim_y = None
                     add_event_log("Breaking orbit - entered new system")
                 
-                # Automatically scan the system when entering
-                if current_system not in scanned_systems:
-                    scanned_systems.add(current_system)
-                    add_event_log(f"Auto-scanning system at ({ship_q}, {ship_r})...")
-                    
-                    # Debug: Show what objects are in this system
-                    system_objects = systems.get(current_system, [])
-                    planets_here = [orbit for orbit in planet_orbits if orbit['star'] == current_system]
-                    
-                    # Show summary of objects in this system
-                    add_event_log(f"[SCAN] System objects: {len(system_objects)} total")
-                    obj_summary = {}
-                    for obj in system_objects:
-                        obj_summary[obj.type] = obj_summary.get(obj.type, 0) + 1
-                    add_event_log(f"  Types: {dict(obj_summary)}")
-                    
-                    add_event_log(f"[SCAN] Planet orbits: {len(planets_here)} total")
-                    if planets_here:
-                        distances = [orbit['hex_radius'] for orbit in planets_here]
-                        add_event_log(f"  Orbital distances: {sorted(distances)} hexes")
-                    else:
-                        add_event_log(f"  No planets in this system")
+                # Store the expected enemy count for later
+                enemy_count_expected = lazy_object_coords.get('enemy', []).count(current_system)
                 
                 # Generate or restore objects for this system
-                if current_system not in systems:
+                # Check if we need to regenerate due to missing enemies
+                need_regeneration = False
+                if current_system in systems:
+                    # Check if expected enemies are missing from cached system
+                    existing_enemies = [obj for obj in systems[current_system] if obj.type == 'enemy']
+                    if enemy_count_expected > 0 and len(existing_enemies) == 0:
+                        need_regeneration = True
+                        log_debug(f"[WIREFRAME] System {current_system} needs regeneration: expected {enemy_count_expected} enemies but has {len(existing_enemies)}")
+                        add_event_log(f"[DEBUG] Regenerating system due to missing enemies")
+                
+                if current_system not in systems or need_regeneration:
+                    # Debug: verify lazy_object_coords is intact
+                    enemy_check = lazy_object_coords.get('enemy', []).count(current_system)
+                    add_event_log(f"[DEBUG] Before generate: enemy count = {enemy_check}")
+                    add_event_log(f"[DEBUG] lazy_object_coords keys: {list(lazy_object_coords.keys())}")
+                    log_debug(f"[WIREFRAME] Before generate_system_objects: enemy count = {enemy_check}")
+                    log_debug(f"[WIREFRAME] lazy_object_coords keys: {list(lazy_object_coords.keys())}")
+                    log_debug(f"[WIREFRAME] lazy_object_coords['enemy'] type: {type(lazy_object_coords.get('enemy', []))}")
+                    log_debug(f"[WIREFRAME] lazy_object_coords['enemy'] length: {len(lazy_object_coords.get('enemy', []))}")
+                    
                     system_objs = generate_system_objects(
                         current_system[0],
                         current_system[1],
@@ -1574,6 +1811,7 @@ try:
                         grid_size=hex_grid.cols
                     )
                     systems[current_system] = system_objs
+                    log_debug(f"[WIREFRAME] generate_system_objects returned {len(system_objs)} objects")
                     system_object_states[current_system] = [
                         {
                             'type': obj.type,
@@ -1629,6 +1867,58 @@ try:
                         else:
                             player_obj.system_q = 0
                             player_obj.system_r = 0
+                
+                # Now run the automatic scan to show what's in the system
+                add_event_log(f"Auto-scanning system at ({ship_q}, {ship_r})...")
+                log_debug(f"[WIREFRAME] Auto-scanning system at ({ship_q}, {ship_r})")
+                
+                # First check system type
+                is_star_system = current_system in star_coords
+                has_planets = any(orbit['star'] == current_system for orbit in planet_orbits)
+                system_type = "EMPTY"
+                if is_star_system and has_planets:
+                    system_type = "STAR+PLANET"
+                elif is_star_system:
+                    system_type = "STAR ONLY"
+                
+                add_event_log(f"[SYSTEM TYPE] {system_type}")
+                add_event_log(f"[DEBUG] Expected enemies from placement: {enemy_count_expected}")
+                log_debug(f"[WIREFRAME] System type: {system_type}, Expected enemies: {enemy_count_expected}")
+                
+                # Show what objects are actually in this system
+                system_objects = systems.get(current_system, [])
+                log_debug(f"[WIREFRAME] System {current_system} has {len(system_objects)} objects")
+                
+                # Show detailed object information
+                add_event_log(f"[SCAN] System contains {len(system_objects)} objects:")
+                obj_summary = {}
+                for obj in system_objects:
+                    obj_summary[obj.type] = obj_summary.get(obj.type, 0) + 1
+                
+                # List each object type and count
+                for obj_type, count in sorted(obj_summary.items()):
+                    add_event_log(f"  {obj_type}: {count}")
+                    log_debug(f"[WIREFRAME] Object count - {obj_type}: {count}")
+                
+                # Specifically list enemy positions if any
+                enemy_objects = [obj for obj in system_objects if obj.type == 'enemy']
+                if enemy_objects:
+                    add_event_log(f"[ENEMIES] {len(enemy_objects)} enemy ships detected:")
+                    log_debug(f"[WIREFRAME] Found {len(enemy_objects)} enemy objects in system")
+                    for i, enemy in enumerate(enemy_objects):
+                        pos_info = f"({enemy.system_q}, {enemy.system_r})" if hasattr(enemy, 'system_q') else "NO POS"
+                        add_event_log(f"  Enemy {i+1} at system pos {pos_info}")
+                        log_debug(f"[WIREFRAME] Enemy {i+1}: {pos_info}")
+                else:
+                    add_event_log("[ENEMIES] No enemy ships in this system")
+                    log_debug(f"[WIREFRAME] No enemy objects found in system {current_system}")
+                    if system_type == "STAR+PLANET" and enemy_count_expected > 0:
+                        add_event_log("[WARNING] Expected enemies but none found!")
+                        log_debug(f"[WIREFRAME] WARNING: Expected {enemy_count_expected} enemies but found 0 in {system_type} system")
+                
+                # Mark as scanned if it wasn't already
+                if current_system not in scanned_systems:
+                    scanned_systems.add(current_system)
 
         # Update player ship position (orbital or linear movement)
         if map_mode == 'system':
@@ -1672,12 +1962,20 @@ try:
                     if t >= 1.0:
                         # Arrived at destination
                         system_ship_anim_x, system_ship_anim_y = end_x, end_y
+                        
+                        # Calculate and consume energy for the impulse movement
+                        dx = abs(system_dest_q - player_obj.system_q)
+                        dy = abs(system_dest_r - player_obj.system_r)
+                        distance = max(dx, dy)
+                        energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+                        player_ship.consume_energy(energy_cost)
+                        
                         player_obj.system_q = system_dest_q
                         player_obj.system_r = system_dest_r
                         system_ship_moving = False
                         system_move_start_time = None
-                        add_event_log(f"Arrived at system hex ({system_dest_q}, {system_dest_r})")
-                        print(f"System ship arrived at hex ({system_dest_q}, {system_dest_r})")
+                        add_event_log(f"Arrived at system hex ({system_dest_q}, {system_dest_r}) - Energy: {player_ship.warp_core_energy}/{player_ship.max_warp_core_energy}")
+                        print(f"System ship arrived at hex ({system_dest_q}, {system_dest_r}), consumed {energy_cost} energy")
 
         # Draw destination indicator (red circle)
         if ship_moving and dest_q is not None and dest_r is not None and map_mode == 'sector':
@@ -1722,13 +2020,29 @@ try:
                             if destroyed_id in enemy_popups:
                                 del enemy_popups[destroyed_id]
                                 add_event_log(f"Target {destroyed_id} destroyed - popup closed")
-                        selected_enemy = None
+                        
+                        # Auto-select next available target if any remain
+                        if targeted_enemies:
+                            # Get the first available enemy from targeted_enemies
+                            next_enemy_id = next(iter(targeted_enemies.keys()))
+                            selected_enemy = targeted_enemies[next_enemy_id]
+                            add_event_log(f"Auto-targeting {next_enemy_id}")
+                            print(f"[DEBUG] Auto-selected enemy {next_enemy_id} as new target")
+                        else:
+                            selected_enemy = None
+                            add_event_log("All targets destroyed")
                     phaser_animating = False
 
         # Update and draw enemy popups
         update_enemy_popups()
         for enemy_id, popup_info in enemy_popups.items():
             draw_enemy_popup(popup_info)
+
+        # Draw ship status display
+        ship_status_display.draw(screen, player_ship)
+
+        # Draw enemy scan panel
+        enemy_scan_panel.draw(screen)
 
         pygame.display.flip()
         clock.tick(FPS)
