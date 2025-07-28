@@ -27,3 +27,15 @@ node_modules/
 # Task files
 # tasks.json
 # tasks/ 
+
+# Game log files
+logs/
+debug_log_*.txt
+
+# AI tool configurations
+.clinerules/
+.cursor/
+.roo/
+.roomodes
+.trae/
+.windsurf/
