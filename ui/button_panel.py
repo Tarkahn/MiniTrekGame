@@ -1,5 +1,4 @@
 import pygame
-from fonts import get_font
 
 BUTTON_WIDTH = 200
 BUTTON_HEIGHT = 48
@@ -7,7 +6,7 @@ BUTTON_MARGIN = 16
 PANEL_X = 1040  # Right side of 1280px window
 PANEL_Y = 40
 
-BUTTON_LABELS = ["Move", "Fire", "Scan", "End Turn"]
+BUTTON_LABELS = ["Move", "Fire", "Scan"]
 
 # Draws all control panel buttons and the map mode toggle button at the bottom
 # Returns: (button_rects, toggle_btn_rect)
@@ -24,34 +23,32 @@ def draw_button_panel(
     map_mode,
     toggle_btn_w,
     toggle_btn_h,
-    toggle_btn_y
+    toggle_btn_y_param
 ):
     """
     Draws all control panel buttons and the map mode toggle button at the bottom.
     Returns: (button_rects, toggle_btn_rect)
     """
     button_rects = []
-    # Regular buttons at the top
+    # Regular buttons with proper spacing from Control Panel label
     for i, label in enumerate(BUTTON_LABELS):
         bx = event_log_width + 40
-        by = bottom_pane_y + 30 + i * (button_h + button_gap)
+        by = bottom_pane_y + 60 + i * (button_h + button_gap)  # Use 60px spacing
         btn_rect = pygame.Rect(bx, by, button_w, button_h)
         button_rects.append(btn_rect)
         pygame.draw.rect(surface, color, btn_rect, border_radius=8)
         btn_label = font.render(label, True, color_text)
         surface.blit(btn_label, (bx + 18, by + 8))
-    # Toggle map mode button at the bottom
-    toggle_btn_x = event_log_width + 40
-    toggle_btn_y = (
-        bottom_pane_y + 30 + len(BUTTON_LABELS) * (button_h + button_gap)
-        + button_gap
-    )
+    # Toggle map mode button - place it to the right of the main buttons
+    toggle_btn_x = event_log_width + 40 + button_w + 20  # Next to the regular buttons
+    # Use the passed-in y position
+    toggle_btn_y = toggle_btn_y_param
     # Use short labels
     label = 'System Map' if map_mode == 'sector' else 'Sector Map'
-    toggle_btn_rect = pygame.Rect(toggle_btn_x, toggle_btn_y, button_w, button_h)
+    toggle_btn_rect = pygame.Rect(toggle_btn_x, toggle_btn_y, toggle_btn_w, toggle_btn_h)
     pygame.draw.rect(surface, color, toggle_btn_rect, border_radius=8)
-    # Use a smaller font for the toggle button
-    small_font = pygame.font.SysFont(None, 22)
+    # Use a smaller sans-serif font for the toggle button
+    small_font = pygame.font.SysFont('arial', 14)
     btn_label = small_font.render(label, True, color_text)
     # Center the label in the button
     label_rect = btn_label.get_rect(center=toggle_btn_rect.center)
@@ -100,7 +97,7 @@ def handle_button_events(
 
 class ButtonPanel:
     def __init__(self):
-        self.font = get_font(22)
+        self.font = pygame.font.SysFont('arial', 16)  # Sans-serif font
         self.buttons = []
         for i, label in enumerate(BUTTON_LABELS):
             rect = pygame.Rect(

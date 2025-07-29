@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(git checkout:*)",
+      "Bash(rm:*)",
+      "Bash(del test_planet_requirement.py analyze_star_spacing.py)",
+      "Bash(git add:*)",
+      "Bash(echo:*)",
+      "Bash(find:*)",
+      "Bash(timeout:*)",
+      "Bash(git push:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:pyga.me)",
+      "Bash(grep:*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(powershell:*)",
+      "Bash(dir:*)",
+      "Bash(del fix_indentation.py)",
+      "Bash(/dev/null)",
+      "Bash(claude --doctor)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(git commit:*)",
+      "Bash(claude --version)",
+      "Bash(C:/Users/rjfol/anaconda3/python.exe main.py)",
+      "Bash(taskkill:*)",
+      "Bash(test:*)",
+      "Bash(sed:*)",
+      "Bash(touch:*)",
+      "Bash(pip install:*)",
+      "Bash(where python)",
+      "Bash(C:Python313python.exe main.py)",
+      "Bash(\"C:\\Python313\\python.exe\" main.py)"
+    ],
+    "deny": []
+  }
+}

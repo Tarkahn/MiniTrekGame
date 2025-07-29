@@ -18,7 +18,7 @@ class Phaser:
 
     def fire(self, target_distance: int) -> int:
         """
-        Fires the phaser at a target, if not on cooldown and enough energy.
+        PRD: Fires the phaser at a target, if not on cooldown and enough energy.
         Returns the damage dealt, or 0 if unable to fire.
         """
         if self.is_on_cooldown():
@@ -29,19 +29,32 @@ class Phaser:
             print(f"Target is out of phaser range (max {self.range} hexes).")
             return 0
 
+        # PRD: Check system integrity
+        if hasattr(self.ship, 'system_integrity') and self.ship.system_integrity['phasers'] <= 0:
+            print(f"Phaser system disabled on {self.ship.name}.")
+            return 0
+
         if not self.ship.consume_energy(self.energy_cost_per_shot):
             print(f"Insufficient energy on {self.ship.name} to fire phasers.")
             return 0
 
-        damage = (self.power * 10) - (target_distance * 3)  # Example damage calculation
+        # PRD: Damage formula (Power Level × 10) − (Distance × 3)
+        # Use power allocation to modify effectiveness
+        power_modifier = 1.0
+        if hasattr(self.ship, 'power_allocation'):
+            power_level = self.ship.power_allocation.get('phasers', 5)
+            power_modifier = power_level / 5.0  # Scale around default level 5
+            
+        base_damage = (self.power * power_modifier * 10) - (target_distance * 3)
         
+        # PRD: Critical hits (15% chance, 1.5x damage)
         is_critical_hit = random.random() < constants.CRITICAL_HIT_CHANCE
         if is_critical_hit:
-            damage *= constants.CRITICAL_HIT_MULTIPLIER
+            base_damage *= constants.CRITICAL_HIT_MULTIPLIER
             print("Critical Hit!")
 
-        actual_damage = max(0, damage)
+        actual_damage = max(0, int(base_damage))
 
         self._last_fired_time = time.time()
-        print(f"{self.ship.name} fired phasers. Damage dealt: {actual_damage}. Energy remaining: {self.ship.warp_core_energy}")
+        print(f"{self.ship.name} fired phasers (power {power_modifier:.1f}x). Damage: {actual_damage}. Energy: {self.ship.warp_core_energy}")
         return actual_damage 

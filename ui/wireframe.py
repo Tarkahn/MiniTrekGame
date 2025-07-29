@@ -82,11 +82,7 @@ event_log_width = RIGHT_EVENT_LOG_WIDTH
 event_log_height = HEIGHT - STATUS_HEIGHT
 
 # Debug layout calculations
-print(f"[LAYOUT DEBUG] WIDTH={WIDTH}, HEIGHT={HEIGHT}")
-print(f"[LAYOUT DEBUG] map_size={map_size}, bottom_pane_y={bottom_pane_y}")
-print(f"[LAYOUT DEBUG] bottom_pane_height={bottom_pane_height}")
-print(f"[LAYOUT DEBUG] image_display_width={image_display_width}, control_panel_width={control_panel_width}")
-print(f"[LAYOUT DEBUG] event_log_x={event_log_x}, event_log_y={event_log_y}, event_log_width={event_log_width}, event_log_height={event_log_height}")
+# Layout initialized
 
 # TOGGLE_BTN_Y will be calculated after button parameters are defined
 
@@ -212,7 +208,6 @@ TOGGLE_BTN_W, TOGGLE_BTN_H = 130, 35
 # Add significant spacer (50px) between Control Panel label and buttons
 CONTROL_PANEL_LABEL_SPACER = 50
 TOGGLE_BTN_Y = bottom_pane_y + CONTROL_PANEL_LABEL_SPACER
-print(f"[DEBUG] Calculated TOGGLE_BTN_Y={TOGGLE_BTN_Y} (window height={HEIGHT})")
 BUTTON_COLOR = (100, 100, 180)
 
 # Button state tracking (3 buttons now)
@@ -223,8 +218,7 @@ button_rects, toggle_btn_rect = [], None
 # --- Print button labels and indices at startup ---
 # Button labels (removed End Turn button)
 button_labels = ["Move", "Fire", "Scan"]
-for idx, label in enumerate(button_labels):
-    print(f"[DEBUG] Button {idx}: {label}")
+# Button labels ready: ["Move", "Fire", "Scan"]
 
 # Animated position (float, in pixels)
 ship_anim_x, ship_anim_y = hex_grid.get_hex_center(ship_q, ship_r)
@@ -1146,9 +1140,6 @@ try:
             # Animate and draw all planets associated with stars in this system
             planets_in_system = [orbit for orbit in planet_orbits if orbit['star'] == current_system]
             if last_debug_system != current_system:
-                print(f"[DEBUG] System {current_system} has {len(planets_in_system)} planets.")
-                print(f"[DEBUG] Total planet_orbits: {len(planet_orbits)}")
-                print(f"[DEBUG] First few orbits: {planet_orbits[:3] if planet_orbits else 'None'}")
                 last_debug_system = current_system
             
             for orbit in planets_in_system:
@@ -1332,7 +1323,6 @@ try:
         pygame.draw.rect(screen, COLOR_BUTTON_AREA_BORDER, button_area_rect, 2)
         
         # Draw button panel on top of control panel
-        print(f"[DEBUG] Drawing buttons: TOGGLE_BTN_Y={TOGGLE_BTN_Y}")
         button_rects, toggle_btn_rect = draw_button_panel(
             screen,
             image_display_width,
@@ -1348,8 +1338,7 @@ try:
             TOGGLE_BTN_H,
             TOGGLE_BTN_Y
         )
-        if toggle_btn_rect:
-            print(f"[DEBUG] Toggle button rect: {toggle_btn_rect}")
+        # Toggle button is available
 
         # Event handling
         for event in pygame.event.get():

@@ -7,9 +7,11 @@ import logging
 import os
 from datetime import datetime
 
-# Create debug log file
+# Create debug log file in logs directory
+logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
+os.makedirs(logs_dir, exist_ok=True)  # Create logs directory if it doesn't exist
 log_filename = f"debug_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-log_path = os.path.join(os.path.dirname(__file__), log_filename)
+log_path = os.path.join(logs_dir, log_filename)
 
 # Configure logging to write to file
 logging.basicConfig(

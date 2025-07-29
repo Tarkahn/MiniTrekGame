@@ -35,6 +35,11 @@ class HexGrid:
         # Center the grid in the map area
         self.offset_x = map_x + (map_size - self.grid_width) / 2
         self.offset_y = map_y + (map_size - self.grid_height) / 2
+
+    @property
+    def hex_size(self):
+        """Return the radius of a hex (for compatibility with code expecting hex_size)."""
+        return self.radius
     
     def get_hex_center(self, col, row):
         """Get the pixel coordinates of a hex center for flat-topped hexes."""
@@ -63,12 +68,38 @@ class HexGrid:
         else:
             pygame.draw.polygon(surface, color, points, 2)
     
-    def draw_grid(self, surface, outline_color=(180, 180, 220)):
-        """Draw the entire hex grid."""
-        for row in range(self.rows):
-            for col in range(self.cols):
-                cx, cy = self.get_hex_center(col, row)
-                self.draw_hex(surface, cx, cy, outline_color)
+    def draw_grid(self, surface, outline_color=(180, 180, 220), alpha=255):
+        """Draw the entire hex grid with optional transparency."""
+        if alpha < 255:
+            # Create a temporary surface for alpha blending
+            temp_surface = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
+            for row in range(self.rows):
+                for col in range(self.cols):
+                    cx, cy = self.get_hex_center(col, row)
+                    # Draw on temp surface with alpha
+                    color_with_alpha = (*outline_color, alpha)
+                    self.draw_hex_with_alpha(temp_surface, cx, cy, color_with_alpha)
+            # Blit the temp surface to the main surface
+            surface.blit(temp_surface, (0, 0))
+        else:
+            # Original drawing method for full opacity
+            for row in range(self.rows):
+                for col in range(self.cols):
+                    cx, cy = self.get_hex_center(col, row)
+                    self.draw_hex(surface, cx, cy, outline_color)
+    
+    def draw_hex_with_alpha(self, surface, center_x, center_y, color_with_alpha):
+        """Draw a single flat-topped hexagon with alpha."""
+        points = []
+        for i in range(6):
+            # For flat-topped hex, start at 0 degrees
+            angle = math.pi / 3 * i
+            x = center_x + self.radius * math.cos(angle)
+            y = center_y + self.radius * math.sin(angle)
+            points.append((x, y))
+        
+        # Draw with alpha
+        pygame.draw.polygon(surface, color_with_alpha, points, 2)
     
     def pixel_to_hex(self, px, py):
         """Convert pixel coordinates to hex grid coordinates."""
@@ -99,12 +130,12 @@ class HexGrid:
             for dr in range(-1, 2):
                 check_col = col + dc
                 check_row = row + dr
-                
+
                 if (0 <= check_col < self.cols and
                         0 <= check_row < self.rows):
                     cx, cy = self.get_hex_center(check_col, check_row)
-                    dist = math.hypot(px + self.offset_x - cx, 
-                                    py + self.offset_y - cy)
+                    dist = math.hypot(px + self.offset_x - cx,
+                                      py + self.offset_y - cy)
                     if dist < best_dist:
                         best_dist = dist
                         best_col = check_col
@@ -173,7 +204,7 @@ if __name__ == "__main__":
             cx, cy = grid.get_hex_center(hover_hex[0], hover_hex[1])
             grid.draw_hex(screen, cx, cy, (255, 255, 0), filled=True)
             # Show coordinates
-            font = pygame.font.Font(None, 24)
+            font = pygame.font.SysFont('arial', 14)  # Use smaller sans-serif font
             text = font.render(
                 f"({hover_hex[0]}, {hover_hex[1]})", True, (255, 255, 255))
             screen.blit(text, (10, 10))

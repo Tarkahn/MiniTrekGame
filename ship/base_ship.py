@@ -17,24 +17,115 @@ class BaseShip:
         self.max_warp_core_energy = max_energy
         self.weapons = weapons or []
         self.position = position
+        
+        # PRD: Power allocation system (0-9 scale for each system)
+        self.power_allocation = {
+            'phasers': 5,      # Default power levels
+            'shields': 5,      
+            'impulse': 5,
+            'sensors': 5,
+            'life_support': 9  # Critical system
+        }
+        
+        # PRD: System integrity (0-100 scale)
+        self.system_integrity = {
+            'hull': hull_strength,
+            'shields': 100,
+            'phasers': 100,
+            'impulse': 100,
+            'sensors': 100,
+            'life_support': 100,
+            'warp_core': 100
+        }
 
-    def apply_damage(self, raw_damage: int):
+    def apply_damage(self, raw_damage: int, attacker_ship=None):
         """
-        Applies damage to the ship, prioritizing shields then hull.
+        PRD: Applies damage to the ship, prioritizing shields then hull.
+        Implements critical hit system when shields are down.
         """
+        import random
+        
+        # Check if shields are operational and powered
+        shields_active = (hasattr(self.shield_system, 'current_power_level') and 
+                         self.shield_system.current_power_level > 0 and
+                         self.shield_system.is_operational())
+        
         remaining_damage = self.shield_system.absorb_damage(raw_damage)
+        
+        # PRD: Critical hits when shields are down (10% chance)
+        if remaining_damage > 0 and not shields_active:
+            crit_chance = constants.CRITICAL_HIT_CHANCE_SHIELDS_DOWN
+            if random.random() < crit_chance:
+                # Critical hit damages random system
+                self._apply_critical_damage()
+                print("CRITICAL HIT! System damaged!")
 
         # Apply any remaining damage to hull
         self.hull_strength -= remaining_damage
         self.hull_strength = max(0, self.hull_strength)  # Ensure hull doesn't go below 0
+        
+    def _apply_critical_damage(self):
+        """
+        PRD: Critical hits disable random systems until repaired at starbase.
+        """
+        import random
+        
+        # Select a random system that isn't already disabled
+        available_systems = [sys for sys, integrity in self.system_integrity.items() 
+                           if integrity > 0 and sys not in ['hull', 'life_support']]
+        
+        if available_systems:
+            damaged_system = random.choice(available_systems)
+            self.system_integrity[damaged_system] = 0  # PRD: Disabled until repaired
+            print(f"Critical hit damaged {damaged_system} system!")
 
     def reset_damage(self):
         """
-        Resets hull and shield integrity to their maximum values.
-        Typically called when docking at a starbase.
+        PRD: Resets hull and shield integrity to their maximum values.
+        Repairs all disabled systems. Typically called when docking at a starbase.
         """
         self.hull_strength = self.max_hull_strength
-        self.shield_system.current_strength = 0  # Reset shield system current strength
+        self.shield_system.current_integrity = 100  # Reset shield integrity to full
+        self.shield_system.current_power_level = 0  # Shields start powered down
+        
+        # PRD: Repair all systems to full integrity
+        for system in self.system_integrity:
+            if system == 'hull':
+                self.system_integrity[system] = self.max_hull_strength
+            else:
+                self.system_integrity[system] = 100
+                
+        print(f"{self.name} fully repaired at starbase.")
+
+    def allocate_power(self, system: str, power_level: int) -> bool:
+        """
+        PRD: Allocates power to a specific ship system (0-9 scale).
+        Returns True if successful, False if invalid.
+        """
+        if system not in self.power_allocation:
+            print(f"Invalid system: {system}")
+            return False
+            
+        if power_level < 0 or power_level > 9:
+            print(f"Invalid power level: {power_level}. Must be 0-9.")
+            return False
+            
+        # Check total power allocation doesn't exceed limits
+        total_power = sum(self.power_allocation.values()) - self.power_allocation[system] + power_level
+        max_total_power = 45  # Reasonable limit for tactical choices
+        
+        if total_power > max_total_power:
+            print(f"Total power allocation would exceed maximum ({max_total_power})")
+            return False
+            
+        self.power_allocation[system] = power_level
+        print(f"{system.capitalize()} power set to {power_level}")
+        
+        # Update shield power if shields were modified
+        if system == 'shields' and hasattr(self, 'shield_system'):
+            self.shield_system.set_power_level(power_level)
+            
+        return True
 
     def allocate_energy(self, system, amount: int):
         """
