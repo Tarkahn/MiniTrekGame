@@ -440,19 +440,19 @@ def create_enemy_popup(enemy_id, enemy_obj):
     popup_x = popup_dock_x + 10  # 10px padding from dock edge
     popup_y = STATUS_HEIGHT + 50 + (len(enemy_popups) * (popup_height + 10))  # Stack vertically below "Scan Results" label
     
-    # Initialize enemy stats if not present
+    # Initialize enemy stats if not present (using consistent values with player ship)
     if not hasattr(enemy_obj, 'health'):
-        enemy_obj.health = 100
+        enemy_obj.health = 100  # Same as player ship hull strength
     if not hasattr(enemy_obj, 'max_health'):
         enemy_obj.max_health = 100
     if not hasattr(enemy_obj, 'energy'):
-        enemy_obj.energy = 1000
+        enemy_obj.energy = 1000  # Same as player ship starting energy
     if not hasattr(enemy_obj, 'max_energy'):
         enemy_obj.max_energy = 1000
     if not hasattr(enemy_obj, 'shields'):
-        enemy_obj.shields = 50
+        enemy_obj.shields = 9  # Same levels as player ship (0-9)
     if not hasattr(enemy_obj, 'max_shields'):
-        enemy_obj.max_shields = 50
+        enemy_obj.max_shields = 9
     if not hasattr(enemy_obj, 'ship_name'):
         enemy_obj.ship_name = f"Enemy Vessel {enemy_id}"
     if not hasattr(enemy_obj, 'ship_class'):
@@ -646,12 +646,16 @@ def perform_enemy_scan(enemy_obj, enemy_id):
     random.seed(seed)
     
     enemy_name = random.choice(enemy_types)
-    max_hull = random.randint(60, 120)
-    current_hull = random.randint(max_hull//2, max_hull)  # May be damaged
-    max_shields = random.randint(80, 100)
-    current_shields = random.randint(0, max_shields)
-    max_energy = random.randint(600, 1000)
-    current_energy = random.randint(max_energy//3, max_energy)
+    
+    # Use consistent maximum values similar to player ship
+    max_hull = 100  # Same as player ship
+    max_shields = 9  # Same as player ship (9 levels)
+    max_energy = 1000  # Same as player ship
+    
+    # Enemies start at full strength but may have some minor battle damage
+    current_hull = random.randint(int(max_hull * 0.85), max_hull)  # 85-100% hull
+    current_shields = random.randint(int(max_shields * 0.7), max_shields)  # 70-100% shields  
+    current_energy = random.randint(int(max_energy * 0.8), max_energy)  # 80-100% energy
     
     # Determine threat level based on stats and distance
     hull_ratio = current_hull / max_hull
