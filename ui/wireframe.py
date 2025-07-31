@@ -596,6 +596,8 @@ def update_enemy_popups():
         if enemy_id in targeted_enemies:
             del targeted_enemies[enemy_id]
             add_event_log(f"Target {enemy_id} lost - popup closed")
+        # Remove from enemy scan panel
+        enemy_scan_panel.remove_scan_result(enemy_id)
 
 def get_enemy_id(enemy_obj):
     """Get or assign a unique ID to an enemy object."""
@@ -2137,6 +2139,9 @@ try:
                             if destroyed_id in enemy_popups:
                                 del enemy_popups[destroyed_id]
                                 add_event_log(f"Target {destroyed_id} destroyed - popup closed")
+                            # Remove from enemy scan panel
+                            enemy_scan_panel.remove_scan_result(destroyed_id)
+                            add_event_log(f"Enemy {destroyed_id} scan data removed")
                         
                         # Auto-select next available target if any remain
                         if targeted_enemies:
