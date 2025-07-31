@@ -19,6 +19,12 @@ WARP_INITIATION_COST = 5  # Warp initiation cost (reduced for gameplay balance)
 PLAYER_PHASER_POWER = 15  # Base damage before distance modifiers
 PLAYER_PHASER_RANGE = 18  # Extended range for tactical positioning
 
+# Ship Defense Systems
+PLAYER_SHIELD_CAPACITY = 75   # Player ship shield strength
+ENEMY_SHIELD_CAPACITY = 75    # Enemy ship shield strength  
+PLAYER_HULL_STRENGTH = 100    # Player ship hull integrity
+ENEMY_HULL_STRENGTH = 100     # Enemy ship hull integrity
+
 # Phaser Distance-Based Damage System
 PHASER_CLOSE_RANGE = 3      # Close range threshold (0-3 hexes)
 PHASER_MEDIUM_RANGE = 9     # Medium range threshold (4-9 hexes)

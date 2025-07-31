@@ -25,7 +25,7 @@ from ui.ship_status_display import create_ship_status_display
 from ui.enemy_scan_panel import create_enemy_scan_panel
 from ship.player_ship import PlayerShip
 from data import constants
-from data.constants import STARTING_ENERGY
+from data.constants import STARTING_ENERGY, PLAYER_SHIELD_CAPACITY
 
 # Calculate compact window dimensions based on layout needs
 RIGHT_EVENT_LOG_WIDTH = 300
@@ -162,7 +162,7 @@ if current_system not in systems or not any(obj.type == 'star' for obj in system
 # Create proper PlayerShip instance with PRD-compliant systems
 player_ship = PlayerShip(
     name="USS Enterprise",
-    max_shield_strength=9,  # PRD: 0-9 power levels
+    max_shield_strength=PLAYER_SHIELD_CAPACITY,  # Balanced shield capacity for tactical combat
     hull_strength=100,
     energy=STARTING_ENERGY,  # PRD: 1000 units
     max_energy=STARTING_ENERGY,
@@ -450,9 +450,9 @@ def create_enemy_popup(enemy_id, enemy_obj):
     if not hasattr(enemy_obj, 'max_energy'):
         enemy_obj.max_energy = 1000
     if not hasattr(enemy_obj, 'shields'):
-        enemy_obj.shields = 9  # Same levels as player ship (0-9)
+        enemy_obj.shields = ENEMY_SHIELD_CAPACITY  # Substantial shield capacity for tactical combat
     if not hasattr(enemy_obj, 'max_shields'):
-        enemy_obj.max_shields = 9
+        enemy_obj.max_shields = ENEMY_SHIELD_CAPACITY
     if not hasattr(enemy_obj, 'ship_name'):
         enemy_obj.ship_name = f"Enemy Vessel {enemy_id}"
     if not hasattr(enemy_obj, 'ship_class'):
@@ -647,14 +647,14 @@ def perform_enemy_scan(enemy_obj, enemy_id):
     
     enemy_name = random.choice(enemy_types)
     
-    # Use consistent maximum values similar to player ship
-    max_hull = 100  # Same as player ship
-    max_shields = 9  # Same as player ship (9 levels)
-    max_energy = 1000  # Same as player ship
+    # Use balanced maximum values for tactical combat
+    max_hull = ENEMY_HULL_STRENGTH  # Hull integrity
+    max_shields = ENEMY_SHIELD_CAPACITY  # Substantial shields that require multiple hits
+    max_energy = 1000  # Energy systems
     
     # Enemies start at full strength but may have some minor battle damage
     current_hull = random.randint(int(max_hull * 0.85), max_hull)  # 85-100% hull
-    current_shields = random.randint(int(max_shields * 0.7), max_shields)  # 70-100% shields  
+    current_shields = random.randint(int(max_shields * 0.8), max_shields)  # 80-100% shields  
     current_energy = random.randint(int(max_energy * 0.8), max_energy)  # 80-100% energy
     
     # Determine threat level based on stats and distance
@@ -892,7 +892,8 @@ phaser_pulse_count = 5
 # Use constants for phaser damage
 from data.constants import (PLAYER_PHASER_POWER, PLAYER_PHASER_RANGE, 
                             PHASER_CLOSE_RANGE, PHASER_MEDIUM_RANGE,
-                            PHASER_CLOSE_MULTIPLIER, PHASER_MEDIUM_MULTIPLIER, PHASER_LONG_MULTIPLIER)
+                            PHASER_CLOSE_MULTIPLIER, PHASER_MEDIUM_MULTIPLIER, PHASER_LONG_MULTIPLIER,
+                            PLAYER_SHIELD_CAPACITY, ENEMY_SHIELD_CAPACITY, ENEMY_HULL_STRENGTH)
 phaser_range = PLAYER_PHASER_RANGE
 
 def wrap_text(text, max_width, font):
@@ -2062,9 +2063,9 @@ try:
                     if not hasattr(selected_enemy, 'max_health'):
                         selected_enemy.max_health = 100
                     if not hasattr(selected_enemy, 'shields'):
-                        selected_enemy.shields = 9
+                        selected_enemy.shields = ENEMY_SHIELD_CAPACITY  # Substantial shield capacity
                     if not hasattr(selected_enemy, 'max_shields'):
-                        selected_enemy.max_shields = 9
+                        selected_enemy.max_shields = ENEMY_SHIELD_CAPACITY
                     
                     # Calculate distance to target for damage scaling
                     player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
