@@ -13,13 +13,13 @@ os.makedirs(logs_dir, exist_ok=True)  # Create logs directory if it doesn't exis
 log_filename = f"debug_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 log_path = os.path.join(logs_dir, log_filename)
 
-# Configure logging to write to file
+# Configure logging to write to file only
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_path, mode='w'),
-        logging.StreamHandler()  # Also print to console if available
+        logging.FileHandler(log_path, mode='w')
+        # Removed StreamHandler to prevent console spam
     ]
 )
 

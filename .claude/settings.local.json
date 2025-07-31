@@ -31,7 +31,8 @@
       "Bash(pip install:*)",
       "Bash(where python)",
       "Bash(C:Python313python.exe main.py)",
-      "Bash(\"C:\\Python313\\python.exe\" main.py)"
+      "Bash(\"C:\\Python313\\python.exe\" main.py)",
+      "Bash(true)"
     ],
     "deny": []
   }

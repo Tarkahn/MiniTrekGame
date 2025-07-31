@@ -227,6 +227,9 @@ ship_anim_x, ship_anim_y = hex_grid.get_hex_center(ship_q, ship_r)
 dest_q, dest_r = None, None
 ship_moving = False
 
+# Trajectory start position for mid-flight destination changes
+trajectory_start_x, trajectory_start_y = None, None
+
 # Calculate max distance for ship speed
 corner1 = hex_grid.get_hex_center(0, 0)
 corner2 = hex_grid.get_hex_center(19, 19)
@@ -872,6 +875,9 @@ player_orbit_speed = 0.4    # Radians per second (reduced for more realistic mov
 system_ship_moving = False
 system_move_start_time = None
 system_move_duration_ms = 1000  # 1 second for system moves
+
+# System trajectory start position for mid-flight destination changes
+system_trajectory_start_x, system_trajectory_start_y = None, None
 
 # --- Phaser firing state ---
 selected_enemy = None
@@ -1568,24 +1574,43 @@ try:
                 if map_rect.collidepoint(mx, my) and map_mode == 'sector':
                     q, r = hex_grid.pixel_to_hex(mx, my)
                     if q is not None and r is not None:
-                        # Calculate distance for warp travel
-                        dx = abs(q - ship_q)
-                        dy = abs(r - ship_r)
+                        # Determine starting position for trajectory calculation
+                        if ship_moving:
+                            # Ship is mid-flight - use current animated position as starting point
+                            start_hex_q, start_hex_r = hex_grid.pixel_to_hex(ship_anim_x, ship_anim_y)
+                            if start_hex_q is None or start_hex_r is None:
+                                # Fallback to current ship position if conversion fails
+                                start_hex_q, start_hex_r = ship_q, ship_r
+                            log_debug(f"[REDIRECT] Ship redirecting mid-flight from animated position ({start_hex_q}, {start_hex_r}) to ({q}, {r})")
+                        else:
+                            # Ship is stationary - use actual ship position
+                            start_hex_q, start_hex_r = ship_q, ship_r
+                        
+                        # Calculate distance for warp travel from current position
+                        dx = abs(q - start_hex_q)
+                        dy = abs(r - start_hex_r)
                         distance = max(dx, dy)  # Hex distance approximation
                         
                         # Calculate energy cost: 20 for initiation + 10 per sector
-                        energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
+                        # Note: For mid-flight changes, we don't charge initiation cost again
+                        if ship_moving:
+                            energy_cost = distance * constants.WARP_ENERGY_COST  # No initiation cost for redirects
+                            action_msg = "Changing course"
+                        else:
+                            energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
+                            action_msg = "Setting course"
                         
                         # Check if player has enough energy
                         if player_ship.warp_core_energy >= energy_cost:
                             dest_q, dest_r = q, r
                             ship_moving = True
                             move_start_time = pygame.time.get_ticks()
-                            start_x, start_y = ship_anim_x, ship_anim_y
+                            # Set trajectory start position (current animated position for mid-flight changes)
+                            trajectory_start_x, trajectory_start_y = ship_anim_x, ship_anim_y
                             end_x, end_y = hex_grid.get_hex_center(dest_q, dest_r)
                             # Play warp sound for sector map movement
                             sound_manager.play_sound('warp')
-                            add_event_log(f"Setting course for sector ({q}, {r}) - Energy cost: {energy_cost}")
+                            add_event_log(f"{action_msg} for sector ({q}, {r}) - Energy cost: {energy_cost}")
                             print(f"Ship moving to hex ({q}, {r}) - Energy cost: {energy_cost}")
                         else:
                             add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
@@ -1648,9 +1673,23 @@ try:
                                     player_orbit_key = None
                                     add_event_log("Breaking orbit")
                                 
-                                # Calculate distance for impulse movement
-                                dx = abs(q - player_obj.system_q)
-                                dy = abs(r - player_obj.system_r)
+                                # Determine starting position for trajectory calculation
+                                if system_ship_moving:
+                                    # Ship is mid-flight - use current animated position as starting point
+                                    start_hex_q, start_hex_r = hex_grid.pixel_to_hex(system_ship_anim_x, system_ship_anim_y)
+                                    if start_hex_q is None or start_hex_r is None:
+                                        # Fallback to player object position if conversion fails
+                                        start_hex_q, start_hex_r = player_obj.system_q, player_obj.system_r
+                                    log_debug(f"[SYSTEM_REDIRECT] Ship redirecting mid-flight from animated position ({start_hex_q}, {start_hex_r}) to ({q}, {r})")
+                                    action_msg = "Changing course"
+                                else:
+                                    # Ship is stationary - use actual player object position
+                                    start_hex_q, start_hex_r = player_obj.system_q, player_obj.system_r
+                                    action_msg = "Setting course"
+                                
+                                # Calculate distance for impulse movement from current position
+                                dx = abs(q - start_hex_q)
+                                dy = abs(r - start_hex_r)
                                 distance = max(dx, dy)  # Hex distance approximation
                                 
                                 # Calculate energy cost: 5 per hex for impulse
@@ -1661,15 +1700,18 @@ try:
                                     system_dest_q, system_dest_r = q, r
                                     system_ship_moving = True
                                     system_move_start_time = pygame.time.get_ticks()
-                                    # Start position in pixels (from current animated position if orbiting)
+                                    # Set system trajectory start position (current animated position for mid-flight changes)
                                     if system_ship_anim_x is not None and system_ship_anim_y is not None:
-                                        # Use current orbital position as starting point
-                                        pass  # system_ship_anim_x and system_ship_anim_y are already set
+                                        # Use current animated position as starting point
+                                        system_trajectory_start_x, system_trajectory_start_y = system_ship_anim_x, system_ship_anim_y
                                     else:
-                                        system_ship_anim_x, system_ship_anim_y = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+                                        # Initialize animated position and trajectory from player object position
+                                        start_pos_x, start_pos_y = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+                                        system_ship_anim_x, system_ship_anim_y = start_pos_x, start_pos_y
+                                        system_trajectory_start_x, system_trajectory_start_y = start_pos_x, start_pos_y
                                     # Play impulse sound for system map movement
                                     sound_manager.play_sound('impulse')
-                                    add_event_log(f"Setting course for system hex ({q}, {r}) - Energy cost: {energy_cost}")
+                                    add_event_log(f"{action_msg} for system hex ({q}, {r}) - Energy cost: {energy_cost}")
                                     print(f"System ship moving to hex ({q}, {r}) - Energy cost: {energy_cost}")
                                 else:
                                     add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
@@ -1723,7 +1765,11 @@ try:
         if ship_moving and dest_q is not None and dest_r is not None:
             now = pygame.time.get_ticks()
             elapsed = now - move_start_time if move_start_time is not None else 0
-            start_x, start_y = hex_grid.get_hex_center(ship_q, ship_r)
+            # Use trajectory start position if available, otherwise fall back to ship hex position
+            if trajectory_start_x is not None and trajectory_start_y is not None:
+                start_x, start_y = trajectory_start_x, trajectory_start_y
+            else:
+                start_x, start_y = hex_grid.get_hex_center(ship_q, ship_r)
             end_x, end_y = hex_grid.get_hex_center(dest_q, dest_r)
             t = min(elapsed / move_duration_ms, 1.0)
             ship_anim_x = start_x + (end_x - start_x) * t
@@ -1742,6 +1788,7 @@ try:
                 ship_q, ship_r = dest_q, dest_r
                 ship_moving = False
                 move_start_time = None
+                trajectory_start_x, trajectory_start_y = None, None  # Reset trajectory tracking
                 logging.info(f"[MOVE] Ship arrived at ({ship_q}, {ship_r}), consumed {energy_cost} energy")
                 add_event_log(f"Arrived at sector ({ship_q}, {ship_r}) - Energy: {player_ship.warp_core_energy}/{player_ship.max_warp_core_energy}")
                 # Check if there's a system here (star or any lazy object, but not individual planets)
@@ -1943,7 +1990,11 @@ try:
                 if player_obj is not None:
                     now = pygame.time.get_ticks()
                     elapsed = now - system_move_start_time if system_move_start_time is not None else 0
-                    start_x, start_y = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+                    # Use system trajectory start position if available, otherwise fall back to player hex position
+                    if system_trajectory_start_x is not None and system_trajectory_start_y is not None:
+                        start_x, start_y = system_trajectory_start_x, system_trajectory_start_y
+                    else:
+                        start_x, start_y = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
                     end_x, end_y = hex_grid.get_hex_center(system_dest_q, system_dest_r)
                     t = min(elapsed / system_move_duration_ms, 1.0)
                     system_ship_anim_x = start_x + (end_x - start_x) * t
@@ -1963,6 +2014,7 @@ try:
                         player_obj.system_r = system_dest_r
                         system_ship_moving = False
                         system_move_start_time = None
+                        system_trajectory_start_x, system_trajectory_start_y = None, None  # Reset system trajectory tracking
                         add_event_log(f"Arrived at system hex ({system_dest_q}, {system_dest_r}) - Energy: {player_ship.warp_core_energy}/{player_ship.max_warp_core_energy}")
                         print(f"System ship arrived at hex ({system_dest_q}, {system_dest_r}), consumed {energy_cost} energy")
 
