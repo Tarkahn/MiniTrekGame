@@ -890,8 +890,10 @@ phaser_anim_start = 0
 phaser_anim_duration = 500  # ms
 phaser_pulse_count = 5
 # Use constants for phaser damage
-from data.constants import PLAYER_PHASER_POWER
-phaser_range = 9
+from data.constants import (PLAYER_PHASER_POWER, PLAYER_PHASER_RANGE, 
+                            PHASER_CLOSE_RANGE, PHASER_MEDIUM_RANGE,
+                            PHASER_CLOSE_MULTIPLIER, PHASER_MEDIUM_MULTIPLIER, PHASER_LONG_MULTIPLIER)
+phaser_range = PLAYER_PHASER_RANGE
 
 def wrap_text(text, max_width, font):
     """Wrap text to fit within max_width pixels"""
@@ -2064,8 +2066,34 @@ try:
                     if not hasattr(selected_enemy, 'max_shields'):
                         selected_enemy.max_shields = 9
                     
-                    # Apply phaser damage - shields absorb damage first
-                    damage = PLAYER_PHASER_POWER
+                    # Calculate distance to target for damage scaling
+                    player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
+                    if player_obj:
+                        dx = selected_enemy.system_q - player_obj.system_q
+                        dy = selected_enemy.system_r - player_obj.system_r
+                        distance = math.hypot(dx, dy)
+                    else:
+                        distance = 1  # Fallback distance
+                    
+                    # Distance-based damage scaling using constants
+                    base_damage = PLAYER_PHASER_POWER
+                    if distance <= PHASER_CLOSE_RANGE:
+                        # Close range: High damage (high risk, high reward)
+                        damage_multiplier = PHASER_CLOSE_MULTIPLIER
+                        range_description = "CLOSE RANGE"
+                    elif distance <= PHASER_MEDIUM_RANGE:
+                        # Medium range: Standard damage (balanced risk/reward)
+                        damage_multiplier = PHASER_MEDIUM_MULTIPLIER
+                        range_description = "MEDIUM RANGE"
+                    else:
+                        # Long range: Reduced damage (safer but less effective)
+                        damage_multiplier = PHASER_LONG_MULTIPLIER
+                        range_description = "LONG RANGE"
+                    
+                    damage = int(base_damage * damage_multiplier)
+                    
+                    add_event_log(f"Phaser fire at {distance:.1f} hexes ({range_description}) - Damage: {damage}")
+                    print(f"[DEBUG] Distance: {distance:.1f}, Multiplier: {damage_multiplier:.1f}, Damage: {damage}")
                     
                     if selected_enemy.shields > 0:
                         # Shields absorb damage first

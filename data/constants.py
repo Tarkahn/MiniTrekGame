@@ -16,8 +16,15 @@ LOCAL_MOVEMENT_ENERGY_COST_PER_HEX = 5  # Energy cost for impulse movement withi
 WARP_INITIATION_COST = 5  # Warp initiation cost (reduced for gameplay balance)
 
 # Player Ship Systems (PRD Compliant)
-PLAYER_PHASER_POWER = 15  # Balanced for tactical combat (shields + hull = ~8-10 shots)
-PLAYER_PHASER_RANGE = 9   # PRD: Max range 9 hexes
+PLAYER_PHASER_POWER = 15  # Base damage before distance modifiers
+PLAYER_PHASER_RANGE = 18  # Extended range for tactical positioning
+
+# Phaser Distance-Based Damage System
+PHASER_CLOSE_RANGE = 3      # Close range threshold (0-3 hexes)
+PHASER_MEDIUM_RANGE = 9     # Medium range threshold (4-9 hexes)
+PHASER_CLOSE_MULTIPLIER = 1.5   # 150% damage at close range (high risk/reward)
+PHASER_MEDIUM_MULTIPLIER = 1.0  # 100% damage at medium range (standard)
+PHASER_LONG_MULTIPLIER = 0.6    # 60% damage at long range (10-18 hexes)
 
 # Energy Regeneration
 ENERGY_REGEN_RATE_PER_TURN = 15  # Energy regenerated per turn (increased for gameplay balance)
