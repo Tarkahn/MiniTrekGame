@@ -85,8 +85,8 @@ class EnemyScanPanel:
         if enemy_id in self.scanned_enemies:
             self.selected_enemy_id = enemy_id
     
-    def draw(self, screen):
-        """Draw the enemy scan panel."""
+    def draw(self, screen, targeted_enemy_id=None):
+        """Draw the enemy scan panel showing all scanned enemies simultaneously."""
         # Background
         pygame.draw.rect(screen, self.bg_color, self.rect)
         pygame.draw.rect(screen, self.border_color, self.rect, 2)
@@ -106,58 +106,28 @@ class EnemyScanPanel:
             screen.blit(instruction_text, (self.rect.x + 10, current_y + 30))
             
         else:
-            # Enemy selector (if multiple enemies)
-            if len(self.scanned_enemies) > 1:
-                current_y = self.draw_enemy_selector(screen, current_y)
-                current_y += 10
-            
-            # Selected enemy details
-            if self.selected_enemy_id and self.selected_enemy_id in self.scanned_enemies:
-                current_y = self.draw_enemy_details(screen, current_y)
+            # Draw all scanned enemies
+            for i, (enemy_id, enemy_data) in enumerate(self.scanned_enemies.items()):
+                # Check if this enemy is currently targeted
+                is_targeted = (targeted_enemy_id == enemy_id)
+                current_y = self.draw_enemy_details(screen, current_y, enemy_data, is_targeted, i + 1)
+                current_y += 10  # Spacing between enemies
     
-    def draw_enemy_selector(self, screen, y):
-        """Draw enemy selection buttons if multiple enemies scanned."""
-        selector_label = self.small_font.render("CONTACTS:", True, self.border_color)
-        screen.blit(selector_label, (self.rect.x + 10, y))
-        y += 20
-        
-        button_width = 30
-        button_height = 20
-        button_spacing = 35
-        x = self.rect.x + 10
-        
-        for i, enemy_id in enumerate(self.scanned_enemies.keys()):
-            # Enemy button
-            button_rect = pygame.Rect(x, y, button_width, button_height)
-            
-            # Color based on selection
-            if enemy_id == self.selected_enemy_id:
-                button_color = self.enemy_color
-                text_color = (255, 255, 255)
-            else:
-                button_color = self.bar_bg_color
-                text_color = (200, 200, 200)
-            
-            pygame.draw.rect(screen, button_color, button_rect)
-            pygame.draw.rect(screen, self.border_color, button_rect, 1)
-            
-            # Enemy number
-            enemy_num = str(i + 1)
-            num_text = self.small_font.render(enemy_num, True, text_color)
-            text_rect = num_text.get_rect(center=button_rect.center)
-            screen.blit(num_text, text_rect)
-            
-            x += button_spacing
-        
-        return y + 30
     
-    def draw_enemy_details(self, screen, y):
-        """Draw detailed information about the selected enemy."""
-        enemy_data = self.scanned_enemies[self.selected_enemy_id]
+    def draw_enemy_details(self, screen, y, enemy_data, is_targeted=False, enemy_number=1):
+        """Draw detailed information about an enemy."""
+        start_y = y
         
-        # Enemy name
-        name_text = self.font.render(enemy_data['name'], True, self.enemy_color)
-        screen.blit(name_text, (self.rect.x + 10, y))
+        # Enemy name with number
+        name_text = f"{enemy_number}. {enemy_data['name']}"
+        if is_targeted:
+            name_color = self.warning_color  # Yellow for targeted
+            name_text += " [TARGETED]"
+        else:
+            name_color = self.enemy_color
+        
+        name_surface = self.font.render(name_text, True, name_color)
+        screen.blit(name_surface, (self.rect.x + 10, y))
         y += 25
         
         # Position and distance
@@ -225,7 +195,21 @@ class EnemyScanPanel:
         age_surface = self.small_font.render(age_text, True, (150, 150, 150))
         screen.blit(age_surface, (self.rect.x + 10, y))
         
-        return y + 20
+        end_y = y + 20
+        
+        # Draw highlight background AFTER all content is drawn (so we know the actual height)
+        if is_targeted:
+            highlight_height = end_y - start_y + 10  # Full height of enemy info + padding
+            highlight_rect = pygame.Rect(self.rect.x + 5, start_y - 5, self.rect.width - 10, highlight_height)
+            # Draw background highlight with transparency effect
+            highlight_surface = pygame.Surface((self.rect.width - 10, highlight_height))
+            highlight_surface.set_alpha(80)  # Semi-transparent
+            highlight_surface.fill((80, 40, 40))  # Dark red highlight
+            screen.blit(highlight_surface, (self.rect.x + 5, start_y - 5))
+            # Draw border
+            pygame.draw.rect(screen, self.warning_color, highlight_rect, 2)  # Yellow border
+        
+        return end_y
     
     def draw_status_bar(self, screen, y, label, current, maximum):
         """Draw a status bar for hull/shields/energy."""
@@ -267,27 +251,6 @@ class EnemyScanPanel:
         
         return y + 35
     
-    def handle_click(self, pos):
-        """Handle mouse clicks on the panel (for enemy selection)."""
-        if not self.rect.collidepoint(pos):
-            return None
-        
-        if len(self.scanned_enemies) <= 1:
-            return None
-        
-        # Check if click is in enemy selector area
-        selector_y = self.rect.y + 55  # Approximate selector position
-        if selector_y <= pos[1] <= selector_y + 20:
-            # Calculate which enemy button was clicked
-            relative_x = pos[0] - (self.rect.x + 10)
-            button_index = relative_x // 35  # 35 = button spacing
-            
-            enemy_ids = list(self.scanned_enemies.keys())
-            if 0 <= button_index < len(enemy_ids):
-                self.select_enemy(enemy_ids[button_index])
-                return enemy_ids[button_index]
-        
-        return None
 
 def create_enemy_scan_panel(x, y, width, height, font):
     """Factory function to create an enemy scan panel."""

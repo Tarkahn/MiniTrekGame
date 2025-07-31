@@ -2093,8 +2093,15 @@ try:
         # Draw ship status display
         ship_status_display.draw(screen, player_ship)
 
-        # Draw enemy scan panel
-        enemy_scan_panel.draw(screen)
+        # Draw enemy scan panel with targeted enemy highlighting
+        targeted_enemy_id = None
+        if selected_enemy is not None:
+            # Find the enemy ID for the selected enemy object
+            for enemy_id, enemy_obj in targeted_enemies.items():
+                if enemy_obj is selected_enemy:
+                    targeted_enemy_id = enemy_id
+                    break
+        enemy_scan_panel.draw(screen, targeted_enemy_id)
 
         pygame.display.flip()
         clock.tick(FPS)
