@@ -16,7 +16,7 @@ LOCAL_MOVEMENT_ENERGY_COST_PER_HEX = 5  # Energy cost for impulse movement withi
 WARP_INITIATION_COST = 5  # Warp initiation cost (reduced for gameplay balance)
 
 # Player Ship Systems (PRD Compliant)
-PLAYER_PHASER_POWER = 50  # PRD: Power level for damage calculation
+PLAYER_PHASER_POWER = 15  # Balanced for tactical combat (shields + hull = ~8-10 shots)
 PLAYER_PHASER_RANGE = 9   # PRD: Max range 9 hexes
 
 # Energy Regeneration

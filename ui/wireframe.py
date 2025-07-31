@@ -889,7 +889,8 @@ phaser_animating = False
 phaser_anim_start = 0
 phaser_anim_duration = 500  # ms
 phaser_pulse_count = 5
-phaser_damage = 40
+# Use constants for phaser damage
+from data.constants import PLAYER_PHASER_POWER
 phaser_range = 9
 
 def wrap_text(text, max_width, font):
@@ -2053,10 +2054,46 @@ try:
                 pygame.draw.line(screen, color, (int(px1), int(py1)), (int(px2), int(py2)), 4)
                 if t >= 1.0:
                     # Animation done, apply damage
+                    # Initialize enemy systems if not present
                     if not hasattr(selected_enemy, 'health'):
                         selected_enemy.health = 100
-                    selected_enemy.health -= phaser_damage
-                    print(f"[DEBUG] Phaser hit! Enemy health now {selected_enemy.health}")
+                    if not hasattr(selected_enemy, 'max_health'):
+                        selected_enemy.max_health = 100
+                    if not hasattr(selected_enemy, 'shields'):
+                        selected_enemy.shields = 9
+                    if not hasattr(selected_enemy, 'max_shields'):
+                        selected_enemy.max_shields = 9
+                    
+                    # Apply phaser damage - shields absorb damage first
+                    damage = PLAYER_PHASER_POWER
+                    
+                    if selected_enemy.shields > 0:
+                        # Shields absorb damage first
+                        shield_damage = min(damage, selected_enemy.shields)
+                        selected_enemy.shields -= shield_damage
+                        damage -= shield_damage
+                        add_event_log(f"Shield hit! Enemy shields: {selected_enemy.shields}/{selected_enemy.max_shields}")
+                        print(f"[DEBUG] Shield damage: {shield_damage}, Enemy shields now {selected_enemy.shields}")
+                    
+                    if damage > 0 and selected_enemy.shields <= 0:
+                        # Remaining damage goes to hull
+                        hull_damage = min(damage, selected_enemy.health)
+                        selected_enemy.health -= hull_damage
+                        add_event_log(f"Hull breach! Enemy hull: {selected_enemy.health}/{selected_enemy.max_health}")
+                        print(f"[DEBUG] Hull damage: {hull_damage}, Enemy hull now {selected_enemy.health}")
+                    
+                    # Update scan panel with new damage values
+                    enemy_id = None
+                    for eid, enemy_obj in targeted_enemies.items():
+                        if enemy_obj is selected_enemy:
+                            enemy_id = eid
+                            break
+                    
+                    if enemy_id and enemy_id in enemy_scan_panel.scanned_enemies:
+                        # Update scan data with current damage
+                        enemy_scan_panel.scanned_enemies[enemy_id]['hull'] = selected_enemy.health
+                        enemy_scan_panel.scanned_enemies[enemy_id]['shields'] = selected_enemy.shields
+                    
                     if selected_enemy.health <= 0:
                         add_event_log("Enemy ship destroyed!")
                         systems[current_system].remove(selected_enemy)
