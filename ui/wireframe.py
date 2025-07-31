@@ -2040,7 +2040,6 @@ try:
 
         # --- Phaser animation drawing ---
         if phaser_animating and selected_enemy is not None:
-            print("[DEBUG] Drawing phaser animation!")
             # Find player and enemy positions
             player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
             if player_obj is not None:
