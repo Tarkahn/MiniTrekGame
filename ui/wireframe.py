@@ -1809,6 +1809,13 @@ try:
                 map_mode = 'system'
                 current_system = (ship_q, ship_r)
                 
+                # Clear enemy tracking data when entering new system
+                enemy_scan_panel.clear_scans()
+                enemy_popups.clear()
+                targeted_enemies.clear()
+                selected_enemy = None
+                add_event_log("Enemy scan data cleared - new system")
+                
                 # Break orbital state when entering a new system
                 if player_orbiting_planet:
                     player_orbiting_planet = False
