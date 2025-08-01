@@ -2049,7 +2049,11 @@ try:
             # Find player and enemy positions
             player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
             if player_obj is not None:
-                px1, py1 = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+                # Use animated position (orbital or movement) if available, otherwise use static position
+                if system_ship_anim_x is not None and system_ship_anim_y is not None:
+                    px1, py1 = system_ship_anim_x, system_ship_anim_y
+                else:
+                    px1, py1 = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
                 px2, py2 = hex_grid.get_hex_center(selected_enemy.system_q, selected_enemy.system_r)
                 now = pygame.time.get_ticks()
                 elapsed = now - phaser_anim_start
