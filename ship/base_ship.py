@@ -20,11 +20,11 @@ class BaseShip:
         
         # PRD: Power allocation system (0-9 scale for each system)
         self.power_allocation = {
-            'phasers': 5,      # Default power levels
-            'shields': 5,      
-            'impulse': 5,
-            'sensors': 5,
-            'life_support': 9  # Critical system
+            'phasers': constants.DEFAULT_PHASER_POWER,
+            'shields': constants.DEFAULT_SHIELD_POWER,      
+            'engines': constants.DEFAULT_ENGINE_POWER,  # Renamed from impulse for dual role
+            'sensors': constants.DEFAULT_SENSOR_POWER,
+            'life_support': constants.DEFAULT_LIFE_SUPPORT_POWER
         }
         
         # PRD: System integrity (0-100 scale)
@@ -32,7 +32,7 @@ class BaseShip:
             'hull': hull_strength,
             'shields': 100,
             'phasers': 100,
-            'impulse': 100,
+            'engines': 100,  # Renamed from impulse for dual role
             'sensors': 100,
             'life_support': 100,
             'warp_core': 100
@@ -112,7 +112,7 @@ class BaseShip:
             
         # Check total power allocation doesn't exceed limits
         total_power = sum(self.power_allocation.values()) - self.power_allocation[system] + power_level
-        max_total_power = 45  # Reasonable limit for tactical choices
+        max_total_power = constants.MAX_TOTAL_POWER  # Configurable limit for tactical choices
         
         if total_power > max_total_power:
             print(f"Total power allocation would exceed maximum ({max_total_power})")

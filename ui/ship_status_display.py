@@ -101,7 +101,7 @@ class ShipStatusDisplay:
         screen.blit(label, (self.rect.x + 10, y))
         y += 25
         
-        systems = ['phasers', 'shields', 'impulse', 'sensors', 'life_support']
+        systems = ['phasers', 'shields', 'engines', 'sensors', 'life_support']
         
         for i, system in enumerate(systems):
             power_level = ship.power_allocation.get(system, 0)
@@ -142,13 +142,49 @@ class ShipStatusDisplay:
         
         return y
     
+    def handle_click(self, pos, ship):
+        """Handle mouse clicks on power allocation bars."""
+        if not self.rect.collidepoint(pos):
+            return False
+        
+        # Check if click is in power allocation area
+        systems = ['phasers', 'shields', 'engines', 'sensors', 'life_support']
+        
+        # Calculate power allocation area bounds
+        power_start_y = self.rect.y + 60  # Approximate start of power allocation section
+        
+        for i, system in enumerate(systems):
+            system_y = power_start_y + (i * 20)  # 20 pixels per system row
+            
+            # Check if click is in this system's row
+            if system_y <= pos[1] <= system_y + 15:  # 15 pixels height per row
+                # Calculate which power level was clicked
+                bar_x = self.rect.x + 100
+                bar_spacing = 12
+                
+                if pos[0] >= bar_x:
+                    clicked_level = (pos[0] - bar_x) // bar_spacing
+                    
+                    # Ensure clicked level is valid (0-9)
+                    if 0 <= clicked_level <= 9:
+                        # Set power to clicked level + 1 (since we want 1-based visual)
+                        new_power_level = clicked_level + 1
+                        if new_power_level > 9:
+                            new_power_level = 9
+                        
+                        # Attempt to allocate power
+                        if ship.allocate_power(system, new_power_level):
+                            return True
+                        
+        return False
+    
     def draw_system_integrity(self, screen, ship, y):
         """Draw system integrity status."""
         label = self.font.render("SYSTEM INTEGRITY", True, self.border_color)
         screen.blit(label, (self.rect.x + 10, y))
         y += 25
         
-        systems = ['hull', 'shields', 'phasers', 'impulse', 'sensors', 'life_support', 'warp_core']
+        systems = ['hull', 'shields', 'phasers', 'engines', 'sensors', 'life_support', 'warp_core']
         
         for system in systems:
             integrity = ship.system_integrity.get(system, 100)

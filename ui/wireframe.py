@@ -1578,6 +1578,13 @@ try:
                     add_event_log(f"Switched to {new_mode} view")
                     map_mode = new_mode
 
+            # Handle ship status display clicks first
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                # Check if click is on ship status display (power allocation)
+                if ship_status_display.handle_click((mx, my), player_ship):
+                    continue  # Power allocation changed, skip other click handling
+            
             # Then handle map click events
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos

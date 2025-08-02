@@ -25,6 +25,14 @@ ENEMY_SHIELD_CAPACITY = 75    # Enemy ship shield strength
 PLAYER_HULL_STRENGTH = 100    # Player ship hull integrity
 ENEMY_HULL_STRENGTH = 100     # Enemy ship hull integrity
 
+# Power Allocation System Defaults (0-9 scale)
+DEFAULT_PHASER_POWER = 5      # Default phaser power allocation
+DEFAULT_SHIELD_POWER = 5      # Default shield power allocation
+DEFAULT_ENGINE_POWER = 5      # Default engine power (warp/impulse)
+DEFAULT_SENSOR_POWER = 5      # Default sensor power allocation
+DEFAULT_LIFE_SUPPORT_POWER = 9  # Default life support (critical system)
+MAX_TOTAL_POWER = 45          # Maximum total power across all systems
+
 # Phaser Distance-Based Damage System
 PHASER_CLOSE_RANGE = 3      # Close range threshold (0-3 hexes)
 PHASER_MEDIUM_RANGE = 9     # Medium range threshold (4-9 hexes)
