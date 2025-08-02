@@ -31,7 +31,7 @@ DEFAULT_SHIELD_POWER = 5      # Default shield power allocation
 DEFAULT_ENGINE_POWER = 5      # Default engine power (warp/impulse)
 DEFAULT_SENSOR_POWER = 5      # Default sensor power allocation
 DEFAULT_LIFE_SUPPORT_POWER = 9  # Default life support (critical system)
-MAX_TOTAL_POWER = 45          # Maximum total power across all systems
+MAX_TOTAL_POWER = 36          # Maximum total power across tactical systems (4 systems × 9 max)
 
 # Phaser Distance-Based Damage System
 PHASER_CLOSE_RANGE = 3      # Close range threshold (0-3 hexes)

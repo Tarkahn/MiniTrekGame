@@ -23,9 +23,11 @@ class BaseShip:
             'phasers': constants.DEFAULT_PHASER_POWER,
             'shields': constants.DEFAULT_SHIELD_POWER,      
             'engines': constants.DEFAULT_ENGINE_POWER,  # Renamed from impulse for dual role
-            'sensors': constants.DEFAULT_SENSOR_POWER,
-            'life_support': constants.DEFAULT_LIFE_SUPPORT_POWER
+            'sensors': constants.DEFAULT_SENSOR_POWER
         }
+        
+        # Life support is always at maximum - no power allocation needed
+        self.life_support_power = constants.DEFAULT_LIFE_SUPPORT_POWER
         
         # PRD: System integrity (0-100 scale)
         self.system_integrity = {

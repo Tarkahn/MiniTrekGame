@@ -101,7 +101,7 @@ class ShipStatusDisplay:
         screen.blit(label, (self.rect.x + 10, y))
         y += 25
         
-        systems = ['phasers', 'shields', 'engines', 'sensors', 'life_support']
+        systems = ['phasers', 'shields', 'engines', 'sensors']
         
         for i, system in enumerate(systems):
             power_level = ship.power_allocation.get(system, 0)
@@ -148,13 +148,15 @@ class ShipStatusDisplay:
             return False
         
         # Check if click is in power allocation area
-        systems = ['phasers', 'shields', 'engines', 'sensors', 'life_support']
+        systems = ['phasers', 'shields', 'engines', 'sensors']
         
         # Calculate power allocation area bounds
-        power_start_y = self.rect.y + 60  # Approximate start of power allocation section
+        # Match the exact calculation from draw_power_allocation
+        power_label_y = self.rect.y + 35  # Title + energy status + gap
+        power_systems_start_y = power_label_y + 25  # After "POWER ALLOCATION" label
         
         for i, system in enumerate(systems):
-            system_y = power_start_y + (i * 20)  # 20 pixels per system row
+            system_y = power_systems_start_y + (i * 20)  # 20 pixels per system row
             
             # Check if click is in this system's row
             if system_y <= pos[1] <= system_y + 15:  # 15 pixels height per row
@@ -171,6 +173,7 @@ class ShipStatusDisplay:
                         new_power_level = clicked_level + 1
                         if new_power_level > 9:
                             new_power_level = 9
+                        
                         
                         # Attempt to allocate power
                         if ship.allocate_power(system, new_power_level):
