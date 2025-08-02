@@ -110,17 +110,35 @@ class ShipStatusDisplay:
             system_text = self.small_font.render(f"{system.upper()}:", True, self.text_color)
             screen.blit(system_text, (self.rect.x + 10, y))
             
-            # Power level bars (0-9)
+            # ON/OFF button (left of meter)
+            off_button_x = self.rect.x + 75
+            off_button_rect = pygame.Rect(off_button_x, y, 15, 15)
+            if power_level == 0:
+                # System is off - red button
+                pygame.draw.rect(screen, self.critical_color, off_button_rect)
+                off_text = "0"
+            else:
+                # System is on - dark button
+                pygame.draw.rect(screen, self.bar_bg_color, off_button_rect)
+                off_text = "0"
+            pygame.draw.rect(screen, self.border_color, off_button_rect, 1)
+            off_label = self.small_font.render(off_text, True, self.text_color)
+            off_label_rect = off_label.get_rect(center=off_button_rect.center)
+            screen.blit(off_label, off_label_rect)
+            
+            # Power level bars (1-9)
             bar_x = self.rect.x + 100
             bar_width = 10
             bar_height = 15
             bar_spacing = 12
             
-            for level in range(10):  # 0-9 power levels
+            for level in range(9):  # 9 power level boxes (1-9)
                 bar_rect = pygame.Rect(bar_x + level * bar_spacing, y, bar_width, bar_height)
                 
-                if level < power_level:
-                    # Filled bar
+                # Show filled bars based on current power level
+                # level 0 = box 1, level 1 = box 2, etc.
+                if level < power_level and power_level > 0:
+                    # Filled bar (only if system has power)
                     if level < 3:
                         color = self.good_color
                     elif level < 7:
@@ -128,15 +146,34 @@ class ShipStatusDisplay:
                     else:
                         color = self.critical_color
                 else:
-                    # Empty bar
-                    color = self.bar_bg_color
+                    # Empty bar or system is off
+                    if power_level == 0:
+                        color = (40, 40, 40)  # Very dark when system is off
+                    else:
+                        color = self.bar_bg_color
                 
                 pygame.draw.rect(screen, color, bar_rect)
                 pygame.draw.rect(screen, self.border_color, bar_rect, 1)
             
+            # MAX button (right of meter)
+            max_button_x = bar_x + 115  # After the 9 meter boxes
+            max_button_rect = pygame.Rect(max_button_x, y, 20, 15)
+            if power_level == 9:
+                # System is at max - bright button
+                pygame.draw.rect(screen, self.warning_color, max_button_rect)
+            else:
+                # System not at max - dark button
+                pygame.draw.rect(screen, self.bar_bg_color, max_button_rect)
+            pygame.draw.rect(screen, self.border_color, max_button_rect, 1)
+            # Use smaller font for MAX button
+            tiny_font = pygame.font.Font(None, 14)
+            max_label = tiny_font.render("MAX", True, self.text_color)
+            max_label_rect = max_label.get_rect(center=max_button_rect.center)
+            screen.blit(max_label, max_label_rect)
+            
             # Power level number
             level_text = self.small_font.render(str(power_level), True, self.text_color)
-            screen.blit(level_text, (bar_x + 125, y))
+            screen.blit(level_text, (bar_x + 145, y))
             
             y += 20
         
@@ -150,30 +187,41 @@ class ShipStatusDisplay:
         # Check if click is in power allocation area
         systems = ['phasers', 'shields', 'engines', 'sensors']
         
-        # Calculate power allocation area bounds
-        # Match the exact calculation from draw_power_allocation
-        power_label_y = self.rect.y + 35  # Title + energy status + gap
-        power_systems_start_y = power_label_y + 25  # After "POWER ALLOCATION" label
+        # Use exact coordinates for power allocation bars
+        system_coordinates = [160, 180, 200, 220]  # Phasers, Shields, Engines, Sensors
         
         for i, system in enumerate(systems):
-            system_y = power_systems_start_y + (i * 20)  # 20 pixels per system row
+            system_y = system_coordinates[i]
             
             # Check if click is in this system's row
             if system_y <= pos[1] <= system_y + 15:  # 15 pixels height per row
-                # Calculate which power level was clicked
+                
+                # Check for OFF button click (left of meter)
+                off_button_x = self.rect.x + 75
+                if off_button_x <= pos[0] <= off_button_x + 15:
+                    # Turn system off (set power to 0)
+                    if ship.allocate_power(system, 0):
+                        return True
+                
+                # Check for MAX button click (right of meter)
+                max_button_x = self.rect.x + 100 + 115  # bar_x + 115
+                if max_button_x <= pos[0] <= max_button_x + 20:
+                    # Set system to maximum power (9)
+                    if ship.allocate_power(system, 9):
+                        return True
+                
+                # Check for power meter clicks
                 bar_x = self.rect.x + 100
                 bar_spacing = 12
                 
-                if pos[0] >= bar_x:
-                    clicked_level = (pos[0] - bar_x) // bar_spacing
+                if bar_x <= pos[0] <= bar_x + (9 * bar_spacing):  # Within meter area
+                    # Calculate which box was clicked (0-8 for 9 boxes)
+                    clicked_box = (pos[0] - bar_x) // bar_spacing
                     
-                    # Ensure clicked level is valid (0-9)
-                    if 0 <= clicked_level <= 9:
-                        # Set power to clicked level + 1 (since we want 1-based visual)
-                        new_power_level = clicked_level + 1
-                        if new_power_level > 9:
-                            new_power_level = 9
-                        
+                    # Set power level to the clicked box number + 1
+                    # Box 0 = power 1, Box 1 = power 2, ..., Box 8 = power 9
+                    if 0 <= clicked_box <= 8:
+                        new_power_level = clicked_box + 1
                         
                         # Attempt to allocate power
                         if ship.allocate_power(system, new_power_level):

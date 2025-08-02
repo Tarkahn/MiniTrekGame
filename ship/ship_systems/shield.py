@@ -13,22 +13,16 @@ class Shield:
 
     def set_power_level(self, power_level: int) -> bool:
         """
-        Sets shields to a specific power level (0-9), consuming energy.
-        PRD: Each level consumes energy to maintain.
-        Returns True if activation is successful, False otherwise.
+        Sets shields to a specific power level (0-9).
+        PRD: Power allocation doesn't consume energy - only actual shield operation does.
+        Returns True if successful, False otherwise.
         """
         if power_level < 0 or power_level > self.max_power_level:
             print(f"Invalid shield power level: {power_level}. Must be between 0 and {self.max_power_level}.")
             return False
 
-        # PRD: Energy cost for setting shield power
-        energy_needed = power_level * self.energy_cost_per_level
-        if not self.ship.consume_energy(energy_needed):
-            print(f"Insufficient energy to set shields to level {power_level}.")
-            return False
-
         self.current_power_level = power_level
-        print(f"Shields set to power level {self.current_power_level}. Energy remaining: {self.ship.warp_core_energy}")
+        print(f"Shields set to power level {self.current_power_level}.")
         return True
 
     def absorb_damage(self, incoming_damage: int) -> int:
