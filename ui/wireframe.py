@@ -857,6 +857,10 @@ system_ship_moving = False
 system_move_start_time = None
 system_move_duration_ms = 1000  # 1 second for system moves
 
+# --- Pending orbital state (for movement-then-orbit transitions) ---
+pending_orbit_center = None    # (x, y) position of planet to orbit when movement completes
+pending_orbit_key = None       # (star, planet) key for the pending orbit
+
 # System trajectory start position for mid-flight destination changes
 system_trajectory_start_x, system_trajectory_start_y = None, None
 
@@ -1471,7 +1475,11 @@ try:
                                     distance = math.hypot(dx, dy)
                                     
                                     # Get start and target positions for animation
-                                    start_pos = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+                                    # Use animated position (orbital or movement) if available, otherwise use static position
+                                    if system_ship_anim_x is not None and system_ship_anim_y is not None:
+                                        start_pos = (system_ship_anim_x, system_ship_anim_y)
+                                    else:
+                                        start_pos = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
                                     target_pos = hex_grid.get_hex_center(game_state.combat.selected_enemy.system_q, game_state.combat.selected_enemy.system_r)
                                     
                                     # Fire torpedo using weapon animation manager
@@ -1787,13 +1795,52 @@ try:
                                                 if planet_q is not None and planet_r is not None:
                                                     planet_hexes = get_planet_hexes(planet_q, planet_r)
                                                     if (q, r) in planet_hexes:
-                                                        # Start orbiting this planet
-                                                        game_state.orbital.player_orbiting_planet = True
-                                                        game_state.orbital.player_orbit_center = (planet_px, planet_py)
-                                                        player_orbit_key = key
-                                                        game_state.orbital.orbital_angle = 0.0
-                                                        system_ship_moving = False  # Stop any current movement
-                                                        add_event_log(f"Entering orbit around planet at ({q}, {r})")
+                                                        # Check if we're already at this location
+                                                        current_player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
+                                                        if current_player_obj and current_player_obj.system_q == q and current_player_obj.system_r == r:
+                                                            # Already at planet location - start orbiting immediately
+                                                            game_state.orbital.player_orbiting_planet = True
+                                                            game_state.orbital.player_orbit_center = (planet_px, planet_py)
+                                                            player_orbit_key = key
+                                                            game_state.orbital.orbital_angle = 0.0
+                                                            add_event_log(f"Entering orbit around planet at ({q}, {r})")
+                                                        else:
+                                                            # Need to move to planet first, then orbit
+                                                            # Calculate movement cost and check energy
+                                                            if current_player_obj:
+                                                                dx = abs(q - current_player_obj.system_q)
+                                                                dy = abs(r - current_player_obj.system_r)
+                                                                distance = max(dx, dy)
+                                                                energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+                                                                
+                                                                if player_ship.warp_core_energy >= energy_cost:
+                                                                    # Store pending orbit info
+                                                                    pending_orbit_center = (planet_px, planet_py)
+                                                                    pending_orbit_key = key
+                                                                    
+                                                                    # Start movement to planet
+                                                                    system_dest_q, system_dest_r = q, r
+                                                                    system_ship_moving = True
+                                                                    system_move_start_time = pygame.time.get_ticks()
+                                                                    
+                                                                    # Set movement trajectory
+                                                                    if system_ship_anim_x is not None and system_ship_anim_y is not None:
+                                                                        system_trajectory_start_x, system_trajectory_start_y = system_ship_anim_x, system_ship_anim_y
+                                                                    else:
+                                                                        start_pos_x, start_pos_y = hex_grid.get_hex_center(current_player_obj.system_q, current_player_obj.system_r)
+                                                                        system_ship_anim_x, system_ship_anim_y = start_pos_x, start_pos_y
+                                                                        system_trajectory_start_x, system_trajectory_start_y = start_pos_x, start_pos_y
+                                                                    
+                                                                    # Stop any current orbit
+                                                                    game_state.orbital.player_orbiting_planet = False
+                                                                    game_state.orbital.player_orbit_center = None
+                                                                    
+                                                                    add_event_log(f"Moving to planet at ({q}, {r}) to enter orbit")
+                                                                else:
+                                                                    add_event_log(f"Insufficient energy to reach planet at ({q}, {r}). Need {energy_cost}, have {player_ship.warp_core_energy}")
+                                                            else:
+                                                                add_event_log("Cannot find player position for orbital movement")
+                                                        
                                                         planet_found = True
                                                         break
                                         
@@ -2163,6 +2210,19 @@ try:
                         system_trajectory_start_x, system_trajectory_start_y = None, None  # Reset system trajectory tracking
                         add_event_log(f"Arrived at system hex ({system_dest_q}, {system_dest_r}) - Energy: {player_ship.warp_core_energy}/{player_ship.max_warp_core_energy}")
                         print(f"System ship arrived at hex ({system_dest_q}, {system_dest_r}), consumed {energy_cost} energy")
+                        
+                        # Check if there's a pending orbital request
+                        if pending_orbit_center is not None and pending_orbit_key is not None:
+                            # Start orbiting the planet we moved to
+                            game_state.orbital.player_orbiting_planet = True
+                            game_state.orbital.player_orbit_center = pending_orbit_center
+                            player_orbit_key = pending_orbit_key
+                            game_state.orbital.orbital_angle = 0.0
+                            add_event_log(f"Entering orbit around planet at ({system_dest_q}, {system_dest_r})")
+                            
+                            # Clear pending orbit
+                            pending_orbit_center = None
+                            pending_orbit_key = None
 
         # Draw destination indicator (red circle)
         if game_state.animation.ship_moving and game_state.animation.dest_q is not None and game_state.animation.dest_r is not None and game_state.map_mode == 'sector':
