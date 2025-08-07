@@ -24,6 +24,7 @@ from ui.sound_manager import get_sound_manager
 from ui.ship_status_display import create_ship_status_display
 from ui.enemy_scan_panel import create_enemy_scan_panel
 from ship.player_ship import PlayerShip
+from game.game_state import GameState
 from data import constants
 from data.constants import STARTING_ENERGY, PLAYER_SHIELD_CAPACITY
 
@@ -145,19 +146,14 @@ for coord, count in sorted(enemy_system_counts.items())[:10]:
     system_type = "STAR+PLANET" if is_star and has_planets else "STAR" if is_star else "EMPTY"
     log_debug(f"  {coord}: {count} enemies ({system_type})")
 
-# Set initial player position from lazy_object_coords['player']
+# Set initial player position from lazy_object_coords['player'] - will be set after GameState creation
 player_hexes = list(lazy_object_coords['player'])
 if player_hexes:
     ship_q, ship_r = player_hexes[0]
-    current_system = (ship_q, ship_r)
 else:
     ship_q, ship_r = 0, 0
-    current_system = (0, 0)
 
-# Ensure systems[current_system] always contains at least a star object
-if current_system not in systems or not any(obj.type == 'star' for obj in systems[current_system]):
-    print(f"[INIT] Adding missing star object to systems at {current_system}")
-    systems[current_system] = [MapObject('star', ship_q, ship_r)]
+# current_system will be set after GameState creation
 
 # Create proper PlayerShip instance with PRD-compliant systems
 player_ship = PlayerShip(
@@ -168,6 +164,27 @@ player_ship = PlayerShip(
     max_energy=STARTING_ENERGY,
     position=(ship_q, ship_r)
 )
+
+# Player object initialization will be done after GameState creation
+print(f"[INIT] star_coords: {star_coords}")
+print(f"[INIT] lazy_object_coords: {lazy_object_coords}")
+print(f"[INIT] systems: {systems}")
+
+# Initialize game state manager
+game_state = GameState()
+
+# Initialize weapon animation manager with combat systems
+game_state.initialize_weapon_system(player_ship.combat_manager, player_ship)
+
+# Set initial state from player position
+game_state.current_system = (ship_q, ship_r)
+current_system = game_state.current_system
+game_state.set_ship_position(ship_q, ship_r, hex_grid)
+
+# Ensure systems[current_system] always contains at least a star object
+if current_system not in systems or not any(obj.type == 'star' for obj in systems[current_system]):
+    print(f"[INIT] Adding missing star object to systems at {current_system}")
+    systems[current_system] = [MapObject('star', ship_q, ship_r)]
 
 # Ensure only one player object exists in the starting system
 if not any(obj.type == 'player' for obj in systems[current_system]):
@@ -183,21 +200,7 @@ else:
         player_obj.system_q = 10  # Center of 20x20 grid
         player_obj.system_r = 10
 
-# Note: scanned_systems will be initialized later
-
 print(f"[INIT] ship_q: {ship_q}, ship_r: {ship_r}, current_system: {current_system}")
-print(f"[INIT] star_coords: {star_coords}")
-print(f"[INIT] lazy_object_coords: {lazy_object_coords}")
-print(f"[INIT] systems: {systems}")
-
-# Map mode state
-map_mode = 'sector'  # or 'system'
-
-# Scan states
-sector_scan_active = False
-scanned_systems = set()
-# Automatically scan the starting system so player can move
-scanned_systems.add(current_system)
 
 # Button panel parameters
 BUTTON_W, BUTTON_H = 110, 35
@@ -210,24 +213,15 @@ CONTROL_PANEL_LABEL_SPACER = 50
 TOGGLE_BTN_Y = bottom_pane_y + CONTROL_PANEL_LABEL_SPACER
 BUTTON_COLOR = (100, 100, 180)
 
-# Button state tracking (3 buttons now)
-button_pressed = [False, False, False]
-toggle_btn_pressed = [False]  # Use list for mutability in handler
+# Button rectangles for click detection
 button_rects, toggle_btn_rect = [], None
 
 # --- Print button labels and indices at startup ---
 # Button labels (removed End Turn button)
-button_labels = ["Move", "Fire", "Scan"]
-# Button labels ready: ["Move", "Fire", "Scan"]
+button_labels = ["Move", "Fire", "Torpedo", "Scan"]
+# Button labels ready: ["Move", "Fire", "Torpedo", "Scan"]
 
-# Animated position (float, in pixels)
-ship_anim_x, ship_anim_y = hex_grid.get_hex_center(ship_q, ship_r)
-
-# Destination hex (None if not moving)
-dest_q, dest_r = None, None
-ship_moving = False
-
-# Trajectory start position for mid-flight destination changes
+# Trajectory start position for mid-flight destination changes (kept as local variables)
 trajectory_start_x, trajectory_start_y = None, None
 
 # Calculate max distance for ship speed
@@ -238,16 +232,9 @@ max_distance = math.hypot(corner2[0] - corner1[0], corner2[1] - corner1[1])
 FPS = 60
 SHIP_SPEED = max_distance / (2 * FPS)  # pixels per frame for 2s travel
 
-# Remove global SHIP_SPEED, use per-move speed
-move_ship_speed = None  # pixels per frame for current move
-move_frames = 2 * FPS  # 2 seconds at 60 FPS
-
-# Persistent system object state for scanned systems (for future save/load)
-system_object_states = {}
-
+# Game timing
 clock = pygame.time.Clock()
-move_start_time = None  # Time when movement started (in ms)
-move_duration_ms = 2000  # Always 2 seconds
+move_frames = 2 * FPS  # 2 seconds at 60 FPS
 
 # Stardate system
 class Stardate:
@@ -386,9 +373,7 @@ event_log = []
 last_debug_system = None
 
 # Enemy targeting system
-targeted_enemies = {}  # Dictionary: enemy_id -> enemy_object
-enemy_popups = {}      # Dictionary: enemy_id -> popup_window_info
-next_enemy_id = 1      # Counter for unique enemy IDs
+# Enemy and combat variables now managed by game_state
 
 # Planet animation state dictionary
 planet_anim_state = { (orbit['star'], orbit['planet']): orbit['angle'] for orbit in planet_orbits }
@@ -577,40 +562,34 @@ def draw_enemy_popup(popup_info):
 
 def update_enemy_popups():
     """Update and clean up enemy popups for destroyed ships."""
-    global enemy_popups, targeted_enemies
-    
     destroyed_enemies = []
-    for enemy_id, popup_info in enemy_popups.items():
+    for enemy_id, popup_info in game_state.scan.enemy_popups.items():
         enemy = popup_info['enemy_obj']
         # Check if enemy is destroyed
         if not hasattr(enemy, 'health') or enemy.health <= 0:
             destroyed_enemies.append(enemy_id)
         # Check if enemy is still in current system
-        elif enemy not in systems.get(current_system, []):
+        elif enemy not in systems.get(game_state.current_system, []):
             destroyed_enemies.append(enemy_id)
     
     # Remove destroyed enemies from tracking
     for enemy_id in destroyed_enemies:
-        if enemy_id in enemy_popups:
-            del enemy_popups[enemy_id]
-        if enemy_id in targeted_enemies:
-            del targeted_enemies[enemy_id]
-            add_event_log(f"Target {enemy_id} lost - popup closed")
+        game_state.remove_enemy_popup(enemy_id)
+        game_state.remove_targeted_enemy(enemy_id)
+        game_state.add_event_log(f"Target {enemy_id} lost - popup closed")
         # Remove from enemy scan panel
         enemy_scan_panel.remove_scan_result(enemy_id)
 
 def get_enemy_id(enemy_obj):
     """Get or assign a unique ID to an enemy object."""
-    global next_enemy_id
-    
     # Check if this enemy already has an ID
-    for enemy_id, tracked_enemy in targeted_enemies.items():
+    for enemy_id, tracked_enemy in game_state.combat.targeted_enemies.items():
         if tracked_enemy is enemy_obj:
             return enemy_id
     
-    # Assign new ID
-    enemy_id = next_enemy_id
-    next_enemy_id += 1
+    # Assign new ID and track the enemy
+    enemy_id = game_state.get_next_enemy_id()
+    game_state.add_targeted_enemy(enemy_id, enemy_obj)
     return enemy_id
 
 def perform_enemy_scan(enemy_obj, enemy_id):
@@ -619,7 +598,7 @@ def perform_enemy_scan(enemy_obj, enemy_id):
     import math
     
     # Calculate distance from player
-    player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
+    player_obj = next((obj for obj in systems.get(game_state.current_system, []) if obj.type == 'player'), None)
     if player_obj and hasattr(player_obj, 'system_q') and hasattr(player_obj, 'system_r'):
         dx = enemy_obj.system_q - player_obj.system_q
         dy = enemy_obj.system_r - player_obj.system_r
@@ -871,12 +850,8 @@ system_ship_anim_y = None
 system_dest_q = None
 system_dest_r = None
 
-# --- Player ship orbital state ---
-player_orbiting_planet = False
-player_orbit_center = None  # Planet position (px, py)
+# --- System movement state (local to system mode) ---
 player_orbit_key = None     # (star, planet) key to track which planet we're orbiting
-player_orbit_radius = 60    # Orbit radius in pixels
-player_orbit_angle = 0.0    # Current angle
 player_orbit_speed = 0.4    # Radians per second (reduced for more realistic movement)
 system_ship_moving = False
 system_move_start_time = None
@@ -885,10 +860,7 @@ system_move_duration_ms = 1000  # 1 second for system moves
 # System trajectory start position for mid-flight destination changes
 system_trajectory_start_x, system_trajectory_start_y = None, None
 
-# --- Phaser firing state ---
-selected_enemy = None
-phaser_animating = False
-phaser_anim_start = 0
+# --- Phaser animation constants ---
 phaser_anim_duration = 500  # ms
 phaser_pulse_count = 5
 # Use constants for phaser damage
@@ -927,11 +899,7 @@ def add_event_log(message):
     # Split on newlines and handle each part
     for line in message.split('\n'):
         if line.strip():  # Only add non-empty lines
-            event_log.append(line.strip())
-    
-    # Keep within max lines limit
-    while len(event_log) > EVENT_LOG_MAX_LINES:
-        event_log.pop(0)
+            game_state.add_event_log(line.strip(), EVENT_LOG_MAX_LINES)
 
 logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
 
@@ -949,11 +917,114 @@ try:
     running = True
     while running:
         screen.fill(COLOR_BG)
+        
+        # Update weapon animations and handle combat events
+        current_time = pygame.time.get_ticks()
+        weapon_events = game_state.weapon_animation_manager.update(current_time)
+        
+        # Handle weapon combat events
+        if weapon_events['phaser_completed']:
+            phaser_event = weapon_events['phaser_completed']
+            combat_result = phaser_event['damage_info']
+            updated_result = phaser_event['combat_result']
+            
+            # Log damage results
+            if combat_result['shield_damage'] > 0 and combat_result['hull_damage'] > 0:
+                add_event_log(f"Phaser hit! Range: {combat_result['distance']:.1f} hexes - Shields: {combat_result['shield_damage']} Hull: {combat_result['hull_damage']}")
+            elif combat_result['shield_damage'] > 0:
+                add_event_log(f"Phaser hit shields! Range: {combat_result['distance']:.1f} hexes - Damage: {combat_result['shield_damage']}")
+            elif combat_result['hull_damage'] > 0:
+                add_event_log(f"Hull breach! Range: {combat_result['distance']:.1f} hexes - Damage: {combat_result['hull_damage']}")
+            elif combat_result['damage_calculated'] > 0:
+                add_event_log(f"Phaser hit! Range: {combat_result['distance']:.1f} hexes - Absorbed by shields")
+            else:
+                add_event_log(f"Phaser beam too weak! Range: {combat_result['distance']:.1f} hexes - Increase power allocation")
+            
+            # Update scan panel
+            enemy_id = None
+            for eid, enemy_obj in game_state.combat.targeted_enemies.items():
+                if enemy_obj is phaser_event['target_enemy']:
+                    enemy_id = eid
+                    break
+            
+            if enemy_id and enemy_id in enemy_scan_panel.scanned_enemies:
+                enemy_scan_panel.scanned_enemies[enemy_id]['hull'] = updated_result['target_health']
+                enemy_scan_panel.scanned_enemies[enemy_id]['max_hull'] = updated_result['target_max_health']
+                enemy_scan_panel.scanned_enemies[enemy_id]['shields'] = updated_result['target_shields']
+                enemy_scan_panel.scanned_enemies[enemy_id]['max_shields'] = updated_result['target_max_shields']
+            
+            # Check if target destroyed
+            if combat_result['target_destroyed']:
+                add_event_log("Enemy ship destroyed!")
+                systems[current_system].remove(phaser_event['target_enemy'])
+                if enemy_id:
+                    enemy_scan_panel.remove_scan_result(enemy_id)
+                game_state.combat.selected_enemy = None
+        
+        if weapon_events['torpedo_hit']:
+            torpedo_event = weapon_events['torpedo_hit']
+            combat_result = torpedo_event['damage_info']
+            updated_result = torpedo_event['combat_result']
+            
+            # Log damage results
+            if combat_result['shield_damage'] > 0 and combat_result['hull_damage'] > 0:
+                add_event_log(f"Torpedo hit! Shields: {combat_result['shield_damage']} Hull: {combat_result['hull_damage']}")
+            elif combat_result['shield_damage'] > 0:
+                add_event_log(f"Torpedo hit shields for {combat_result['shield_damage']} damage")
+            elif combat_result['hull_damage'] > 0:
+                add_event_log(f"Hull breach! Torpedo damage: {combat_result['hull_damage']}")
+            
+            # Update scan panel
+            enemy_id = None
+            for eid, enemy_obj in game_state.combat.targeted_enemies.items():
+                if enemy_obj is torpedo_event['target_enemy']:
+                    enemy_id = eid
+                    break
+            
+            if enemy_id and enemy_id in enemy_scan_panel.scanned_enemies:
+                enemy_scan_panel.scanned_enemies[enemy_id]['hull'] = updated_result['target_health']
+                enemy_scan_panel.scanned_enemies[enemy_id]['max_hull'] = updated_result['target_max_health']
+                enemy_scan_panel.scanned_enemies[enemy_id]['shields'] = updated_result['target_shields']
+                enemy_scan_panel.scanned_enemies[enemy_id]['max_shields'] = updated_result['target_max_shields']
+            
+            # Check if target destroyed
+            if combat_result['target_destroyed']:
+                add_event_log("Enemy ship destroyed by torpedo!")
+                systems[current_system].remove(torpedo_event['target_enemy'])
+                if enemy_id:
+                    enemy_scan_panel.remove_scan_result(enemy_id)
+                    del game_state.combat.targeted_enemies[enemy_id]
+                    if enemy_id in game_state.scan.enemy_popups:
+                        del game_state.scan.enemy_popups[enemy_id]
+                game_state.combat.selected_enemy = None
+        
+        if weapon_events['torpedo_miss']:
+            torpedo_event = weapon_events['torpedo_miss']
+            add_event_log(f"Torpedo missed target! Hit chance was {torpedo_event['hit_chance']:.0%}")
         # Status/Tooltip Panel (top)
         status_rect = pygame.Rect(0, 0, WIDTH, STATUS_HEIGHT)
         pygame.draw.rect(screen, COLOR_STATUS, status_rect)
         status_label = label_font.render('Status/Tooltip Panel', True, COLOR_TEXT)
         screen.blit(status_label, (10, 8))
+        # Weapon Cooldown Display (just left of stardate)
+        cooldown_y = 8
+        cooldown_x = WIDTH - 320
+        
+        # Phaser Cooldown
+        if hasattr(player_ship, 'phaser_system') and player_ship.phaser_system.is_on_cooldown():
+            cooldown_time = (player_ship.phaser_system._last_fired_time + player_ship.phaser_system.cooldown_seconds) - time.time()
+            if cooldown_time > 0:
+                cooldown_label = font.render(f"Phasers: {cooldown_time:.1f}s", True, (255, 255, 0))  # Yellow color
+                screen.blit(cooldown_label, (cooldown_x, cooldown_y))
+                cooldown_y += 20  # Move next cooldown down
+        
+        # Torpedo Cooldown
+        if hasattr(player_ship, 'torpedo_system') and player_ship.torpedo_system.is_on_cooldown():
+            cooldown_time = (player_ship.torpedo_system._last_fired_time + player_ship.torpedo_system.cooldown_seconds) - time.time()
+            if cooldown_time > 0:
+                cooldown_label = font.render(f"Torpedoes: {cooldown_time:.1f}s", True, (255, 100, 100))  # Reddish color
+                screen.blit(cooldown_label, (cooldown_x, cooldown_y))
+        
         # Stardate Display
         stardate_label = font.render(stardate_system.format_stardate(), True, COLOR_TEXT)
         screen.blit(stardate_label, (WIDTH - 180, 8))
@@ -970,9 +1041,9 @@ try:
             screen.blit(background_img, (map_x, map_y))
 
         # Draw stars in background (before hex grid) for system view
-        if map_mode == 'system':
+        if game_state.map_mode == 'system':
             # Draw stars that occupy 4 hexes - in background
-            for obj in systems.get(current_system, []):
+            for obj in systems.get(game_state.current_system, []):
                 if obj.type == 'star':
                     if not hasattr(obj, 'system_q') or not hasattr(obj, 'system_r'):
                         obj.system_q = random.randint(1, hex_grid.cols - 2)
@@ -1024,17 +1095,17 @@ try:
 
         # --- FOG OF WAR OVERLAY (draw early to hide objects) ---
         # Only apply fog of war to sector map, not system maps
-        if map_mode == 'sector':
+        if game_state.map_mode == 'sector':
             for row in range(hex_grid.rows):
                 for col in range(hex_grid.cols):
-                    if (col, row) not in scanned_systems:
+                    if (col, row) not in game_state.scan.scanned_systems:
                         cx, cy = hex_grid.get_hex_center(col, row)
                         hex_grid.draw_fog_hex(screen, cx, cy, color=(200, 200, 200), alpha=153)
 
         # Draw objects on the grid
-        if map_mode == 'sector':
+        if game_state.map_mode == 'sector':
             # Only draw system indicators if a sector scan has been done
-            if sector_scan_active:
+            if game_state.scan.sector_scan_active:
                 # Show indicator for any hex that has actual systems (not individual planets)
                 # Stars have systems, lazy objects have systems, but planets orbit around stars elsewhere
                 occupied_hexes = set(star_coords)
@@ -1265,15 +1336,15 @@ try:
                         elif obj.type == 'player':
                             color = (0, 255, 255)
                             # Draw player ship at appropriate position
-                            if (player_orbiting_planet or system_ship_moving) and system_ship_anim_x is not None and system_ship_anim_y is not None:
+                            if (game_state.orbital.player_orbiting_planet or system_ship_moving) and system_ship_anim_x is not None and system_ship_anim_y is not None:
                                 pygame.draw.circle(screen, color, (int(system_ship_anim_x), int(system_ship_anim_y)), 8)
                             else:
                                 pygame.draw.circle(screen, color, (int(px), int(py)), 8)
 
         # Draw player ship
-        if map_mode == 'sector':
+        if game_state.map_mode == 'sector':
             pygame.draw.circle(
-                screen, (0, 255, 255), (int(ship_anim_x), int(ship_anim_y)), 8
+                screen, (0, 255, 255), (int(game_state.animation.ship_anim_x), int(game_state.animation.ship_anim_y)), 8
             )
         else:
             # In system mode, remove the separate player_in_system drawing block, as the above already draws the player from system objects
@@ -1303,7 +1374,7 @@ try:
         
         # Process and render each log entry with wrapping
         rendered_lines = 0
-        for line in event_log[-EVENT_LOG_MAX_LINES:]:
+        for line in game_state.ui.event_log[-EVENT_LOG_MAX_LINES:]:
             if rendered_lines >= EVENT_LOG_MAX_LINES:
                 break
                 
@@ -1349,7 +1420,7 @@ try:
             font,
             BUTTON_COLOR,
             COLOR_TEXT,
-            map_mode,
+            game_state.map_mode,
             TOGGLE_BTN_W,
             TOGGLE_BTN_H,
             TOGGLE_BTN_Y
@@ -1363,12 +1434,12 @@ try:
 
             # Handle button events first
             if button_rects and toggle_btn_rect:
-                (button_pressed,
-                 toggle_btn_pressed,
+                (game_state.ui.button_pressed,
+                 game_state.ui.toggle_btn_pressed,
                  clicked_index,
                  toggle_clicked) = handle_button_events(
-                    event, button_rects, toggle_btn_rect, button_pressed,
-                    toggle_btn_pressed
+                    event, button_rects, toggle_btn_rect, game_state.ui.button_pressed,
+                    game_state.ui.toggle_btn_pressed
                 )
                 if clicked_index is not None:
                     label = button_labels[clicked_index] if clicked_index < len(button_labels) else str(clicked_index)
@@ -1376,40 +1447,82 @@ try:
                     # --- Use label-based action selection ---
                     if label == "Move":
                         add_event_log("Move mode: Click on a hex to navigate")
+                    elif label == "Torpedo":
+                        print(f"[DEBUG] Entered Torpedo button handler: map_mode={game_state.map_mode}, selected_enemy={game_state.combat.selected_enemy}")
+                        
+                        # Check if torpedoes are on cooldown first
+                        if player_ship.torpedo_system.is_on_cooldown():
+                            cooldown_time = (player_ship.torpedo_system._last_fired_time + player_ship.torpedo_system.cooldown_seconds) - time.time()
+                            add_event_log(f"Torpedoes reloading - {cooldown_time:.1f}s remaining")
+                            sound_manager.play_sound('error')  # Play error sound if available
+                            continue  # Skip the rest of the torpedo logic
+                        
+                        # Fire torpedoes at selected enemy (only works in system mode)
+                        if game_state.map_mode == 'system':
+                            print("[DEBUG] In system mode")
+                            if game_state.combat.selected_enemy is not None:
+                                print(f"[DEBUG] game_state.combat.selected_enemy is not None: {game_state.combat.selected_enemy}")
+                                player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
+                                print(f"[DEBUG] player_obj found: {player_obj}")
+                                
+                                if player_obj is not None and hasattr(player_obj, 'system_q') and hasattr(game_state.combat.selected_enemy, 'system_q'):
+                                    dx = game_state.combat.selected_enemy.system_q - player_obj.system_q
+                                    dy = game_state.combat.selected_enemy.system_r - player_obj.system_r
+                                    distance = math.hypot(dx, dy)
+                                    
+                                    # Get start and target positions for animation
+                                    start_pos = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+                                    target_pos = hex_grid.get_hex_center(game_state.combat.selected_enemy.system_q, game_state.combat.selected_enemy.system_r)
+                                    
+                                    # Fire torpedo using weapon animation manager
+                                    result = game_state.weapon_animation_manager.fire_torpedo(
+                                        game_state.combat.selected_enemy, distance, start_pos, target_pos
+                                    )
+                                    
+                                    if result['success']:
+                                        add_event_log("Torpedo launched!")
+                                    else:
+                                        add_event_log(f"Torpedo launch failed: {result.get('reason', 'Unknown error')}")
+                                else:
+                                    add_event_log("Cannot determine target position")
+                            else:
+                                add_event_log("No enemy target selected. Right-click an enemy to target it first.")
+                        else:
+                            add_event_log("Torpedoes can only be fired in system view")
                     elif label == "Scan":
                         print("Scan initiated!")
                         # Play scanner sound effect
                         sound_manager.play_sound('scanner')
-                        if map_mode == 'sector':
-                            sector_scan_active = True
+                        if game_state.map_mode == 'sector':
+                            game_state.scan.sector_scan_active = True
                             add_event_log("Long-range sensors activated. All systems revealed.")
                             print("Sector scan active. All systems revealed.")
-                        elif map_mode == 'system':
+                        elif game_state.map_mode == 'system':
                             # Check if we have targeted enemies to scan
-                            if targeted_enemies:
-                                print(f"[DEBUG] Scanning {len(targeted_enemies)} targeted enemies")
+                            if game_state.combat.targeted_enemies:
+                                print(f"[DEBUG] Scanning {len(game_state.combat.targeted_enemies)} targeted enemies")
                                 # Create/show popups for all targeted enemies
                                 new_popups = 0
-                                for enemy_id, enemy_obj in targeted_enemies.items():
+                                for enemy_id, enemy_obj in game_state.combat.targeted_enemies.items():
                                     print(f"[DEBUG] Processing enemy {enemy_id}")
-                                    if enemy_id not in enemy_popups:
+                                    if enemy_id not in game_state.scan.enemy_popups:
                                         # Create new popup for this enemy
                                         popup_info = create_enemy_popup(enemy_id, enemy_obj)
-                                        enemy_popups[enemy_id] = popup_info
+                                        game_state.scan.enemy_popups[enemy_id] = popup_info
                                         new_popups += 1
                                         print(f"[DEBUG] Created popup for enemy {enemy_id}")
                                     # Show the popup
-                                    enemy_popups[enemy_id]['visible'] = True
-                                    print(f"[DEBUG] Popup {enemy_id} visible: {enemy_popups[enemy_id]['visible']}")
+                                    game_state.scan.enemy_popups[enemy_id]['visible'] = True
+                                    print(f"[DEBUG] Popup {enemy_id} visible: {game_state.scan.enemy_popups[enemy_id]['visible']}")
                                 
                                 if new_popups > 0:
                                     add_event_log(f"Scanning {new_popups} targeted enemies - detailed sensor data displayed")
                                 else:
-                                    add_event_log(f"Updating sensor data for {len(targeted_enemies)} targeted enemies")
+                                    add_event_log(f"Updating sensor data for {len(game_state.combat.targeted_enemies)} targeted enemies")
                             else:
                                 # No targeted enemies, perform system scan as before
-                                if current_system not in scanned_systems:
-                                    scanned_systems.add(current_system)
+                                if current_system not in game_state.scan.scanned_systems:
+                                    game_state.scan.scanned_systems.add(current_system)
                                     add_event_log("System scan complete. No enemies targeted - right-click enemies to target them for detailed scans.")
                                     
                                     # Only generate/modify system objects if not already scanned
@@ -1467,7 +1580,7 @@ try:
                                     
                                     # Only update systems if this is a first-time scan
                                     systems[current_system] = system_objs
-                                    system_object_states[current_system] = [
+                                    game_state.system_object_states[current_system] = [
                                         {
                                             'type': obj.type,
                                             'q': obj.q,
@@ -1513,12 +1626,20 @@ try:
                                     # System already scanned, just inform user
                                     add_event_log("System already scanned. Right-click enemies to target them for detailed scans.")
                     elif label == "Fire":
-                        print(f"[DEBUG] Entered Fire button handler: map_mode={map_mode}, selected_enemy={selected_enemy}")
+                        print(f"[DEBUG] Entered Fire button handler: map_mode={game_state.map_mode}, selected_enemy={game_state.combat.selected_enemy}")
+                        
+                        # Check if phasers are on cooldown first
+                        if player_ship.phaser_system.is_on_cooldown():
+                            cooldown_time = (player_ship.phaser_system._last_fired_time + player_ship.phaser_system.cooldown_seconds) - time.time()
+                            add_event_log(f"Phasers recharging - {cooldown_time:.1f}s remaining")
+                            sound_manager.play_sound('error')  # Play error sound if available
+                            continue  # Skip the rest of the fire logic
+                        
                         # Fire phasers at selected enemy (only works in system mode)
-                        if map_mode == 'system':
+                        if game_state.map_mode == 'system':
                             print("[DEBUG] In system mode")
-                            if selected_enemy is not None:
-                                print(f"[DEBUG] selected_enemy is not None: {selected_enemy}")
+                            if game_state.combat.selected_enemy is not None:
+                                print(f"[DEBUG] game_state.combat.selected_enemy is not None: {game_state.combat.selected_enemy}")
                                 player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
                                 print(f"[DEBUG] player_obj found: {player_obj}")
                                 if player_obj is None:
@@ -1545,27 +1666,27 @@ try:
                                         systems[current_system].append(player_obj)
                                         print("[DEBUG] Player object added at fallback (0, 0)")
                                 # Continue with phaser logic as before
-                                if player_obj is not None and hasattr(player_obj, 'system_q') and hasattr(selected_enemy, 'system_q'):
-                                    dx = selected_enemy.system_q - player_obj.system_q
-                                    dy = selected_enemy.system_r - player_obj.system_r
+                                if player_obj is not None and hasattr(player_obj, 'system_q') and hasattr(game_state.combat.selected_enemy, 'system_q'):
+                                    dx = game_state.combat.selected_enemy.system_q - player_obj.system_q
+                                    dy = game_state.combat.selected_enemy.system_r - player_obj.system_r
                                     distance = math.hypot(dx, dy)
-                                    print(f"[DEBUG] Player pos: ({player_obj.system_q}, {player_obj.system_r})")
-                                    print(f"[DEBUG] Enemy pos: ({selected_enemy.system_q}, {selected_enemy.system_r})")
-                                    print(f"[DEBUG] Phaser fire: distance={distance}")
                                     if distance <= phaser_range:
-                                        print("[DEBUG] Enemy in range. Starting phaser animation.")
-                                        phaser_animating = True
-                                        phaser_anim_start = pygame.time.get_ticks()
-                                        # Play phaser sequence: shot followed by explosion
-                                        sound_manager.play_phaser_sequence()
-                                        add_event_log(f"Firing phasers! Range: {distance:.1f} hexes")
+                                        # Fire phaser using weapon animation manager
+                                        result = game_state.weapon_animation_manager.fire_phaser(
+                                            game_state.combat.selected_enemy, distance
+                                        )
+                                        
+                                        if result['success']:
+                                            # Play phaser sequence: shot followed by explosion
+                                            sound_manager.play_phaser_sequence()
+                                            add_event_log("Phaser fired!")
+                                        else:
+                                            add_event_log(f"Phaser fire failed: {result.get('reason', 'Unknown error')}")
                                     else:
-                                        print("[DEBUG] Enemy out of range. No phaser animation.")
                                         add_event_log(f"Target out of range! Max range: {phaser_range} hexes")
                                 else:
                                     add_event_log("No target selected! Right-click an enemy ship.")
                             else:
-                                print("[DEBUG] selected_enemy is None")
                                 add_event_log("No target selected! Right-click an enemy ship.")
                         else:
                             add_event_log("Weapons offline in sector view. Enter a system first.")
@@ -1574,9 +1695,9 @@ try:
                     print("Toggle button clicked")
                     # Play keypress sound effect
                     sound_manager.play_sound('keypress')
-                    new_mode = 'system' if map_mode == 'sector' else 'sector'
+                    new_mode = 'system' if game_state.map_mode == 'sector' else 'sector'
                     add_event_log(f"Switched to {new_mode} view")
-                    map_mode = new_mode
+                    game_state.map_mode = new_mode
 
             # Handle ship status display clicks first
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1588,13 +1709,13 @@ try:
             # Then handle map click events
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
-                if map_rect.collidepoint(mx, my) and map_mode == 'sector':
+                if map_rect.collidepoint(mx, my) and game_state.map_mode == 'sector':
                     q, r = hex_grid.pixel_to_hex(mx, my)
                     if q is not None and r is not None:
                         # Determine starting position for trajectory calculation
-                        if ship_moving:
+                        if game_state.animation.ship_moving:
                             # Ship is mid-flight - use current animated position as starting point
-                            start_hex_q, start_hex_r = hex_grid.pixel_to_hex(ship_anim_x, ship_anim_y)
+                            start_hex_q, start_hex_r = hex_grid.pixel_to_hex(game_state.animation.ship_anim_x, game_state.animation.ship_anim_y)
                             if start_hex_q is None or start_hex_r is None:
                                 # Fallback to current ship position if conversion fails
                                 start_hex_q, start_hex_r = ship_q, ship_r
@@ -1610,7 +1731,7 @@ try:
                         
                         # Calculate energy cost: 20 for initiation + 10 per sector
                         # Note: For mid-flight changes, we don't charge initiation cost again
-                        if ship_moving:
+                        if game_state.animation.ship_moving:
                             energy_cost = distance * constants.WARP_ENERGY_COST  # No initiation cost for redirects
                             action_msg = "Changing course"
                         else:
@@ -1619,12 +1740,12 @@ try:
                         
                         # Check if player has enough energy
                         if player_ship.warp_core_energy >= energy_cost:
-                            dest_q, dest_r = q, r
-                            ship_moving = True
-                            move_start_time = pygame.time.get_ticks()
+                            game_state.animation.dest_q, game_state.animation.dest_r = q, r
+                            game_state.animation.ship_moving = True
+                            game_state.animation.move_start_time = pygame.time.get_ticks()
                             # Set trajectory start position (current animated position for mid-flight changes)
-                            trajectory_start_x, trajectory_start_y = ship_anim_x, ship_anim_y
-                            end_x, end_y = hex_grid.get_hex_center(dest_q, dest_r)
+                            trajectory_start_x, trajectory_start_y = game_state.animation.ship_anim_x, game_state.animation.ship_anim_y
+                            end_x, end_y = hex_grid.get_hex_center(game_state.animation.dest_q, game_state.animation.dest_r)
                             # Play warp sound for sector map movement
                             sound_manager.play_sound('warp')
                             add_event_log(f"{action_msg} for sector ({q}, {r}) - Energy cost: {energy_cost}")
@@ -1632,7 +1753,7 @@ try:
                         else:
                             add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
                             sound_manager.play_sound('error')  # Play error sound if available
-                elif map_rect.collidepoint(mx, my) and map_mode == 'system' and current_system in scanned_systems:
+                elif map_rect.collidepoint(mx, my) and game_state.map_mode == 'system' and current_system in game_state.scan.scanned_systems:
                     # System map navigation
                     # Find player object in current system
                     player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
@@ -1667,10 +1788,10 @@ try:
                                                     planet_hexes = get_planet_hexes(planet_q, planet_r)
                                                     if (q, r) in planet_hexes:
                                                         # Start orbiting this planet
-                                                        player_orbiting_planet = True
-                                                        player_orbit_center = (planet_px, planet_py)
+                                                        game_state.orbital.player_orbiting_planet = True
+                                                        game_state.orbital.player_orbit_center = (planet_px, planet_py)
                                                         player_orbit_key = key
-                                                        player_orbit_angle = 0.0
+                                                        game_state.orbital.orbital_angle = 0.0
                                                         system_ship_moving = False  # Stop any current movement
                                                         add_event_log(f"Entering orbit around planet at ({q}, {r})")
                                                         planet_found = True
@@ -1684,9 +1805,9 @@ try:
                                     add_event_log(f"Cannot move to ({q}, {r}) - blocked by {block_type}!")
                             else:
                                 # Exit orbit mode if player was orbiting a planet
-                                if player_orbiting_planet:
-                                    player_orbiting_planet = False
-                                    player_orbit_center = None
+                                if game_state.orbital.player_orbiting_planet:
+                                    game_state.orbital.player_orbiting_planet = False
+                                    game_state.orbital.player_orbit_center = None
                                     player_orbit_key = None
                                     add_event_log("Breaking orbit")
                                 
@@ -1737,7 +1858,7 @@ try:
             # Right-click: target enemy in system mode
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:  # Right mouse button
                 mx, my = event.pos
-                if map_rect.collidepoint(mx, my) and map_mode == 'system':
+                if map_rect.collidepoint(mx, my) and game_state.map_mode == 'system':
                     q, r = hex_grid.pixel_to_hex(mx, my)
                     print(f"[DEBUG] Right-click at pixel=({mx},{my}), hex=({q},{r})")
                     print("[DEBUG] Enemy objects in current system:")
@@ -1758,15 +1879,15 @@ try:
                             enemy_id = get_enemy_id(found_enemy)
                             
                             # Always update selected_enemy to allow target switching
-                            selected_enemy = found_enemy
+                            game_state.combat.selected_enemy = found_enemy
                             
                             # Check if this enemy is already in targeted_enemies
-                            if enemy_id in targeted_enemies:
+                            if enemy_id in game_state.combat.targeted_enemies:
                                 add_event_log(f"Switching target to {enemy_id}")
                                 print(f"[DEBUG] Switched target to existing enemy {enemy_id}")
                             else:
                                 # Add to targeted enemies for the first time
-                                targeted_enemies[enemy_id] = found_enemy
+                                game_state.combat.targeted_enemies[enemy_id] = found_enemy
                                 add_event_log(f"Target {enemy_id} acquired at ({q}, {r})")
                                 print(f"[DEBUG] New enemy {enemy_id} targeted at ({found_enemy.system_q}, {found_enemy.system_r})")
                             
@@ -1774,37 +1895,37 @@ try:
                             perform_enemy_scan(found_enemy, enemy_id)
                             
                             print(f"[DEBUG] Active target is now enemy {enemy_id}")
-                            print(f"[DEBUG] targeted_enemies contains {len(targeted_enemies)} total enemies")
+                            print(f"[DEBUG] targeted_enemies contains {len(game_state.combat.targeted_enemies)} total enemies")
                         else:
                             add_event_log(f"No enemy at ({q}, {r})")
 
         # Update ship position (delta time based)
-        if ship_moving and dest_q is not None and dest_r is not None:
+        if game_state.animation.ship_moving and game_state.animation.dest_q is not None and game_state.animation.dest_r is not None:
             now = pygame.time.get_ticks()
-            elapsed = now - move_start_time if move_start_time is not None else 0
+            elapsed = now - game_state.animation.move_start_time if game_state.animation.move_start_time is not None else 0
             # Use trajectory start position if available, otherwise fall back to ship hex position
             if trajectory_start_x is not None and trajectory_start_y is not None:
                 start_x, start_y = trajectory_start_x, trajectory_start_y
             else:
                 start_x, start_y = hex_grid.get_hex_center(ship_q, ship_r)
-            end_x, end_y = hex_grid.get_hex_center(dest_q, dest_r)
-            t = min(elapsed / move_duration_ms, 1.0)
-            ship_anim_x = start_x + (end_x - start_x) * t
-            ship_anim_y = start_y + (end_y - start_y) * t
+            end_x, end_y = hex_grid.get_hex_center(game_state.animation.dest_q, game_state.animation.dest_r)
+            t = min(elapsed / game_state.animation.move_duration_ms, 1.0)
+            game_state.animation.ship_anim_x = start_x + (end_x - start_x) * t
+            game_state.animation.ship_anim_y = start_y + (end_y - start_y) * t
             if t >= 1.0:
                 # Arrived at destination
-                ship_anim_x, ship_anim_y = end_x, end_y
+                game_state.animation.ship_anim_x, game_state.animation.ship_anim_y = end_x, end_y
                 
                 # Calculate and consume energy for the warp travel
-                dx = abs(dest_q - ship_q)
-                dy = abs(dest_r - ship_r)
+                dx = abs(game_state.animation.dest_q - ship_q)
+                dy = abs(game_state.animation.dest_r - ship_r)
                 distance = max(dx, dy)
                 energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
                 player_ship.consume_energy(energy_cost)
                 
-                ship_q, ship_r = dest_q, dest_r
-                ship_moving = False
-                move_start_time = None
+                ship_q, ship_r = game_state.animation.dest_q, game_state.animation.dest_r
+                game_state.animation.ship_moving = False
+                game_state.animation.move_start_time = None
                 trajectory_start_x, trajectory_start_y = None, None  # Reset trajectory tracking
                 logging.info(f"[MOVE] Ship arrived at ({ship_q}, {ship_r}), consumed {energy_cost} energy")
                 add_event_log(f"Arrived at sector ({ship_q}, {ship_r}) - Energy: {player_ship.warp_core_energy}/{player_ship.max_warp_core_energy}")
@@ -1819,20 +1940,21 @@ try:
                 else:
                     add_event_log(f"Arrived at coordinate ({ship_q}, {ship_r})")
                 
-                map_mode = 'system'
-                current_system = (ship_q, ship_r)
+                game_state.map_mode = 'system'
+                game_state.current_system = (ship_q, ship_r)
+                current_system = game_state.current_system
                 
                 # Clear enemy tracking data when entering new system
                 enemy_scan_panel.clear_scans()
-                enemy_popups.clear()
-                targeted_enemies.clear()
-                selected_enemy = None
+                game_state.scan.enemy_popups.clear()
+                game_state.combat.targeted_enemies.clear()
+                game_state.combat.selected_enemy = None
                 add_event_log("Enemy scan data cleared - new system")
                 
                 # Break orbital state when entering a new system
-                if player_orbiting_planet:
-                    player_orbiting_planet = False
-                    player_orbit_center = None
+                if game_state.orbital.player_orbiting_planet:
+                    game_state.orbital.player_orbiting_planet = False
+                    game_state.orbital.player_orbit_center = None
                     player_orbit_key = None
                     system_ship_anim_x = None
                     system_ship_anim_y = None
@@ -1872,7 +1994,7 @@ try:
                     )
                     systems[current_system] = system_objs
                     log_debug(f"[WIREFRAME] generate_system_objects returned {len(system_objs)} objects")
-                    system_object_states[current_system] = [
+                    game_state.system_object_states[current_system] = [
                         {
                             'type': obj.type,
                             'q': obj.q,
@@ -1977,15 +2099,15 @@ try:
                         log_debug(f"[WIREFRAME] WARNING: Expected {enemy_count_expected} enemies but found 0 in {system_type} system")
                 
                 # Mark as scanned if it wasn't already
-                if current_system not in scanned_systems:
-                    scanned_systems.add(current_system)
+                if current_system not in game_state.scan.scanned_systems:
+                    game_state.scan.scanned_systems.add(current_system)
 
         # Update player ship position (orbital or linear movement)
-        if map_mode == 'system':
-            if player_orbiting_planet and player_orbit_center is not None:
+        if game_state.map_mode == 'system':
+            if game_state.orbital.player_orbiting_planet and game_state.orbital.player_orbit_center is not None:
                 # Update orbital animation
                 dt = clock.get_time() / 1000.0
-                player_orbit_angle += player_orbit_speed * dt
+                game_state.orbital.orbital_angle += game_state.orbital.orbital_speed * dt
                 
                 # Update the planet's position (since planets orbit stars)
                 # Find the specific planet that the player is orbiting using the stored key
@@ -2002,11 +2124,11 @@ try:
                             planet_py = star_py + orbit_radius_px * math.sin(angle)
                             
                             # Update the orbit center to follow the planet
-                            player_orbit_center = (planet_px, planet_py)
+                            game_state.orbital.player_orbit_center = (planet_px, planet_py)
                 
                 # Calculate player ship position in orbit around planet
-                system_ship_anim_x = player_orbit_center[0] + player_orbit_radius * math.cos(player_orbit_angle)
-                system_ship_anim_y = player_orbit_center[1] + player_orbit_radius * math.sin(player_orbit_angle)
+                system_ship_anim_x = game_state.orbital.player_orbit_center[0] + game_state.orbital.orbital_radius * math.cos(game_state.orbital.orbital_angle)
+                system_ship_anim_y = game_state.orbital.player_orbit_center[1] + game_state.orbital.orbital_radius * math.sin(game_state.orbital.orbital_angle)
                 
             elif system_ship_moving and system_dest_q is not None and system_dest_r is not None:
                 # Regular movement animation
@@ -2043,16 +2165,17 @@ try:
                         print(f"System ship arrived at hex ({system_dest_q}, {system_dest_r}), consumed {energy_cost} energy")
 
         # Draw destination indicator (red circle)
-        if ship_moving and dest_q is not None and dest_r is not None and map_mode == 'sector':
-            dest_x, dest_y = hex_grid.get_hex_center(dest_q, dest_r)
+        if game_state.animation.ship_moving and game_state.animation.dest_q is not None and game_state.animation.dest_r is not None and game_state.map_mode == 'sector':
+            dest_x, dest_y = hex_grid.get_hex_center(game_state.animation.dest_q, game_state.animation.dest_r)
             pygame.draw.circle(screen, (255, 0, 0), (int(dest_x), int(dest_y)), 8)
         # Draw system map destination indicator
-        if system_ship_moving and system_dest_q is not None and system_dest_r is not None and map_mode == 'system':
+        if system_ship_moving and system_dest_q is not None and system_dest_r is not None and game_state.map_mode == 'system':
             dest_x, dest_y = hex_grid.get_hex_center(system_dest_q, system_dest_r)
             pygame.draw.circle(screen, (255, 0, 0), (int(dest_x), int(dest_y)), 8)
 
         # --- Phaser animation drawing ---
-        if phaser_animating and selected_enemy is not None:
+        phaser_anim_data = game_state.weapon_animation_manager.get_phaser_animation_data(current_time)
+        if phaser_anim_data and phaser_anim_data['active']:
             # Find player and enemy positions
             player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
             if player_obj is not None:
@@ -2061,114 +2184,156 @@ try:
                     px1, py1 = system_ship_anim_x, system_ship_anim_y
                 else:
                     px1, py1 = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
-                px2, py2 = hex_grid.get_hex_center(selected_enemy.system_q, selected_enemy.system_r)
-                now = pygame.time.get_ticks()
-                elapsed = now - phaser_anim_start
-                t = min(elapsed / phaser_anim_duration, 1.0)
+                px2, py2 = hex_grid.get_hex_center(phaser_anim_data['target_enemy'].system_q, phaser_anim_data['target_enemy'].system_r)
                 # Draw a thick laser line (yellow/red)
-                color = (255, 255, 0) if (now // 100) % 2 == 0 else (255, 0, 0)
+                color = (255, 255, 0) if (current_time // 100) % 2 == 0 else (255, 0, 0)
                 pygame.draw.line(screen, color, (int(px1), int(py1)), (int(px2), int(py2)), 4)
-                if t >= 1.0:
-                    # Animation done, apply damage
-                    # Initialize enemy systems if not present
-                    if not hasattr(selected_enemy, 'health'):
-                        selected_enemy.health = 100
-                    if not hasattr(selected_enemy, 'max_health'):
-                        selected_enemy.max_health = 100
-                    if not hasattr(selected_enemy, 'shields'):
-                        selected_enemy.shields = ENEMY_SHIELD_CAPACITY  # Substantial shield capacity
-                    if not hasattr(selected_enemy, 'max_shields'):
-                        selected_enemy.max_shields = ENEMY_SHIELD_CAPACITY
+
+        # --- Torpedo animation drawing ---
+        torpedo_anim_data = game_state.weapon_animation_manager.get_torpedo_animation_data(current_time)
+        if torpedo_anim_data:
+            if torpedo_anim_data['state'] == 'traveling':
+                # Draw torpedo as a bright white circle (larger and more visible)
+                torpedo_x, torpedo_y = torpedo_anim_data['position']
+                pygame.draw.circle(screen, (255, 255, 255), (int(torpedo_x), int(torpedo_y)), 6)
+                # Add a bright trail effect
+                pygame.draw.circle(screen, (255, 255, 0), (int(torpedo_x), int(torpedo_y)), 8, 2)
+                # Add inner glow
+                pygame.draw.circle(screen, (255, 255, 255), (int(torpedo_x), int(torpedo_y)), 3)
+            elif torpedo_anim_data['state'] == 'exploding':
+                # Draw explosion animation
+                target_x, target_y = torpedo_anim_data['position']
+                explosion_radius = torpedo_anim_data['explosion_radius']
+                if explosion_radius <= 25:
+                    pygame.draw.circle(screen, (255, 255, 0), (int(target_x), int(target_y)), explosion_radius, 3)
+                    pygame.draw.circle(screen, (255, 100, 0), (int(target_x), int(target_y)), explosion_radius - 5, 2)
+        
+        # OLD TORPEDO CODE (commented out for transition)
+        elif False:  # game_state.combat.torpedo_flying:
+            now = pygame.time.get_ticks()
+            elapsed = now - game_state.combat.torpedo_anim_start
+            # DEBUG: Add occasional debug output
+            if elapsed % 1000 < 16:  # Print every ~1 second for a few frames
+                print(f"[DEBUG] Torpedo animation active: elapsed={elapsed}ms")
+            
+            if game_state.combat.torpedo_start_pos and game_state.combat.torpedo_target_pos:
+                start_x, start_y = game_state.combat.torpedo_start_pos
+                target_x, target_y = game_state.combat.torpedo_target_pos
+                
+                # Calculate torpedo travel distance and time
+                distance = math.hypot(target_x - start_x, target_y - start_y)
+                travel_time = distance / game_state.combat.torpedo_speed * 1000  # Convert to milliseconds
+                
+                if elapsed < travel_time:
+                    # Torpedo is still flying - interpolate position
+                    progress = elapsed / travel_time
+                    torpedo_x = start_x + (target_x - start_x) * progress
+                    torpedo_y = start_y + (target_y - start_y) * progress
                     
-                    # Calculate distance to target for damage scaling
-                    player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
-                    if player_obj:
-                        dx = selected_enemy.system_q - player_obj.system_q
-                        dy = selected_enemy.system_r - player_obj.system_r
-                        distance = math.hypot(dx, dy)
-                    else:
-                        distance = 1  # Fallback distance
+                    # Torpedo animation (visual feedback only - no debug spam)
                     
-                    # Distance-based damage scaling using constants
-                    base_damage = PLAYER_PHASER_POWER
-                    if distance <= PHASER_CLOSE_RANGE:
-                        # Close range: High damage (high risk, high reward)
-                        damage_multiplier = PHASER_CLOSE_MULTIPLIER
-                        range_description = "CLOSE RANGE"
-                    elif distance <= PHASER_MEDIUM_RANGE:
-                        # Medium range: Standard damage (balanced risk/reward)
-                        damage_multiplier = PHASER_MEDIUM_MULTIPLIER
-                        range_description = "MEDIUM RANGE"
-                    else:
-                        # Long range: Reduced damage (safer but less effective)
-                        damage_multiplier = PHASER_LONG_MULTIPLIER
-                        range_description = "LONG RANGE"
-                    
-                    damage = int(base_damage * damage_multiplier)
-                    
-                    add_event_log(f"Phaser fire at {distance:.1f} hexes ({range_description}) - Damage: {damage}")
-                    print(f"[DEBUG] Distance: {distance:.1f}, Multiplier: {damage_multiplier:.1f}, Damage: {damage}")
-                    
-                    if selected_enemy.shields > 0:
-                        # Shields absorb damage first
-                        shield_damage = min(damage, selected_enemy.shields)
-                        selected_enemy.shields -= shield_damage
-                        damage -= shield_damage
-                        add_event_log(f"Shield hit! Enemy shields: {selected_enemy.shields}/{selected_enemy.max_shields}")
-                        print(f"[DEBUG] Shield damage: {shield_damage}, Enemy shields now {selected_enemy.shields}")
-                    
-                    if damage > 0 and selected_enemy.shields <= 0:
-                        # Remaining damage goes to hull
-                        hull_damage = min(damage, selected_enemy.health)
-                        selected_enemy.health -= hull_damage
-                        add_event_log(f"Hull breach! Enemy hull: {selected_enemy.health}/{selected_enemy.max_health}")
-                        print(f"[DEBUG] Hull damage: {hull_damage}, Enemy hull now {selected_enemy.health}")
-                    
-                    # Update scan panel with new damage values
-                    enemy_id = None
-                    for eid, enemy_obj in targeted_enemies.items():
-                        if enemy_obj is selected_enemy:
-                            enemy_id = eid
-                            break
-                    
-                    if enemy_id and enemy_id in enemy_scan_panel.scanned_enemies:
-                        # Update scan data with current damage
-                        enemy_scan_panel.scanned_enemies[enemy_id]['hull'] = selected_enemy.health
-                        enemy_scan_panel.scanned_enemies[enemy_id]['shields'] = selected_enemy.shields
-                    
-                    if selected_enemy.health <= 0:
-                        add_event_log("Enemy ship destroyed!")
-                        systems[current_system].remove(selected_enemy)
-                        # Remove from targeting system
-                        destroyed_id = None
-                        for enemy_id, enemy_obj in targeted_enemies.items():
-                            if enemy_obj is selected_enemy:
-                                destroyed_id = enemy_id
-                                break
-                        if destroyed_id is not None:
-                            del targeted_enemies[destroyed_id]
-                            if destroyed_id in enemy_popups:
-                                del enemy_popups[destroyed_id]
-                                add_event_log(f"Target {destroyed_id} destroyed - popup closed")
-                            # Remove from enemy scan panel
-                            enemy_scan_panel.remove_scan_result(destroyed_id)
-                            add_event_log(f"Enemy {destroyed_id} scan data removed")
+                    # Draw torpedo as a bright white circle (larger and more visible)
+                    pygame.draw.circle(screen, (255, 255, 255), (int(torpedo_x), int(torpedo_y)), 6)
+                    # Add a bright trail effect
+                    pygame.draw.circle(screen, (255, 255, 0), (int(torpedo_x), int(torpedo_y)), 8, 2)
+                    # Add inner glow
+                    pygame.draw.circle(screen, (255, 255, 255), (int(torpedo_x), int(torpedo_y)), 3)
+                else:
+                    # Torpedo has reached target - explode and show results
+                    if game_state.combat.torpedo_target_enemy is not None and game_state.combat.torpedo_combat_result is not None:
+                        # Use the combat result calculated when torpedo was launched
+                        combat_result = game_state.combat.torpedo_combat_result
                         
-                        # Auto-select next available target if any remain
-                        if targeted_enemies:
-                            # Get the first available enemy from targeted_enemies
-                            next_enemy_id = next(iter(targeted_enemies.keys()))
-                            selected_enemy = targeted_enemies[next_enemy_id]
-                            add_event_log(f"Auto-targeting {next_enemy_id}")
-                            print(f"[DEBUG] Auto-selected enemy {next_enemy_id} as new target")
+                        # Determine if torpedo actually hits based on accuracy and distance
+                        hit_chance = max(0, constants.PLAYER_TORPEDO_ACCURACY - (game_state.combat.torpedo_target_distance * 0.05))
+                        torpedo_hits = random.random() < hit_chance
+                        
+                        # Handle combat results
+                        if combat_result['success'] and torpedo_hits:
+                            # Draw explosion animation
+                            explosion_radius = 15 + (elapsed - travel_time) // 50  # Growing explosion
+                            if explosion_radius <= 25:
+                                pygame.draw.circle(screen, (255, 255, 0), (int(target_x), int(target_y)), explosion_radius, 3)
+                                pygame.draw.circle(screen, (255, 100, 0), (int(target_x), int(target_y)), explosion_radius - 5, 2)
+                            
+                            # Apply damage and show results (only once)
+                            if not hasattr(game_state.combat, 'torpedo_damage_shown'):
+                                # Apply the calculated damage to the enemy
+                                updated_combat_result = player_ship.apply_damage_to_enemy(game_state.combat.torpedo_target_enemy, combat_result)
+                                
+                                if combat_result['shield_damage'] > 0 and combat_result['hull_damage'] > 0:
+                                    add_event_log(f"Torpedo hit! Shields: {combat_result['shield_damage']} Hull: {combat_result['hull_damage']}")
+                                elif combat_result['shield_damage'] > 0:
+                                    add_event_log(f"Torpedo hit shields for {combat_result['shield_damage']} damage")
+                                elif combat_result['hull_damage'] > 0:
+                                    add_event_log(f"Hull breach! Torpedo damage: {combat_result['hull_damage']}")
+                                
+                                # Update scan panel with current enemy status after damage is applied
+                                torpedo_enemy_id = None
+                                for eid, enemy_obj in game_state.combat.targeted_enemies.items():
+                                    if enemy_obj is game_state.combat.torpedo_target_enemy:
+                                        torpedo_enemy_id = eid
+                                        break
+                                
+                                if torpedo_enemy_id and torpedo_enemy_id in enemy_scan_panel.scanned_enemies:
+                                    # Update scan data with actual enemy status after damage
+                                    enemy_scan_panel.scanned_enemies[torpedo_enemy_id]['hull'] = updated_combat_result['target_health']
+                                    enemy_scan_panel.scanned_enemies[torpedo_enemy_id]['max_hull'] = updated_combat_result['target_max_health']
+                                    enemy_scan_panel.scanned_enemies[torpedo_enemy_id]['shields'] = updated_combat_result['target_shields']
+                                    enemy_scan_panel.scanned_enemies[torpedo_enemy_id]['max_shields'] = updated_combat_result['target_max_shields']
+                                
+                                if combat_result['target_destroyed']:
+                                    add_event_log("Enemy ship destroyed by torpedo!")
+                                    systems[current_system].remove(game_state.combat.torpedo_target_enemy)
+                                    # Remove from targeting system
+                                    destroyed_id = None
+                                    for tid, tobj in game_state.combat.targeted_enemies.items():
+                                        if tobj is game_state.combat.torpedo_target_enemy:
+                                            destroyed_id = tid
+                                            break
+                                    
+                                    if destroyed_id:
+                                        del game_state.combat.targeted_enemies[destroyed_id]
+                                        # Remove from enemy popups if exists
+                                        if destroyed_id in game_state.scan.enemy_popups:
+                                            del game_state.scan.enemy_popups[destroyed_id]
+                                            add_event_log(f"Target {destroyed_id} destroyed - popup closed")
+                                        # Remove from enemy scan panel
+                                        enemy_scan_panel.remove_scan_result(destroyed_id)
+                                        add_event_log(f"Enemy {destroyed_id} scan data removed")
+                                    
+                                    # Auto-select next available target if any remain
+                                    if game_state.combat.targeted_enemies:
+                                        # Get the first available enemy from targeted_enemies
+                                        next_enemy_id = next(iter(game_state.combat.targeted_enemies.keys()))
+                                        game_state.combat.selected_enemy = game_state.combat.targeted_enemies[next_enemy_id]
+                                        add_event_log(f"Auto-targeting {next_enemy_id}")
+                                        print(f"[DEBUG] Auto-selected enemy {next_enemy_id} as new target")
+                                    else:
+                                        game_state.combat.selected_enemy = None
+                                        add_event_log("No targets remaining")
+                                
+                                game_state.combat.torpedo_damage_shown = True
+                        elif combat_result['success'] and not torpedo_hits:
+                            # Torpedo launched successfully but missed target
+                            if not hasattr(game_state.combat, 'torpedo_damage_shown'):
+                                add_event_log("Torpedo missed target!")
+                                game_state.combat.torpedo_damage_shown = True
                         else:
-                            selected_enemy = None
-                            add_event_log("All targets destroyed")
-                    phaser_animating = False
+                            # Torpedo system failed to launch
+                            if not hasattr(game_state.combat, 'torpedo_damage_shown'):
+                                add_event_log("Torpedo launch failed!")
+                                game_state.combat.torpedo_damage_shown = True
+                    
+                    # End animation after explosion
+                    if elapsed > travel_time + 500:  # 500ms explosion duration
+                        game_state.stop_torpedo_animation()
+                        if hasattr(game_state.combat, 'torpedo_damage_shown'):
+                            delattr(game_state.combat, 'torpedo_damage_shown')
 
         # Update and draw enemy popups
         update_enemy_popups()
-        for enemy_id, popup_info in enemy_popups.items():
+        for enemy_id, popup_info in game_state.scan.enemy_popups.items():
             draw_enemy_popup(popup_info)
 
         # Draw ship status display
@@ -2176,10 +2341,10 @@ try:
 
         # Draw enemy scan panel with targeted enemy highlighting
         targeted_enemy_id = None
-        if selected_enemy is not None:
+        if game_state.combat.selected_enemy is not None:
             # Find the enemy ID for the selected enemy object
-            for enemy_id, enemy_obj in targeted_enemies.items():
-                if enemy_obj is selected_enemy:
+            for enemy_id, enemy_obj in game_state.combat.targeted_enemies.items():
+                if enemy_obj is game_state.combat.selected_enemy:
                     targeted_enemy_id = enemy_id
                     break
         enemy_scan_panel.draw(screen, targeted_enemy_id)

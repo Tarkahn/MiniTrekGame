@@ -1,7 +1,9 @@
 from ship.base_ship import BaseShip
 from data import constants
 from game_logic.navigation import warp_to_sector
+from game_logic.combat_manager import CombatManager
 from ship.ship_systems.phaser import Phaser
+from ship.ship_systems.torpedo import Torpedo
 from ship.ship_systems.shield import Shield
 
 
@@ -15,6 +17,8 @@ class PlayerShip(BaseShip):
         player_shield = Shield(max_shield_strength, self)
         super().__init__(name, player_shield, hull_strength, energy, max_energy, weapons, position)
         self.phaser_system = Phaser(power=constants.PLAYER_PHASER_POWER, range=constants.PLAYER_PHASER_RANGE, ship=self)
+        self.torpedo_system = Torpedo(power=constants.PLAYER_TORPEDO_POWER, speed=constants.PLAYER_TORPEDO_SPEED, accuracy=constants.PLAYER_TORPEDO_ACCURACY, ship=self)
+        self.combat_manager = CombatManager()
 
     def move_ship(self, hex_count: int, shield_power: int = 0) -> bool:
         """
@@ -56,5 +60,69 @@ class PlayerShip(BaseShip):
         # Turn consumption and actual map transition logic handled by game loop
         return True
 
-    # Player-specific methods will be added here
-    pass 
+    def fire_phasers_at_target(self, target_enemy, distance):
+        """
+        Fire phasers at a target enemy using the combat manager.
+        This method provides a clean interface for UI code to initiate combat
+        without handling damage calculations directly.
+        
+        Args:
+            target_enemy: Enemy map object or ship object to attack
+            distance: Distance in hexes to target
+            
+        Returns:
+            dict: Combat result from CombatManager.fire_phasers()
+        """
+        return self.combat_manager.fire_phasers(self, target_enemy, distance)
+    
+    def fire_torpedoes_at_target(self, target_enemy, distance):
+        """
+        Fire torpedoes at a target enemy using the combat manager.
+        
+        Args:
+            target_enemy: Enemy map object or ship object to attack
+            distance: Distance in hexes to target
+            
+        Returns:
+            dict: Combat result from CombatManager.fire_torpedoes()
+        """
+        return self.combat_manager.fire_torpedoes(self, target_enemy, distance)
+    
+    def calculate_phaser_damage_at_target(self, target_enemy, distance):
+        """
+        Calculate phaser damage without applying it to the target.
+        
+        Args:
+            target_enemy: Enemy map object or ship object to attack
+            distance: Distance in hexes to target
+            
+        Returns:
+            dict: Combat calculation from CombatManager.calculate_phaser_damage()
+        """
+        return self.combat_manager.calculate_phaser_damage(self, target_enemy, distance)
+    
+    def calculate_torpedo_damage_at_target(self, target_enemy, distance):
+        """
+        Calculate torpedo damage without applying it to the target.
+        
+        Args:
+            target_enemy: Enemy map object or ship object to attack
+            distance: Distance in hexes to target
+            
+        Returns:
+            dict: Combat calculation from CombatManager.calculate_torpedo_damage()
+        """
+        return self.combat_manager.calculate_torpedo_damage(self, target_enemy, distance)
+    
+    def apply_damage_to_enemy(self, target_enemy, combat_result):
+        """
+        Apply calculated damage to an enemy.
+        
+        Args:
+            target_enemy: Enemy map object to damage
+            combat_result: Result from calculate_phaser_damage_at_target or calculate_torpedo_damage_at_target
+            
+        Returns:
+            dict: Updated combat result with actual enemy status after damage
+        """
+        return self.combat_manager.apply_damage_to_enemy(target_enemy, combat_result) 
