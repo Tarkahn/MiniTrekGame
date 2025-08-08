@@ -692,6 +692,45 @@ def perform_enemy_scan(enemy_obj, enemy_id):
     # Play scan sound
     sound_manager.play_sound('scanner')
 
+def get_enemy_current_position(enemy_obj, hex_grid):
+    """Get the current position of an enemy (animated if moving, otherwise static)"""
+    if hasattr(enemy_obj, 'anim_px') and hasattr(enemy_obj, 'anim_py'):
+        # Enemy has animated pixel position - return it directly
+        return (enemy_obj.anim_px, enemy_obj.anim_py)
+    elif hasattr(enemy_obj, 'system_q') and hasattr(enemy_obj, 'system_r'):
+        # Enemy has static hex position - convert to pixels
+        return hex_grid.get_hex_center(enemy_obj.system_q, enemy_obj.system_r)
+    else:
+        # Fallback to origin
+        return hex_grid.get_hex_center(0, 0)
+
+def update_enemy_scan_positions():
+    """Update scan panel positions for all scanned enemies that are moving"""
+    for enemy_id, scan_data in enemy_scan_panel.scanned_enemies.items():
+        # Find the actual enemy object by ID in current system
+        for obj in systems.get(game_state.current_system, []):
+            if obj.type == 'enemy' and get_enemy_id(obj) == enemy_id:
+                # Update scan data position if enemy has moved
+                # Use the enemy ship's actual hex position instead of trying to convert pixels
+                enemy_ship_id = id(obj)
+                if enemy_ship_id in player_ship.combat_manager.enemy_ships:
+                    enemy_ship = player_ship.combat_manager.enemy_ships[enemy_ship_id]
+                    current_hex_pos = enemy_ship.position  # This is the actual hex coordinate
+                    
+                    if current_hex_pos != scan_data['position']:
+                        scan_data['position'] = current_hex_pos
+                        
+                        # Recalculate distance and bearing from player
+                        player_obj = next((o for o in systems.get(game_state.current_system, []) if o.type == 'player'), None)
+                        if player_obj and hasattr(player_obj, 'system_q') and hasattr(player_obj, 'system_r'):
+                            dx = current_hex_pos[0] - player_obj.system_q  
+                            dy = current_hex_pos[1] - player_obj.system_r
+                            scan_data['distance'] = math.sqrt(dx * dx + dy * dy)
+                            bearing = math.degrees(math.atan2(dy, dx))
+                            if bearing < 0:
+                                bearing += 360
+                            scan_data['bearing'] = bearing
+                break
 
 # Helper functions for multi-hex objects
 def get_hex_neighbors(q, r):
@@ -1488,7 +1527,7 @@ try:
                                         start_pos = (system_ship_anim_x, system_ship_anim_y)
                                     else:
                                         start_pos = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
-                                    target_pos = hex_grid.get_hex_center(game_state.combat.selected_enemy.system_q, game_state.combat.selected_enemy.system_r)
+                                    target_pos = get_enemy_current_position(game_state.combat.selected_enemy, hex_grid)
                                     
                                     # Fire torpedo using weapon animation manager
                                     result = game_state.weapon_animation_manager.fire_torpedo(
@@ -2252,7 +2291,7 @@ try:
                     px1, py1 = system_ship_anim_x, system_ship_anim_y
                 else:
                     px1, py1 = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
-                px2, py2 = hex_grid.get_hex_center(phaser_anim_data['target_enemy'].system_q, phaser_anim_data['target_enemy'].system_r)
+                px2, py2 = get_enemy_current_position(phaser_anim_data['target_enemy'], hex_grid)
                 # Draw a thick laser line (yellow/red)
                 color = (255, 255, 0) if (current_time // 100) % 2 == 0 else (255, 0, 0)
                 pygame.draw.line(screen, color, (int(px1), int(py1)), (int(px2), int(py2)), 4)
@@ -2402,6 +2441,9 @@ try:
         # Update enemy AI through combat manager
         delta_time = clock.get_time() / 1000.0  # Convert milliseconds to seconds
         player_ship.combat_manager.update_enemy_ai(delta_time, systems, game_state.current_system, hex_grid, player_ship)
+        
+        # Update scan positions for moving enemies
+        update_enemy_scan_positions()
 
         # Update and draw enemy popups
         update_enemy_popups()
