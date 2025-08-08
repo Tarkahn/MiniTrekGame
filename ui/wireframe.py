@@ -236,6 +236,7 @@ SHIP_SPEED = max_distance / (2 * FPS)  # pixels per frame for 2s travel
 clock = pygame.time.Clock()
 move_frames = 2 * FPS  # 2 seconds at 60 FPS
 
+
 # Stardate system
 class Stardate:
     def __init__(self, start_stardate=2387.0):
@@ -690,6 +691,7 @@ def perform_enemy_scan(enemy_obj, enemy_id):
     
     # Play scan sound
     sound_manager.play_sound('scanner')
+
 
 # Helper functions for multi-hex objects
 def get_hex_neighbors(q, r):
@@ -1329,10 +1331,16 @@ try:
                             pygame.draw.rect(screen, color, (int(px)-6, int(py)-6, 12, 12))
                         elif obj.type == 'enemy':
                             color = (255, 0, 0)
+                            # Use animated pixel position if available, otherwise static hex position
+                            if hasattr(obj, 'anim_px') and hasattr(obj, 'anim_py'):
+                                render_px, render_py = obj.anim_px, obj.anim_py
+                            else:
+                                render_px, render_py = px, py
+                            
                             pygame.draw.polygon(screen, color, [
-                                (int(px), int(py)-8),
-                                (int(px)-6, int(py)+4),
-                                (int(px)+6, int(py)+4)
+                                (int(render_px), int(render_py)-8),
+                                (int(render_px)-6, int(render_py)+4),
+                                (int(render_px)+6, int(render_py)+4)
                             ])
                         elif obj.type == 'anomaly':
                             color = (255, 0, 255)
@@ -2390,6 +2398,10 @@ try:
                         game_state.stop_torpedo_animation()
                         if hasattr(game_state.combat, 'torpedo_damage_shown'):
                             delattr(game_state.combat, 'torpedo_damage_shown')
+
+        # Update enemy AI through combat manager
+        delta_time = clock.get_time() / 1000.0  # Convert milliseconds to seconds
+        player_ship.combat_manager.update_enemy_ai(delta_time, systems, game_state.current_system, hex_grid, player_ship)
 
         # Update and draw enemy popups
         update_enemy_popups()

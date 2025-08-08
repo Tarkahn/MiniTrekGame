@@ -1,9 +1,11 @@
 """
 Combat Manager - Handles all combat-related game logic
 Separates combat mechanics from UI code for better architecture
+Includes enemy AI and movement management
 """
 
 from data import constants
+from ship.enemy_ship import EnemyShip
 
 
 class CombatManager:
@@ -14,7 +16,8 @@ class CombatManager:
     """
     
     def __init__(self):
-        pass
+        # Enemy AI management
+        self.enemy_ships = {}  # Dictionary to store EnemyShip instances keyed by enemy object id
     
     def fire_phasers(self, attacker_ship, target_enemy, distance):
         """
@@ -330,3 +333,61 @@ class CombatManager:
         dx = pos2[0] - pos1[0]
         dy = pos2[1] - pos1[1]
         return math.hypot(dx, dy)
+    
+    # Enemy AI Management Methods
+    
+    def get_or_create_enemy_ship(self, enemy_obj, player_ship):
+        """Get existing enemy ship instance or create new one"""
+        enemy_id = id(enemy_obj)
+        
+        if enemy_id not in self.enemy_ships:
+            # Create new EnemyShip instance
+            position = (enemy_obj.system_q, enemy_obj.system_r) if hasattr(enemy_obj, 'system_q') else (0, 0)
+            self.enemy_ships[enemy_id] = EnemyShip(
+                name="Klingon Warship",
+                max_shield_strength=constants.ENEMY_SHIELD_CAPACITY,
+                hull_strength=constants.ENEMY_HULL_STRENGTH,
+                energy=1000,
+                max_energy=1000,
+                position=position
+            )
+            self.enemy_ships[enemy_id].set_target(player_ship)
+        
+        return self.enemy_ships[enemy_id]
+    
+    def update_enemy_ai(self, delta_time, systems, current_system, hex_grid, player_ship):
+        """Update AI for all enemy ships in current system"""
+        if current_system not in systems:
+            return
+        
+        for obj in systems[current_system]:
+            if obj.type == 'enemy' and hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
+                enemy_ship = self.get_or_create_enemy_ship(obj, player_ship)
+                enemy_ship.update_ai(delta_time)
+                
+                # Update enemy object position from ship's smooth animation
+                render_pos = enemy_ship.get_render_position()
+                # Convert hex coordinates to pixel coordinates and store for rendering
+                pixel_x, pixel_y = hex_grid.get_hex_center(render_pos[0], render_pos[1])
+                obj.anim_px = pixel_x
+                obj.anim_py = pixel_y
+    
+    def cleanup_enemy_ships(self, systems, current_system):
+        """Remove enemy ship instances for enemies that no longer exist"""
+        if current_system not in systems:
+            return
+            
+        # Get current enemy object IDs in the system
+        current_enemy_ids = set()
+        for obj in systems[current_system]:
+            if obj.type == 'enemy':
+                current_enemy_ids.add(id(obj))
+        
+        # Remove enemy ships that are no longer in the system
+        to_remove = []
+        for enemy_id in self.enemy_ships:
+            if enemy_id not in current_enemy_ids:
+                to_remove.append(enemy_id)
+        
+        for enemy_id in to_remove:
+            del self.enemy_ships[enemy_id]
