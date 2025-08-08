@@ -371,6 +371,12 @@ class CombatManager:
                 pixel_x, pixel_y = hex_grid.get_hex_center(render_pos[0], render_pos[1])
                 obj.anim_px = pixel_x
                 obj.anim_py = pixel_y
+                
+                # Update logical hex position when enemy ship completes movement
+                # This ensures right-click detection works at the new location
+                if not enemy_ship.is_moving:
+                    obj.system_q = int(enemy_ship.position[0])
+                    obj.system_r = int(enemy_ship.position[1])
     
     def cleanup_enemy_ships(self, systems, current_system):
         """Remove enemy ship instances for enemies that no longer exist"""
