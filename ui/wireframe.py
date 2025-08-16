@@ -19,6 +19,8 @@ from debug_logger import log_debug, get_log_path
 from galaxy_generation.object_placement import place_objects_by_system, generate_system_objects
 from ui.hex_map import create_hex_grid_for_map
 from ui.button_panel import draw_button_panel, handle_button_events
+from ui.stardate import Stardate
+from ui.background_loader import BackgroundAndStarLoader
 from galaxy_generation.map_object import MapObject
 from ui.sound_manager import get_sound_manager
 from ui.ship_status_display import create_ship_status_display
@@ -236,134 +238,12 @@ SHIP_SPEED = max_distance / (2 * FPS)  # pixels per frame for 2s travel
 clock = pygame.time.Clock()
 move_frames = 2 * FPS  # 2 seconds at 60 FPS
 
-
 # Stardate system
-class Stardate:
-    def __init__(self, start_stardate=2387.0):
-        """Initialize stardate system. Standard stardate format: YYYY.DDD where DDD is day of year."""
-        self.start_time = time.time()
-        self.start_stardate = start_stardate
-        self.time_factor = 100.0  # How fast stardate advances (1 real second = 100 stardate units)
-    
-    def get_current_stardate(self):
-        """Get current stardate based on elapsed time."""
-        elapsed_time = time.time() - self.start_time
-        stardate_advance = elapsed_time * self.time_factor / 86400  # Convert to days
-        return self.start_stardate + stardate_advance
-    
-    def format_stardate(self):
-        """Format stardate for display."""
-        current = self.get_current_stardate()
-        return f"Stardate: {current:.1f}"
-
 stardate_system = Stardate()
 
-# Background, Star, and Planet image system
-class BackgroundAndStarLoader:
-    def __init__(self):
-        self.star_images = {}
-        self.planet_images = {}
-        self.background_image = None
-        self.scaled_background = None
-        self.load_images()
-    
-    def load_images(self):
-        """Load background image, all star images, and all planet images."""
-        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')
-        
-        # Load background image
-        bg_path = os.path.join(assets_dir, 'MapBackground.jpg')
-        if os.path.exists(bg_path):
-            try:
-                self.background_image = pygame.image.load(bg_path)
-                logging.debug(f"[BACKGROUND] Loaded background image: MapBackground.jpg")
-            except Exception as e:
-                logging.error(f"[BACKGROUND] Failed to load background: {e}")
-        else:
-            logging.warning(f"[BACKGROUND] Background image not found: {bg_path}")
-        
-        # Load star images
-        stars_dir = os.path.join(assets_dir, 'stars')
-        if os.path.exists(stars_dir):
-            star_files = glob.glob(os.path.join(stars_dir, '*.jpg'))
-            for star_file in star_files:
-                star_name = os.path.splitext(os.path.basename(star_file))[0]
-                try:
-                    image = pygame.image.load(star_file)
-                    self.star_images[star_name] = image
-                    logging.debug(f"[STARS] Loaded star image: {star_name}")
-                except Exception as e:
-                    logging.error(f"[STARS] Failed to load {star_file}: {e}")
-        else:
-            logging.warning(f"[STARS] Stars directory not found: {stars_dir}")
-        
-        # Load planet images
-        planets_dir = os.path.join(assets_dir, 'planets')
-        if os.path.exists(planets_dir):
-            planet_files = glob.glob(os.path.join(planets_dir, '*.jpg'))
-            for planet_file in planet_files:
-                planet_name = os.path.splitext(os.path.basename(planet_file))[0]
-                try:
-                    image = pygame.image.load(planet_file)
-                    self.planet_images[planet_name] = image
-                    logging.debug(f"[PLANETS] Loaded planet image: {planet_name}")
-                except Exception as e:
-                    logging.error(f"[PLANETS] Failed to load {planet_file}: {e}")
-            logging.info(f"[PLANETS] Loaded {len(self.planet_images)} planet images for maximum variety")
-        else:
-            logging.warning(f"[PLANETS] Planets directory not found: {planets_dir}")
-    
-    def get_scaled_background(self, width, height):
-        """Get background image scaled to fit the map area."""
-        if self.background_image and (self.scaled_background is None or 
-                                     self.scaled_background.get_size() != (width, height)):
-            try:
-                self.scaled_background = pygame.transform.scale(self.background_image, (width, height))
-                logging.debug(f"[BACKGROUND] Scaled background to {width}x{height}")
-            except Exception as e:
-                logging.error(f"[BACKGROUND] Failed to scale background: {e}")
-                return None
-        return self.scaled_background
-    
-    def get_random_star_image(self):
-        """Get a random star image."""
-        if self.star_images:
-            return random.choice(list(self.star_images.values()))
-        return None
-    
-    def get_star_image_by_name(self, name):
-        """Get a specific star image by name."""
-        return self.star_images.get(name)
-    
-    def scale_star_image(self, image, radius):
-        """Scale star image to appropriate size for given radius."""
-        if image:
-            # Scale image to be roughly 2x the hex radius for proper coverage
-            target_size = int(radius * 4)
-            return pygame.transform.scale(image, (target_size, target_size))
-        return None
-    
-    def get_random_planet_image(self):
-        """Get a random planet image for maximum variety."""
-        if self.planet_images:
-            return random.choice(list(self.planet_images.values()))
-        return None
-    
-    def get_planet_image_by_name(self, name):
-        """Get a specific planet image by name."""
-        return self.planet_images.get(name)
-    
-    def scale_planet_image(self, image, base_radius, size_multiplier=1.0):
-        """Scale planet image to variable size based on multiplier."""
-        if image:
-            # Base size is 60% of hex radius (minimum), up to 2 hex widths (maximum)
-            # size_multiplier ranges from 1.0 (minimum) to ~3.3 (2 hex widths)
-            base_size = base_radius * 0.6  # Current minimum size
-            target_size = int(base_size * size_multiplier)
-            return pygame.transform.scale(image, (target_size, target_size))
-        return None
-
+# Background and star image loader
 background_and_star_loader = BackgroundAndStarLoader()
+
 
 # Event log for displaying messages
 EVENT_LOG_MAX_LINES = 25  # Increased to accommodate wrapped text
@@ -965,7 +845,7 @@ try:
         
         # Update weapon animations and handle combat events
         current_time = pygame.time.get_ticks()
-        weapon_events = game_state.weapon_animation_manager.update(current_time)
+        weapon_events = game_state.weapon_animation_manager.update(current_time, hex_grid)
         
         # Handle weapon combat events
         if weapon_events['phaser_completed']:
@@ -1006,46 +886,51 @@ try:
                     enemy_scan_panel.remove_scan_result(enemy_id)
                 game_state.combat.selected_enemy = None
         
-        if weapon_events['torpedo_hit']:
-            torpedo_event = weapon_events['torpedo_hit']
-            combat_result = torpedo_event['damage_info']
-            updated_result = torpedo_event['combat_result']
+        if weapon_events['torpedo_ring_hits']:
+            ring_event = weapon_events['torpedo_ring_hits']
+            newly_hit_enemies = ring_event['newly_hit_enemies']
+            explosion_center = ring_event['explosion_center']
             
-            # Log damage results
-            if combat_result['shield_damage'] > 0 and combat_result['hull_damage'] > 0:
-                add_event_log(f"Torpedo hit! Shields: {combat_result['shield_damage']} Hull: {combat_result['hull_damage']}")
-            elif combat_result['shield_damage'] > 0:
-                add_event_log(f"Torpedo hit shields for {combat_result['shield_damage']} damage")
-            elif combat_result['hull_damage'] > 0:
-                add_event_log(f"Hull breach! Torpedo damage: {combat_result['hull_damage']}")
-            
-            # Update scan panel
-            enemy_id = None
-            for eid, enemy_obj in game_state.combat.targeted_enemies.items():
-                if enemy_obj is torpedo_event['target_enemy']:
-                    enemy_id = eid
-                    break
-            
-            if enemy_id and enemy_id in enemy_scan_panel.scanned_enemies:
-                enemy_scan_panel.scanned_enemies[enemy_id]['hull'] = updated_result['target_health']
-                enemy_scan_panel.scanned_enemies[enemy_id]['max_hull'] = updated_result['target_max_health']
-                enemy_scan_panel.scanned_enemies[enemy_id]['shields'] = updated_result['target_shields']
-                enemy_scan_panel.scanned_enemies[enemy_id]['max_shields'] = updated_result['target_max_shields']
-            
-            # Check if target destroyed
-            if combat_result['target_destroyed']:
-                add_event_log("Enemy ship destroyed by torpedo!")
-                systems[current_system].remove(torpedo_event['target_enemy'])
-                if enemy_id:
-                    enemy_scan_panel.remove_scan_result(enemy_id)
-                    del game_state.combat.targeted_enemies[enemy_id]
-                    if enemy_id in game_state.scan.enemy_popups:
-                        del game_state.scan.enemy_popups[enemy_id]
-                game_state.combat.selected_enemy = None
-        
-        if weapon_events['torpedo_miss']:
-            torpedo_event = weapon_events['torpedo_miss']
-            add_event_log(f"Torpedo missed target! Hit chance was {torpedo_event['hit_chance']:.0%}")
+            for result in newly_hit_enemies:
+                enemy = result['enemy']
+                ring_index = result['ring_index']
+                damage = result['damage']
+                distance_pixels = result['distance_pixels']
+                updated_result = result['combat_result']
+                
+                # Define ring names for better logging
+                ring_names = ["Core Blast", "Primary Wave", "Secondary Wave", "Tertiary Wave", "Pressure Wave", "Outer Shockwave"]
+                ring_name = ring_names[min(ring_index, len(ring_names)-1)]
+                
+                # Log the ring hit with descriptive text
+                add_event_log(f"Torpedo {ring_name} hit enemy ship! Distance: {distance_pixels:.0f}px - Damage: {damage}")
+                
+                # Update scan panel for this enemy
+                enemy_id = None
+                for eid, enemy_obj in game_state.combat.targeted_enemies.items():
+                    if enemy_obj is enemy:
+                        enemy_id = eid
+                        break
+                
+                if enemy_id and enemy_id in enemy_scan_panel.scanned_enemies:
+                    enemy_scan_panel.scanned_enemies[enemy_id]['hull'] = updated_result['target_health']
+                    enemy_scan_panel.scanned_enemies[enemy_id]['max_hull'] = getattr(enemy, 'max_health', constants.ENEMY_HULL_STRENGTH)
+                    enemy_scan_panel.scanned_enemies[enemy_id]['shields'] = updated_result['target_shields']
+                    enemy_scan_panel.scanned_enemies[enemy_id]['max_shields'] = getattr(enemy, 'max_shields', constants.ENEMY_SHIELD_CAPACITY)
+                
+                # Check if this enemy was destroyed
+                if updated_result.get('target_destroyed', False):
+                    add_event_log(f"Enemy ship destroyed by {ring_name}!")
+                    if enemy in systems[current_system]:
+                        systems[current_system].remove(enemy)
+                    if enemy_id:
+                        enemy_scan_panel.remove_scan_result(enemy_id)
+                        if enemy_id in game_state.combat.targeted_enemies:
+                            del game_state.combat.targeted_enemies[enemy_id]
+                        if enemy_id in game_state.scan.enemy_popups:
+                            del game_state.scan.enemy_popups[enemy_id]
+                    if game_state.combat.selected_enemy is enemy:
+                        game_state.combat.selected_enemy = None
         # Status/Tooltip Panel (top)
         status_rect = pygame.Rect(0, 0, WIDTH, STATUS_HEIGHT)
         pygame.draw.rect(screen, COLOR_STATUS, status_rect)
@@ -1135,8 +1020,10 @@ try:
                                 obj.color = get_star_color()
                             pygame.draw.circle(screen, obj.color, (int(center_x), int(center_y)), int(hex_grid.radius * 3.6))
 
-        # Draw the hex grid with 25% transparency
-        hex_grid.draw_grid(screen, HEX_OUTLINE, alpha=64)
+        # Draw the hex grid with conditional transparency based on map mode
+        # Sector map: More visible for fog of war navigation, System map: Barely visible for clean aesthetics
+        grid_alpha = 64 if game_state.map_mode == 'sector' else 20
+        hex_grid.draw_grid(screen, HEX_OUTLINE, alpha=grid_alpha)
 
         # --- FOG OF WAR OVERLAY (draw early to hide objects) ---
         # Only apply fog of war to sector map, not system maps
@@ -1147,6 +1034,9 @@ try:
                         cx, cy = hex_grid.get_hex_center(col, row)
                         hex_grid.draw_fog_hex(screen, cx, cy, color=(200, 200, 200), alpha=153)
 
+        # Calculate delta time for smooth ship rotation
+        delta_time = clock.get_time() / 1000.0  # Convert milliseconds to seconds
+
         # Draw objects on the grid
         if game_state.map_mode == 'sector':
             # Only draw system indicators if a sector scan has been done
@@ -1156,13 +1046,40 @@ try:
                 occupied_hexes = set(star_coords)
                 for coords_set in lazy_object_coords.values():
                     occupied_hexes.update(coords_set)
+                
+                # Ensure starbase systems are generated for sector map display
+                if 'starbase' in lazy_object_coords:
+                    for starbase_coord in lazy_object_coords['starbase']:
+                        if starbase_coord not in systems:
+                            # Generate the missing starbase system
+                            from galaxy_generation.object_placement import generate_system_objects
+                            starbase_objects = generate_system_objects(
+                                starbase_coord[0], starbase_coord[1],
+                                lazy_object_coords,
+                                star_coords=star_coords,
+                                planet_orbits=planet_orbits,
+                                grid_size=hex_grid.cols
+                            )
+                            systems[starbase_coord] = starbase_objects
+                
                 # NOTE: Don't add planet coordinates - they orbit around stars, they don't have their own systems
+                green_dots_drawn = 0
                 for q, r in occupied_hexes:
                     px, py = hex_grid.get_hex_center(q, r)
+                    
+                    # Check if this system contains a starbase - use light green if so
+                    system_has_starbase = False
+                    system_objects = systems.get((q, r), [])
+                    for obj in system_objects:
+                        if obj.type == 'starbase':
+                            system_has_starbase = True
+                            break
+                    
+                    # Draw dot with appropriate color
+                    dot_color = (144, 238, 144) if system_has_starbase else (100, 100, 130)  # Light green for starbase, default for others
                     pygame.draw.circle(
-                        screen, (100, 100, 130), (int(px), int(py)), 6
+                        screen, dot_color, (int(px), int(py)), 6
                     )
-                logging.debug(f"[SECTOR] Drawing indicators for {len(occupied_hexes)} occupied hexes.")
         else:
             # Ensure we have objects for the current system (generate but don't show until scanned)
             if current_system not in systems:
@@ -1366,37 +1283,232 @@ try:
                                         break
                         px, py = hex_grid.get_hex_center(obj.system_q, obj.system_r)
                         if obj.type == 'starbase':
-                            color = (0, 0, 255)
-                            pygame.draw.rect(screen, color, (int(px)-6, int(py)-6, 12, 12))
+                            # Use starbase image if available, otherwise fallback to rectangle
+                            starbase_img = background_and_star_loader.get_starbase_image()
+                            if starbase_img:
+                                scaled_starbase = background_and_star_loader.scale_starbase_image(starbase_img, hex_grid.radius)
+                                if scaled_starbase:
+                                    # Center the image on the hex
+                                    img_rect = scaled_starbase.get_rect(center=(int(px), int(py)))
+                                    screen.blit(scaled_starbase, img_rect)
+                                else:
+                                    # Fallback to rectangle if scaling fails
+                                    color = (0, 0, 255)
+                                    pygame.draw.rect(screen, color, (int(px)-6, int(py)-6, 12, 12))
+                            else:
+                                # Fallback to rectangle if image not available
+                                color = (0, 0, 255)
+                                pygame.draw.rect(screen, color, (int(px)-6, int(py)-6, 12, 12))
                         elif obj.type == 'enemy':
-                            color = (255, 0, 0)
                             # Use animated pixel position if available, otherwise static hex position
                             if hasattr(obj, 'anim_px') and hasattr(obj, 'anim_py'):
                                 render_px, render_py = obj.anim_px, obj.anim_py
                             else:
                                 render_px, render_py = px, py
                             
-                            pygame.draw.polygon(screen, color, [
-                                (int(render_px), int(render_py)-8),
-                                (int(render_px)-6, int(render_py)+4),
-                                (int(render_px)+6, int(render_py)+4)
-                            ])
+                            # Use enemy ship image if available, otherwise fallback to triangle
+                            enemy_img = background_and_star_loader.get_enemy_ship_image()
+                            if enemy_img:
+                                scaled_enemy = background_and_star_loader.scale_ship_image(enemy_img, hex_grid.radius)
+                                if scaled_enemy:
+                                    # Initialize rotation tracking if not exists
+                                    if not hasattr(obj, 'current_rotation'):
+                                        obj.current_rotation = 0.0
+                                    
+                                    # Calculate target rotation based on movement direction
+                                    # Only update target rotation when movement starts or changes
+                                    if not hasattr(obj, 'target_rotation'):
+                                        obj.target_rotation = obj.current_rotation
+                                    
+                                    # Check if this enemy has an AI ship that's moving
+                                    enemy_id = id(obj)
+                                    if hasattr(player_ship, 'combat_manager') and enemy_id in player_ship.combat_manager.enemy_ships:
+                                        enemy_ship = player_ship.combat_manager.enemy_ships[enemy_id]
+                                        if enemy_ship.is_moving and enemy_ship.current_destination:
+                                            # Enemy is moving - only update target rotation when destination changes
+                                            dest_key = (enemy_ship.current_destination[0], enemy_ship.current_destination[1])
+                                            if not hasattr(obj, 'last_enemy_dest') or obj.last_enemy_dest != dest_key:
+                                                current_pos = (render_px, render_py)
+                                                dest_pos = hex_grid.get_hex_center(enemy_ship.current_destination[0], enemy_ship.current_destination[1])
+                                                obj.target_rotation = background_and_star_loader.calculate_movement_angle(current_pos, dest_pos)
+                                                obj.last_enemy_dest = dest_key
+                                        elif hasattr(obj, 'prev_render_px') and hasattr(obj, 'prev_render_py'):
+                                            # Use previous position to calculate movement direction (for micro-adjustments)
+                                            prev_pos = (obj.prev_render_px, obj.prev_render_py)
+                                            current_pos = (render_px, render_py)
+                                            if prev_pos != current_pos:  # Only rotate if actually moved
+                                                # Only update if movement is significant (avoid micro-rotations)
+                                                import math
+                                                distance_moved = math.hypot(current_pos[0] - prev_pos[0], current_pos[1] - prev_pos[1])
+                                                if distance_moved > 2.0:  # Only rotate for significant movement
+                                                    obj.target_rotation = background_and_star_loader.calculate_movement_angle(prev_pos, current_pos)
+                                    
+                                    target_rotation = obj.target_rotation
+                                    
+                                    # Smoothly interpolate to target rotation
+                                    rotation_speed = 900.0  # degrees per second (fast, agile enemy rotation)
+                                    obj.current_rotation = background_and_star_loader.interpolate_rotation(
+                                        obj.current_rotation, 
+                                        target_rotation, 
+                                        rotation_speed, 
+                                        delta_time
+                                    )
+                                    
+                                    # Store current position for next frame
+                                    obj.prev_render_px = render_px
+                                    obj.prev_render_py = render_py
+                                    
+                                    # Apply rotation
+                                    rotated_enemy = background_and_star_loader.rotate_ship_image(scaled_enemy, obj.current_rotation)
+                                    img_rect = rotated_enemy.get_rect(center=(int(render_px), int(render_py)))
+                                    screen.blit(rotated_enemy, img_rect)
+                                else:
+                                    # Fallback to triangle if scaling fails
+                                    color = (255, 0, 0)
+                                    pygame.draw.polygon(screen, color, [
+                                        (int(render_px), int(render_py)-8),
+                                        (int(render_px)-6, int(render_py)+4),
+                                        (int(render_px)+6, int(render_py)+4)
+                                    ])
+                            else:
+                                # Fallback to triangle if image not available
+                                color = (255, 0, 0)
+                                pygame.draw.polygon(screen, color, [
+                                    (int(render_px), int(render_py)-8),
+                                    (int(render_px)-6, int(render_py)+4),
+                                    (int(render_px)+6, int(render_py)+4)
+                                ])
                         elif obj.type == 'anomaly':
                             color = (255, 0, 255)
                             pygame.draw.circle(screen, color, (int(px), int(py)), 5)
                         elif obj.type == 'player':
-                            color = (0, 255, 255)
-                            # Draw player ship at appropriate position
-                            if (game_state.orbital.player_orbiting_planet or system_ship_moving) and system_ship_anim_x is not None and system_ship_anim_y is not None:
-                                pygame.draw.circle(screen, color, (int(system_ship_anim_x), int(system_ship_anim_y)), 8)
+                            # Draw player ship at appropriate position using image if available
+                            player_img = background_and_star_loader.get_player_ship_image()
+                            if player_img:
+                                scaled_player = background_and_star_loader.scale_ship_image(player_img, hex_grid.radius)
+                                if scaled_player:
+                                    # Initialize rotation tracking if not exists
+                                    if not hasattr(obj, 'current_rotation'):
+                                        obj.current_rotation = 0.0
+                                    
+                                    # Calculate target rotation based on movement direction
+                                    # Only update target rotation when movement starts or changes
+                                    if not hasattr(obj, 'target_rotation'):
+                                        obj.target_rotation = obj.current_rotation
+                                    
+                                    if (game_state.orbital.player_orbiting_planet or system_ship_moving) and system_ship_anim_x is not None and system_ship_anim_y is not None:
+                                        # Ship is animated - calculate target rotation
+                                        if system_ship_moving and system_dest_q is not None and system_dest_r is not None:
+                                            # Moving to destination - only update target rotation when destination changes
+                                            if not hasattr(obj, 'last_system_dest_q') or obj.last_system_dest_q != system_dest_q or obj.last_system_dest_r != system_dest_r:
+                                                current_pos = (system_ship_anim_x, system_ship_anim_y)
+                                                dest_pos = hex_grid.get_hex_center(system_dest_q, system_dest_r)
+                                                obj.target_rotation = background_and_star_loader.calculate_movement_angle(current_pos, dest_pos)
+                                                obj.last_system_dest_q = system_dest_q
+                                                obj.last_system_dest_r = system_dest_r
+                                        elif game_state.orbital.player_orbiting_planet:
+                                            # Orbiting - calculate rotation based on orbital movement (continuous for smooth orbital rotation)
+                                            # Use previous position to calculate movement direction
+                                            if hasattr(obj, 'prev_anim_x') and hasattr(obj, 'prev_anim_y'):
+                                                prev_pos = (obj.prev_anim_x, obj.prev_anim_y)
+                                                current_pos = (system_ship_anim_x, system_ship_anim_y)
+                                                obj.target_rotation = background_and_star_loader.calculate_movement_angle(prev_pos, current_pos)
+                                        
+                                        # Store previous position for next frame's orbital rotation
+                                        obj.prev_anim_x = system_ship_anim_x
+                                        obj.prev_anim_y = system_ship_anim_y
+                                    
+                                    target_rotation = obj.target_rotation
+                                    
+                                    # Smoothly interpolate to target rotation
+                                    rotation_speed = 720.0  # degrees per second
+                                    obj.current_rotation = background_and_star_loader.interpolate_rotation(
+                                        obj.current_rotation, 
+                                        target_rotation, 
+                                        rotation_speed, 
+                                        delta_time
+                                    )
+                                    
+                                    # Apply rotation
+                                    rotated_player = background_and_star_loader.rotate_ship_image(scaled_player, obj.current_rotation)
+                                    
+                                    if (game_state.orbital.player_orbiting_planet or system_ship_moving) and system_ship_anim_x is not None and system_ship_anim_y is not None:
+                                        # Use animated position
+                                        img_rect = rotated_player.get_rect(center=(int(system_ship_anim_x), int(system_ship_anim_y)))
+                                        screen.blit(rotated_player, img_rect)
+                                    else:
+                                        # Use static position
+                                        img_rect = rotated_player.get_rect(center=(int(px), int(py)))
+                                        screen.blit(rotated_player, img_rect)
+                                else:
+                                    # Fallback to circle if scaling fails
+                                    color = (0, 255, 255)
+                                    if (game_state.orbital.player_orbiting_planet or system_ship_moving) and system_ship_anim_x is not None and system_ship_anim_y is not None:
+                                        pygame.draw.circle(screen, color, (int(system_ship_anim_x), int(system_ship_anim_y)), 8)
+                                    else:
+                                        pygame.draw.circle(screen, color, (int(px), int(py)), 8)
                             else:
-                                pygame.draw.circle(screen, color, (int(px), int(py)), 8)
+                                # Fallback to circle if image not available
+                                color = (0, 255, 255)
+                                if (game_state.orbital.player_orbiting_planet or system_ship_moving) and system_ship_anim_x is not None and system_ship_anim_y is not None:
+                                    pygame.draw.circle(screen, color, (int(system_ship_anim_x), int(system_ship_anim_y)), 8)
+                                else:
+                                    pygame.draw.circle(screen, color, (int(px), int(py)), 8)
 
         # Draw player ship
         if game_state.map_mode == 'sector':
-            pygame.draw.circle(
-                screen, (0, 255, 255), (int(game_state.animation.ship_anim_x), int(game_state.animation.ship_anim_y)), 8
-            )
+            # Use player ship image if available, otherwise fallback to circle
+            player_img = background_and_star_loader.get_player_ship_image()
+            if player_img:
+                scaled_player = background_and_star_loader.scale_ship_image(player_img, hex_grid.radius)
+                if scaled_player:
+                    # Initialize rotation tracking if not exists
+                    if not hasattr(game_state.animation, 'player_current_rotation'):
+                        game_state.animation.player_current_rotation = 0.0
+                    
+                    # Calculate target rotation based on movement direction
+                    # Only calculate new target rotation when movement starts or changes, not during movement
+                    if not hasattr(game_state.animation, 'player_target_rotation'):
+                        game_state.animation.player_target_rotation = game_state.animation.player_current_rotation
+                    
+                    # Update target rotation only when destination changes
+                    if game_state.animation.ship_moving and game_state.animation.dest_q is not None and game_state.animation.dest_r is not None:
+                        # Calculate target rotation toward destination
+                        current_pos = (game_state.animation.ship_anim_x, game_state.animation.ship_anim_y)
+                        dest_pos = hex_grid.get_hex_center(game_state.animation.dest_q, game_state.animation.dest_r)
+                        new_target_rotation = background_and_star_loader.calculate_movement_angle(current_pos, dest_pos)
+                        
+                        # Only update target if it's significantly different (avoid micro-adjustments during movement)
+                        if not hasattr(game_state.animation, 'last_dest_q') or game_state.animation.last_dest_q != game_state.animation.dest_q or game_state.animation.last_dest_r != game_state.animation.dest_r:
+                            game_state.animation.player_target_rotation = new_target_rotation
+                            game_state.animation.last_dest_q = game_state.animation.dest_q
+                            game_state.animation.last_dest_r = game_state.animation.dest_r
+                    
+                    target_rotation = game_state.animation.player_target_rotation
+                    
+                    # Smoothly interpolate to target rotation
+                    rotation_speed = 720.0  # degrees per second (full rotation in 0.5 seconds)
+                    game_state.animation.player_current_rotation = background_and_star_loader.interpolate_rotation(
+                        game_state.animation.player_current_rotation, 
+                        target_rotation, 
+                        rotation_speed, 
+                        delta_time
+                    )
+                    
+                    # Apply rotation
+                    rotated_player = background_and_star_loader.rotate_ship_image(scaled_player, game_state.animation.player_current_rotation)
+                    img_rect = rotated_player.get_rect(center=(int(game_state.animation.ship_anim_x), int(game_state.animation.ship_anim_y)))
+                    screen.blit(rotated_player, img_rect)
+                else:
+                    # Fallback to circle if scaling fails
+                    pygame.draw.circle(
+                        screen, (0, 255, 255), (int(game_state.animation.ship_anim_x), int(game_state.animation.ship_anim_y)), 8
+                    )
+            else:
+                # Fallback to circle if image not available
+                pygame.draw.circle(
+                    screen, (0, 255, 255), (int(game_state.animation.ship_anim_x), int(game_state.animation.ship_anim_y)), 8
+                )
         else:
             # In system mode, remove the separate player_in_system drawing block, as the above already draws the player from system objects
             pass # No player drawing in system mode
@@ -1530,8 +1642,9 @@ try:
                                     target_pos = get_enemy_current_position(game_state.combat.selected_enemy, hex_grid)
                                     
                                     # Fire torpedo using weapon animation manager
+                                    target_hex_pos = (game_state.combat.selected_enemy.system_q, game_state.combat.selected_enemy.system_r)
                                     result = game_state.weapon_animation_manager.fire_torpedo(
-                                        game_state.combat.selected_enemy, distance, start_pos, target_pos
+                                        game_state.combat.selected_enemy, distance, start_pos, target_pos, target_hex_pos
                                     )
                                     
                                     if result['success']:
@@ -2165,6 +2278,10 @@ try:
                 system_objects = systems.get(current_system, [])
                 log_debug(f"[WIREFRAME] System {current_system} has {len(system_objects)} objects")
                 
+                # Update weapon animation manager with current system objects
+                if game_state.weapon_animation_manager:
+                    game_state.weapon_animation_manager.system_objects = system_objects
+                
                 # Show detailed object information
                 add_event_log(f"[SCAN] System contains {len(system_objects)} objects:")
                 obj_summary = {}
@@ -2308,12 +2425,41 @@ try:
                 # Add inner glow
                 pygame.draw.circle(screen, (255, 255, 255), (int(torpedo_x), int(torpedo_y)), 3)
             elif torpedo_anim_data['state'] == 'exploding':
-                # Draw explosion animation
+                # Draw proximity explosion animation with multiple radiating waves
                 target_x, target_y = torpedo_anim_data['position']
-                explosion_radius = torpedo_anim_data['explosion_radius']
-                if explosion_radius <= 25:
-                    pygame.draw.circle(screen, (255, 255, 0), (int(target_x), int(target_y)), explosion_radius, 3)
-                    pygame.draw.circle(screen, (255, 100, 0), (int(target_x), int(target_y)), explosion_radius - 5, 2)
+                waves = torpedo_anim_data.get('waves', [])
+                
+                # Draw each expanding wave with different colors and opacities
+                for wave in waves:
+                    radius = wave['radius']
+                    opacity = wave['opacity']
+                    wave_index = wave['wave_index']
+                    
+                    # Create color variation based on wave index
+                    if wave_index == 0:
+                        # Core explosion - white hot
+                        color = (255, 255, 255, min(opacity, 255))
+                    elif wave_index == 1:
+                        # Primary blast - yellow
+                        color = (255, 255, 0, min(opacity, 255))
+                    elif wave_index == 2:
+                        # Secondary blast - orange
+                        color = (255, 150, 0, min(opacity, 255))
+                    else:
+                        # Outer waves - red
+                        color = (255, 50, 0, min(opacity, 255))
+                    
+                    # Draw wave with fading edge effect
+                    if radius > 0:
+                        # Create temporary surface for alpha blending
+                        wave_surface = pygame.Surface((int(radius * 2 + 10), int(radius * 2 + 10)), pygame.SRCALPHA)
+                        wave_center = (int(radius + 5), int(radius + 5))
+                        
+                        # Draw the wave ring
+                        pygame.draw.circle(wave_surface, color[:3] + (opacity,), wave_center, int(radius), max(2, int(radius / 10)))
+                        
+                        # Blit to main screen
+                        screen.blit(wave_surface, (int(target_x - radius - 5), int(target_y - radius - 5)), special_flags=pygame.BLEND_ALPHA_SDL2)
         
         # OLD TORPEDO CODE (commented out for transition)
         elif False:  # game_state.combat.torpedo_flying:

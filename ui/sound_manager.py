@@ -52,6 +52,7 @@ class SoundManager:
             'keypress': 'tos_keypress2.mp3',
             'warp': 'tmp_warp_clean.mp3',
             'impulse': 'tng_warp_out1.mp3',
+            'error': 'tos_keypress2.mp3',  # Use keypress sound for error feedback
             # Add more sounds here as needed
         }
         
@@ -177,24 +178,20 @@ class SoundManager:
             try:
                 phaser_sound = self.sounds['phaser_shot']
                 phaser_sound.play()
-                print(f"[SOUND] Playing phaser sequence: phaser_shot")
                 logging.debug(f"[SOUND] Playing phaser sequence: phaser_shot")
                 
                 # Use a short, realistic delay for phaser-to-explosion timing
                 # Typical Star Trek phaser beam travel time should be very brief
                 delay = 0.5  # Half a second - realistic for phaser beam hitting target
-                print(f"[SOUND] Using realistic phaser-to-explosion delay: {delay}s")
                 time.sleep(delay)
                 
             except pygame.error as e:
-                print(f"[SOUND] Failed to play phaser_shot: {e}")
                 logging.error(f"[SOUND] Failed to play phaser_shot: {e}")
         
         # Play explosion after delay
         if 'explosion' in self.sounds:
             try:
                 self.sounds['explosion'].play()
-                print(f"[SOUND] Playing phaser sequence: explosion")
                 logging.debug(f"[SOUND] Playing phaser sequence: explosion")
             except pygame.error as e:
                 print(f"[SOUND] Failed to play explosion: {e}")

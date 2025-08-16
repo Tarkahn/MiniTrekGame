@@ -54,6 +54,10 @@ class EnemyShip(BaseShip):
 
     def set_target(self, target):
         self.target = target
+    
+    def set_system_objects(self, system_objects):
+        """Set reference to all objects in the current system for collision detection"""
+        self.system_objects = system_objects
 
     def update_ai(self, delta_time):
         """Update AI logic including movement and combat decisions"""
@@ -65,14 +69,15 @@ class EnemyShip(BaseShip):
         # Make movement decisions
         self.update_movement_decisions(current_time)
         
-        # Combat AI if target exists
-        if self.target and hasattr(self.target, 'is_alive') and self.target.is_alive():
-            distance_to_target = self.calculate_distance(self.target.position)
-            
-            if distance_to_target < self.attack_range:
-                self.fire_at_target(distance_to_target)
-            elif distance_to_target < self.pursuit_range:
-                self.pursue_target()
+        # Combat AI disabled - enemy combat mechanics not fully implemented yet
+        # TODO: Implement proper enemy combat with visual feedback and balanced mechanics
+        # if self.target and hasattr(self.target, 'is_alive') and self.target.is_alive():
+        #     distance_to_target = self.calculate_distance(self.target.position)
+        #     
+        #     if distance_to_target < self.attack_range:
+        #         self.fire_at_target(distance_to_target)
+        #     elif distance_to_target < self.pursuit_range:
+        #         self.pursue_target()
 
     def update_movement_animation(self, delta_time):
         """Update smooth movement animation similar to player ship"""
@@ -224,9 +229,20 @@ class EnemyShip(BaseShip):
         return (q_constrained, r_constrained)
 
     def set_destination(self, destination):
-        """Set a new movement destination, constrained to hex grid"""
+        """Set a new movement destination, constrained to hex grid and avoiding collisions"""
         # Constrain destination to grid boundaries and snap to hex centers
         constrained_dest = self.constrain_to_grid(destination[0], destination[1])
+        
+        # Check for collisions with other objects (player ship, other enemies, etc.)
+        if self.is_destination_blocked(constrained_dest):
+            # Try to find an alternative destination nearby
+            alternative_dest = self.find_alternative_destination(constrained_dest)
+            if alternative_dest:
+                constrained_dest = alternative_dest
+            else:
+                # If no alternative found, don't move
+                return
+        
         self.current_destination = constrained_dest
         self.is_moving = True
         self.movement_start_time = time.time()
@@ -250,6 +266,53 @@ class EnemyShip(BaseShip):
             damage = self.torpedo_system.fire(target_distance)
             if damage > 0:
                 self.target.apply_damage(damage)
+    
+    def is_destination_blocked(self, destination):
+        """Check if a destination hex is blocked by other objects"""
+        dest_x, dest_y = int(destination[0]), int(destination[1])
+        
+        # Check collision with player ship
+        if hasattr(self, 'target') and self.target and hasattr(self.target, 'position'):
+            player_x, player_y = int(self.target.position[0]), int(self.target.position[1])
+            if dest_x == player_x and dest_y == player_y:
+                return True
+        
+        # Check collision with other objects in the system
+        if hasattr(self, 'system_objects') and self.system_objects:
+            for obj in self.system_objects:
+                if hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
+                    obj_x, obj_y = int(obj.system_q), int(obj.system_r)
+                    if dest_x == obj_x and dest_y == obj_y:
+                        # Don't collide with ourselves
+                        if obj.type == 'enemy' and (obj_x, obj_y) == (int(self.position[0]), int(self.position[1])):
+                            continue
+                        # Block movement to occupied hexes (except empty space)
+                        if obj.type in ['player', 'enemy', 'starbase', 'star']:
+                            return True
+        
+        return False
+    
+    def find_alternative_destination(self, blocked_destination):
+        """Find an alternative destination near the blocked one"""
+        dest_x, dest_y = blocked_destination
+        
+        # Try positions in a circle around the blocked destination
+        for radius in range(1, 4):  # Try radius 1, 2, 3
+            for angle in range(0, 360, 45):  # Try 8 directions
+                offset_x = radius * math.cos(math.radians(angle))
+                offset_y = radius * math.sin(math.radians(angle))
+                
+                alt_x = dest_x + offset_x
+                alt_y = dest_y + offset_y
+                
+                # Constrain to grid
+                alt_dest = self.constrain_to_grid(alt_x, alt_y)
+                
+                # Check if this alternative is not blocked
+                if not self.is_destination_blocked(alt_dest):
+                    return alt_dest
+        
+        return None  # No alternative found
 
     def pursue_target(self):
         """Move towards target when in pursuit range"""

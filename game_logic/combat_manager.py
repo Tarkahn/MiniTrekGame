@@ -315,6 +315,7 @@ class CombatManager:
         updated_result = combat_result.copy()
         updated_result['target_shields'] = target_enemy.shields
         updated_result['target_health'] = target_enemy.health
+        updated_result['target_destroyed'] = target_enemy.health <= 0
         
         return updated_result
     
@@ -363,6 +364,8 @@ class CombatManager:
         for obj in systems[current_system]:
             if obj.type == 'enemy' and hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
                 enemy_ship = self.get_or_create_enemy_ship(obj, player_ship)
+                # Provide system objects for collision detection
+                enemy_ship.set_system_objects(systems[current_system])
                 enemy_ship.update_ai(delta_time)
                 
                 # Update enemy object position from ship's smooth animation

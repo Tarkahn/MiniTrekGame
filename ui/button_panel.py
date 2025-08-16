@@ -6,7 +6,7 @@ BUTTON_MARGIN = 16
 PANEL_X = 1040  # Right side of 1280px window
 PANEL_Y = 40
 
-BUTTON_LABELS = ["Move", "Fire", "Scan"]
+BUTTON_LABELS = ["Move", "Fire", "Torpedo", "Scan"]
 
 # Draws all control panel buttons and the map mode toggle button at the bottom
 # Returns: (button_rects, toggle_btn_rect)

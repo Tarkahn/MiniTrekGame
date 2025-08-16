@@ -5,7 +5,7 @@ from ship.base_ship import BaseShip
 class Shield:
     def __init__(self, max_power_level: int, ship: BaseShip):
         self.max_power_level = max_power_level  # PRD: Power level 0-9 scale
-        self.current_power_level = 0  # Shields start at power level 0
+        self.current_power_level = 5  # Shields start at moderate power level for basic protection
         self.current_integrity = 100  # PRD: Integrity 0-100 scale (for regeneration)
         self.ship = ship
         self.energy_cost_per_level = constants.SHIELD_ENERGY_COST_PER_LEVEL

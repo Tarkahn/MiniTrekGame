@@ -17,7 +17,6 @@ def move_ship_local(ship: BaseShip, target_position: tuple) -> bool:
     distance = max(dx, dy) # Simple approximation for hex grid distance
 
     if distance == 0:
-        print(f"{ship.name} is already at the target position.")
         return True
 
     energy_cost = distance * LOCAL_MOVEMENT_ENERGY_COST_PER_HEX # Assuming LOCAL_MOVEMENT_ENERGY_COST_PER_HEX is a constant
@@ -29,7 +28,6 @@ def move_ship_local(ship: BaseShip, target_position: tuple) -> bool:
     # For now, simply update the ship's position to the target.
     # Later: more granular movement, pathfinding, obstacle avoidance.
     ship.position = target_position
-    print(f"{ship.name} moved to {ship.position}. Energy remaining: {ship.warp_core_energy}")
     return True
 
 def warp_to_sector(ship: BaseShip, sectors_to_travel: int) -> bool:

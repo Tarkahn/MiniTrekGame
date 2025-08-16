@@ -6,7 +6,7 @@ STARTING_ENERGY = 1000  # Initial ship energy capacity.
 # Removed in favor of SHIELD_REGEN_RATE_PER_SECOND
 WARP_ENERGY_COST = 3  # Energy per sector hex during warp (reduced for gameplay balance)
 SHIELD_ABSORPTION_PER_LEVEL = 10  # Damage absorbed by shields per level.
-PHASER_COOLDOWN_SECONDS = 10  # PRD: 10s real-time cooldown
+PHASER_COOLDOWN_SECONDS = 4  # PRD: 4s real-time cooldown (reduced for better gameplay)
 KLINGON_DISRUPTOR_DAMAGE_MIN = 30  # Minimum Klingon disruptor damage.
 KLINGON_DISRUPTOR_DAMAGE_MAX = 50  # Maximum Klingon disruptor damage.
 
@@ -16,7 +16,7 @@ LOCAL_MOVEMENT_ENERGY_COST_PER_HEX = 5  # Energy cost for impulse movement withi
 WARP_INITIATION_COST = 5  # Warp initiation cost (reduced for gameplay balance)
 
 # Player Ship Systems (PRD Compliant)
-PLAYER_PHASER_POWER = 15  # Base damage before distance modifiers
+PLAYER_PHASER_POWER = 5   # Base damage before distance modifiers (balanced for shield combat)
 PLAYER_PHASER_RANGE = 18  # Extended range for tactical positioning
 
 # Ship Defense Systems
@@ -50,6 +50,16 @@ SHIELD_REGEN_RATE_PER_MINUTE = 10  # PRD: 10 units per minute real-time
 # Torpedo Systems (PRD Compliant)
 TORPEDO_ENERGY_COST = 1  # PRD: 1 torpedo per shot (uses ammo, not energy)
 TORPEDO_MAX_POWER = 100  # Maximum damage a torpedo can deal
+PLAYER_TORPEDO_POWER = 80  # Player torpedo damage
+PLAYER_TORPEDO_SPEED = 12  # Player torpedo speed
+PLAYER_TORPEDO_ACCURACY = 0.85  # Player torpedo accuracy (85%)
+
+# Torpedo Proximity Explosion System
+TORPEDO_EXPLOSION_RADIUS = 3  # Maximum hex distance for explosion damage
+TORPEDO_DIRECT_HIT_MULTIPLIER = 2.0  # Full damage multiplier for direct hit (hex 0)
+TORPEDO_PROXIMITY_DAMAGE_FALLOFF = 0.6  # Damage falloff per hex distance
+TORPEDO_EXPLOSION_ANIMATION_WAVES = 6  # Number of expanding visual waves
+TORPEDO_EXPLOSION_WAVE_DELAY = 80  # Milliseconds between wave expansions
 
 # Sensor Systems (PRD Compliant)
 SHORT_RANGE_SCAN_COST = 5   # PRD: 5 energy units

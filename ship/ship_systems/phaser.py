@@ -22,7 +22,6 @@ class Phaser:
         Returns the damage dealt, or 0 if unable to fire.
         """
         if self.is_on_cooldown():
-            print(f"Phasers on cooldown. Wait {self._last_fired_time + self.cooldown_seconds - time.time():.1f} seconds.")
             return 0
 
         if target_distance > self.range:
@@ -38,14 +37,14 @@ class Phaser:
             print(f"Insufficient energy on {self.ship.name} to fire phasers.")
             return 0
 
-        # PRD: Damage formula (Power Level × 10) − (Distance × 3)
+        # PRD: Damage formula (Power Level × 10) − (Distance × 2)
         # Use power allocation to modify effectiveness
         power_modifier = 1.0
         if hasattr(self.ship, 'power_allocation'):
             power_level = self.ship.power_allocation.get('phasers', 5)
             power_modifier = power_level / 5.0  # Scale around default level 5
             
-        base_damage = (self.power * power_modifier * 10) - (target_distance * 3)
+        base_damage = (self.power * power_modifier * 10) - (target_distance * 2)
         
         # PRD: Critical hits (15% chance, 1.5x damage)
         is_critical_hit = random.random() < constants.CRITICAL_HIT_CHANCE

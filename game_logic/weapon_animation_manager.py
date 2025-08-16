@@ -9,6 +9,14 @@ import math
 from data import constants
 
 
+def hex_distance(a, b):
+    """Calculate hex grid distance between two positions (q, r)."""
+    dq = abs(a[0] - b[0])
+    dr = abs(a[1] - b[1])
+    ds = abs((-a[0] - a[1]) - (-b[0] - b[1]))
+    return max(dq, dr, ds)
+
+
 class WeaponAnimationManager:
     """
     Manages weapon animations, hit calculations, and damage application.
@@ -18,6 +26,7 @@ class WeaponAnimationManager:
     def __init__(self, combat_manager, player_ship):
         self.combat_manager = combat_manager
         self.player_ship = player_ship
+        self.system_objects = None  # Will be set by the game loop
         
         # Phaser animation state
         self.phaser_animating = False
@@ -35,6 +44,11 @@ class WeaponAnimationManager:
         self.torpedo_target_distance = 0
         self.torpedo_combat_result = None
         self.torpedo_damage_shown = False
+        
+        # Torpedo explosion state
+        self.torpedo_explosion_center = None  # Pixel coordinates (x, y) of explosion
+        self.torpedo_enemies_hit_by_ring = {}  # Track which enemies have been hit by which ring: {enemy_id: [ring_indices]}
+        self.torpedo_explosion_pixel_center = None  # Pixel position of explosion center
         
         # Animation constants
         self.torpedo_speed = 200  # pixels per second
@@ -75,7 +89,7 @@ class WeaponAnimationManager:
         else:
             return {'success': False, 'reason': 'Phaser fire failed'}
     
-    def fire_torpedo(self, target_enemy, distance, start_pos, target_pos):
+    def fire_torpedo(self, target_enemy, distance, start_pos, target_pos, target_hex_pos=None):
         """
         Fire torpedo at target - calculates damage and starts animation.
         
@@ -84,6 +98,7 @@ class WeaponAnimationManager:
             distance: Distance to target in hexes
             start_pos: (x, y) pixel position where torpedo starts
             target_pos: (x, y) pixel position where torpedo goes
+            target_hex_pos: (q, r) hex coordinates of target for explosion center
             
         Returns:
             dict: Result containing success status and animation info
@@ -105,6 +120,10 @@ class WeaponAnimationManager:
             self.torpedo_target_pos = target_pos
             self.torpedo_damage_shown = False
             
+            # Store explosion center for proximity calculations
+            self.torpedo_explosion_pixel_center = target_pos  # This is already in pixel coordinates
+            self.torpedo_enemies_hit_by_ring = {}  # Reset hit tracking
+            
             # Start animation
             self.torpedo_flying = True
             self.torpedo_anim_start = pygame.time.get_ticks()
@@ -117,20 +136,21 @@ class WeaponAnimationManager:
         else:
             return {'success': False, 'reason': 'Torpedo fire failed'}
     
-    def update(self, current_time):
+    def update(self, current_time, hex_grid=None):
         """
         Update weapon animations and handle damage application when animations complete.
         
         Args:
             current_time: Current pygame time in milliseconds
+            hex_grid: Hex grid object for position conversions (needed for ring collision)
             
         Returns:
             dict: Animation events that occurred (for UI feedback)
         """
         events = {
             'phaser_completed': None,
-            'torpedo_hit': None,
-            'torpedo_miss': None,
+            'torpedo_explosion': None,
+            'torpedo_ring_hits': None,
             'torpedo_completed': False
         }
         
@@ -144,9 +164,159 @@ class WeaponAnimationManager:
         
         # Update torpedo animation
         if self.torpedo_flying:
-            events.update(self._update_torpedo_animation(current_time))
+            torpedo_events = self._update_torpedo_animation(current_time)
+            events.update(torpedo_events)
+            
+            # During explosion phase, continuously check for ring collisions
+            if (hex_grid and self.torpedo_damage_shown and 
+                self.torpedo_explosion_pixel_center and not events['torpedo_completed']):
+                
+                newly_hit = self._check_ring_collision(current_time, hex_grid)
+                
+                if newly_hit:
+                    # Process ring hits and apply damage
+                    ring_hit_results = []
+                    for hit_data in newly_hit:
+                        enemy = hit_data['enemy']
+                        damage = hit_data['damage']
+                        ring_index = hit_data['ring_index']
+                        
+                        # Create combat result for damage application
+                        enemy_shields = getattr(enemy, 'shields', constants.ENEMY_SHIELD_CAPACITY)
+                        shield_damage = min(damage, enemy_shields)
+                        hull_damage = max(0, damage - enemy_shields)
+                        
+                        fake_combat_result = {
+                            'success': True,
+                            'damage_calculated': damage,
+                            'shield_damage': shield_damage,
+                            'hull_damage': hull_damage,
+                            'ring_index': ring_index
+                        }
+                        
+                        # Apply the damage
+                        updated_result = self.combat_manager.apply_damage_to_enemy(enemy, fake_combat_result)
+                        
+                        ring_hit_results.append({
+                            'enemy': enemy,
+                            'ring_index': ring_index,
+                            'damage': damage,
+                            'distance_pixels': hit_data['distance_pixels'],
+                            'enemy_pos': hit_data['enemy_pos'],
+                            'combat_result': updated_result
+                        })
+                    
+                    # Create ring hit event (separate from main explosion event)
+                    events['torpedo_ring_hits'] = {
+                        'explosion_center': self.torpedo_explosion_pixel_center,
+                        'newly_hit_enemies': ring_hit_results
+                    }
         
         return events
+    
+    def _check_ring_collision(self, current_time, hex_grid):
+        """
+        Check for real-time collision between explosion rings and moving enemies.
+        Returns list of newly hit enemies with ring collision data.
+        """
+        if not self.torpedo_explosion_pixel_center or not self.system_objects:
+            return []
+        
+        newly_hit = []
+        explosion_center = self.torpedo_explosion_pixel_center
+        
+        # Get current animation data to know which rings are active
+        anim_data = self.get_torpedo_animation_data(current_time)
+        if not anim_data or anim_data['state'] != 'exploding':
+            return newly_hit
+        
+        waves = anim_data.get('waves', [])
+        
+        # Find all enemies in the system
+        enemies = [obj for obj in self.system_objects if obj.type == 'enemy']
+        
+        for enemy in enemies:
+            enemy_id = id(enemy)  # Use object ID as unique identifier
+            
+            # Get enemy's current animated position (real-time)
+            enemy_pos = self._get_enemy_real_time_position(enemy, hex_grid)
+            if not enemy_pos:
+                continue
+            
+            # Initialize hit tracking for this enemy if needed
+            if enemy_id not in self.torpedo_enemies_hit_by_ring:
+                self.torpedo_enemies_hit_by_ring[enemy_id] = []
+            
+            # Check collision with each active ring
+            for wave in waves:
+                ring_index = wave['wave_index']
+                ring_radius = wave['radius']
+                
+                # Skip if this enemy was already hit by this ring
+                if ring_index in self.torpedo_enemies_hit_by_ring[enemy_id]:
+                    continue
+                
+                # Calculate distance from explosion center to enemy
+                dx = enemy_pos[0] - explosion_center[0]
+                dy = enemy_pos[1] - explosion_center[1]
+                distance_pixels = math.hypot(dx, dy)
+                
+                # Check if enemy is within this ring's collision radius
+                ring_thickness = max(5, ring_radius / 5)  # Rings have some thickness
+                if abs(distance_pixels - ring_radius) <= ring_thickness:
+                    # Hit! Calculate damage based on which ring hit the enemy
+                    damage = self._calculate_ring_damage(ring_index, distance_pixels)
+                    
+                    newly_hit.append({
+                        'enemy': enemy,
+                        'ring_index': ring_index,
+                        'damage': damage,
+                        'distance_pixels': distance_pixels,
+                        'enemy_pos': enemy_pos
+                    })
+                    
+                    # Mark this enemy as hit by this ring
+                    self.torpedo_enemies_hit_by_ring[enemy_id].append(ring_index)
+        
+        return newly_hit
+    
+    def _get_enemy_real_time_position(self, enemy, hex_grid):
+        """Get enemy's current pixel position, accounting for movement animation."""
+        # Use the same logic as get_enemy_current_position in wireframe
+        if hasattr(enemy, 'anim_px') and hasattr(enemy, 'anim_py'):
+            return (enemy.anim_px, enemy.anim_py)
+        elif hasattr(enemy, 'system_q') and hasattr(enemy, 'system_r'):
+            try:
+                return hex_grid.get_hex_center(enemy.system_q, enemy.system_r)
+            except:
+                return None
+        return None
+    
+    def _calculate_ring_damage(self, ring_index, distance_pixels):
+        """Calculate damage based on which explosion ring hit the enemy."""
+        base_damage = self.torpedo_combat_result.get('damage_calculated', constants.PLAYER_TORPEDO_POWER)
+        
+        # Different rings deal different damage
+        if ring_index == 0:
+            # Core explosion - maximum damage
+            multiplier = constants.TORPEDO_DIRECT_HIT_MULTIPLIER
+        elif ring_index == 1:
+            # Primary blast wave - high damage
+            multiplier = 1.4
+        elif ring_index == 2:
+            # Secondary blast - medium damage
+            multiplier = 1.0
+        elif ring_index == 3:
+            # Tertiary blast - lower damage
+            multiplier = 0.7
+        elif ring_index == 4:
+            # Pressure wave - minimal damage
+            multiplier = 0.4
+        else:
+            # Outer rings - very low damage
+            multiplier = 0.2
+        
+        return int(base_damage * multiplier)
     
     def _complete_phaser_attack(self):
         """Apply phaser damage and return result for UI feedback."""
@@ -172,10 +342,9 @@ class WeaponAnimationManager:
         return result
     
     def _update_torpedo_animation(self, current_time):
-        """Update torpedo animation and handle hit/miss logic."""
+        """Update torpedo animation and handle proximity explosion logic."""
         events = {
-            'torpedo_hit': None,
-            'torpedo_miss': None,
+            'torpedo_explosion': None,
             'torpedo_completed': False
         }
         
@@ -189,31 +358,9 @@ class WeaponAnimationManager:
             travel_time = (total_distance / self.torpedo_speed) * 1000  # Convert to ms
             
             if elapsed >= travel_time:
-                # Torpedo reached target - determine hit/miss
-                if not self.torpedo_damage_shown:
-                    hit_chance = max(0, constants.PLAYER_TORPEDO_ACCURACY - (self.torpedo_target_distance * 0.05))
-                    torpedo_hits = random.random() < hit_chance
-                    
-                    if self.torpedo_combat_result['success'] and torpedo_hits:
-                        # Torpedo hits - apply damage
-                        updated_result = self.combat_manager.apply_damage_to_enemy(
-                            self.torpedo_target_enemy, self.torpedo_combat_result
-                        )
-                        
-                        events['torpedo_hit'] = {
-                            'target_enemy': self.torpedo_target_enemy,
-                            'combat_result': updated_result,
-                            'damage_info': self.torpedo_combat_result,
-                            'hit_chance': hit_chance
-                        }
-                    else:
-                        # Torpedo misses
-                        events['torpedo_miss'] = {
-                            'target_enemy': self.torpedo_target_enemy,
-                            'hit_chance': hit_chance
-                        }
-                    
-                    self.torpedo_damage_shown = True
+                # Torpedo explosion phase - no longer calculate damage once, but continuously
+                # The explosion event will be handled by the update method checking for ring collisions
+                self.torpedo_damage_shown = True  # Mark that explosion phase has started
                 
                 # Check if explosion animation is complete (additional time for visual effect)
                 explosion_duration = 1000  # ms
@@ -231,6 +378,9 @@ class WeaponAnimationManager:
         self.torpedo_start_pos = None
         self.torpedo_target_pos = None
         self.torpedo_damage_shown = False
+        self.torpedo_explosion_center = None
+        self.torpedo_enemies_hit_by_ring = {}
+        self.torpedo_explosion_pixel_center = None
     
     def get_torpedo_animation_data(self, current_time):
         """
@@ -264,13 +414,29 @@ class WeaponAnimationManager:
         else:
             # Torpedo at target (explosion phase)
             explosion_elapsed = elapsed - travel_time
-            explosion_radius = 15 + explosion_elapsed // 50
+            explosion_progress = min(explosion_elapsed / 1000, 1.0)
+            
+            # Create multiple expanding waves for interesting visual effect
+            waves = []
+            for wave_index in range(constants.TORPEDO_EXPLOSION_ANIMATION_WAVES):
+                wave_start_time = wave_index * constants.TORPEDO_EXPLOSION_WAVE_DELAY
+                if explosion_elapsed >= wave_start_time:
+                    wave_elapsed = explosion_elapsed - wave_start_time
+                    wave_radius = min(10 + (wave_elapsed / 15), 40 - (wave_index * 5))
+                    wave_opacity = max(0, 255 - (wave_elapsed / 3))
+                    if wave_radius > 0 and wave_opacity > 0:
+                        waves.append({
+                            'radius': wave_radius,
+                            'opacity': int(wave_opacity),
+                            'wave_index': wave_index
+                        })
             
             return {
                 'position': self.torpedo_target_pos,
                 'state': 'exploding',
-                'explosion_radius': min(explosion_radius, 25),
-                'explosion_progress': min(explosion_elapsed / 1000, 1.0)
+                'explosion_progress': explosion_progress,
+                'explosion_center': self.torpedo_explosion_pixel_center,
+                'waves': waves
             }
     
     def get_phaser_animation_data(self, current_time):
