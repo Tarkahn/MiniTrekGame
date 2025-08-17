@@ -345,13 +345,13 @@ class EnemyShip(BaseShip):
         # Personality-based range preference - be more flexible for engagement
         in_preferred_range = distance_to_target <= max(self.range_preference, 10)
         
-        # Combat posture affects attack likelihood
+        # Combat posture affects attack likelihood (made more aggressive)
         posture_modifier = {
-            'defensive': 0.3,
-            'balanced': 0.7, 
-            'aggressive': 0.9,
+            'defensive': 0.6,   # Increased from 0.3 to 0.6
+            'balanced': 0.8,    # Increased from 0.7 to 0.8
+            'aggressive': 0.95, # Increased from 0.9 to 0.95
             'berserker': 1.0
-        }.get(self.combat_posture, 0.7)
+        }.get(self.combat_posture, 0.8)
         
         # Surprise factor - random unexpected attacks
         surprise_attack = random.random() < self.surprise_factor
@@ -372,19 +372,20 @@ class EnemyShip(BaseShip):
     
     def should_evade(self, distance_to_target):
         """Determine if enemy should perform evasive maneuvers"""
-        # More likely to evade when very close to player and high evasion tendency
-        very_close_to_player = distance_to_target < self.range_preference * 0.3  # Much more restrictive
+        # Only evade when VERY close to player (much more restrictive)
+        very_close_to_player = distance_to_target < 3.0  # Fixed close distance instead of percentage
         under_fire = self.consecutive_hits_taken > 0  # Track if recently hit by player
         
-        evasion_chance = self.evasion_tendency * 0.5  # Reduce base evasion chance
+        # Much reduced evasion chance - prioritize combat over evasion
+        evasion_chance = self.evasion_tendency * 0.2  # Further reduced base evasion
         if very_close_to_player:
-            evasion_chance *= 1.5
+            evasion_chance *= 2.0  # Only double when very close
         if under_fire:
-            evasion_chance *= 1.3
+            evasion_chance *= 1.2  # Slight increase when under fire
         if self.desperation_active:
-            evasion_chance *= 0.3  # Much less evasion when desperate
+            evasion_chance *= 0.1  # Almost no evasion when desperate
             
-        return random.random() < min(evasion_chance, 0.7)  # Cap at 70% instead of 95%
+        return random.random() < min(evasion_chance, 0.4)  # Cap at 40% max evasion
     
     def execute_attack(self, distance_to_target, current_time):
         """Execute attack based on weapon preference and personality"""
