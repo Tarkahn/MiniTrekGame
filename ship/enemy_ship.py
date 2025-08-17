@@ -116,7 +116,7 @@ class EnemyShip(BaseShip):
             'movement_speed_base': random.uniform(1.2, 1.8),  # Fast movement
             'movement_distance_pref': random.uniform(2.0, 4.0),  # Short, aggressive movements
             'movement_pattern_weights': [0.1, 0.2, 0.7],  # Prefer evasive (hunting) pattern
-            'attack_frequency': random.uniform(1.0, 3.0),  # Frequent attacks
+            'attack_frequency': random.uniform(0.5, 1.5),  # Very frequent attacks
             'weapon_preference': random.uniform(0.0, 0.3),  # Prefer phasers for close combat
             'range_preference': random.uniform(2.0, 6.0),  # Close range preference
             'combat_posture': 'aggressive',
@@ -137,7 +137,7 @@ class EnemyShip(BaseShip):
             'movement_speed_base': random.uniform(0.8, 1.2),  # Normal speed
             'movement_distance_pref': random.uniform(4.0, 7.0),  # Long movements for positioning
             'movement_pattern_weights': [0.6, 0.3, 0.1],  # Prefer patrol patterns
-            'attack_frequency': random.uniform(3.0, 6.0),  # Deliberate, spaced attacks
+            'attack_frequency': random.uniform(1.0, 2.5),  # Moderate attack rate
             'weapon_preference': random.uniform(0.7, 1.0),  # Heavy torpedo preference
             'range_preference': random.uniform(8.0, 15.0),  # Long range engagement
             'combat_posture': 'defensive',
@@ -158,7 +158,7 @@ class EnemyShip(BaseShip):
             'movement_speed_base': random.uniform(1.5, 2.0),  # Very fast
             'movement_distance_pref': random.uniform(1.0, 3.0),  # Short, erratic movements
             'movement_pattern_weights': [0.1, 0.1, 0.8],  # Highly evasive/erratic
-            'attack_frequency': random.uniform(0.8, 2.0),  # Very frequent attacks
+            'attack_frequency': random.uniform(0.3, 1.0),  # Extremely frequent attacks
             'weapon_preference': random.uniform(0.4, 0.6),  # Mixed weapons
             'range_preference': random.uniform(1.0, 4.0),  # Very close range
             'combat_posture': 'berserker',
@@ -179,7 +179,7 @@ class EnemyShip(BaseShip):
             'movement_speed_base': random.uniform(1.0, 1.4),  # Good speed
             'movement_distance_pref': random.uniform(3.0, 6.0),  # Tactical positioning
             'movement_pattern_weights': [0.4, 0.4, 0.2],  # Balanced patterns
-            'attack_frequency': random.uniform(2.5, 4.5),  # Measured attacks
+            'attack_frequency': random.uniform(1.0, 2.0),  # Measured attacks
             'weapon_preference': random.uniform(0.3, 0.7),  # Situational weapon choice
             'range_preference': random.uniform(4.0, 10.0),  # Medium range
             'combat_posture': 'balanced',
@@ -200,7 +200,7 @@ class EnemyShip(BaseShip):
             'movement_speed_base': random.uniform(1.1, 1.6),  # Fast escape speed
             'movement_distance_pref': random.uniform(4.0, 8.0),  # Long evasive movements
             'movement_pattern_weights': [0.2, 0.1, 0.7],  # Highly evasive
-            'attack_frequency': random.uniform(4.0, 8.0),  # Infrequent, opportunistic attacks
+            'attack_frequency': random.uniform(2.0, 4.0),  # Opportunistic attacks
             'weapon_preference': random.uniform(0.8, 1.0),  # Long-range torpedoes
             'range_preference': random.uniform(10.0, 18.0),  # Maximum range
             'combat_posture': 'defensive',
@@ -221,7 +221,7 @@ class EnemyShip(BaseShip):
             'movement_speed_base': random.uniform(1.1, 1.5),  # Good speed
             'movement_distance_pref': random.uniform(3.0, 7.0),  # Flexible positioning
             'movement_pattern_weights': [0.35, 0.35, 0.3],  # Balanced patterns
-            'attack_frequency': random.uniform(2.0, 4.0),  # Variable attack timing
+            'attack_frequency': random.uniform(0.8, 2.0),  # Variable attack timing
             'weapon_preference': random.uniform(0.2, 0.8),  # Flexible weapon choice
             'range_preference': random.uniform(3.0, 12.0),  # Flexible range
             'combat_posture': 'balanced',
@@ -242,7 +242,7 @@ class EnemyShip(BaseShip):
             'movement_speed_base': random.uniform(0.6, 2.0),
             'movement_distance_pref': random.uniform(1.0, 8.0),
             'movement_pattern_weights': [random.uniform(0.1, 0.8), random.uniform(0.1, 0.8), random.uniform(0.1, 0.8)],
-            'attack_frequency': random.uniform(1.0, 8.0),
+            'attack_frequency': random.uniform(0.5, 3.0),
             'weapon_preference': random.uniform(0.0, 1.0),
             'range_preference': random.uniform(1.0, 18.0),
             'combat_posture': random.choice(['defensive', 'balanced', 'aggressive', 'berserker']),
