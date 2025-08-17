@@ -834,6 +834,59 @@ sound_manager = get_sound_manager()
 # Start background music
 sound_manager.play_background_music()
 
+def process_enemy_weapon_animations(systems, current_system, hex_grid, weapon_animation_manager):
+    """Process pending enemy weapon animations and trigger visual effects"""
+    if current_system not in systems:
+        return
+    
+    # Find player position for targeting
+    player_obj = next((obj for obj in systems[current_system] if obj.type == 'player'), None)
+    if not player_obj:
+        return
+    
+    player_pixel_pos = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+    
+    # Check all enemies for pending weapon animations
+    enemy_count = 0
+    animations_processed = 0
+    for obj in systems[current_system]:
+        if obj.type == 'enemy':
+            enemy_count += 1
+            # Get enemy ship from combat manager
+            enemy_ship_id = id(obj)
+            if (hasattr(player_ship, 'combat_manager') and 
+                enemy_ship_id in player_ship.combat_manager.enemy_ships):
+                
+                enemy_ship = player_ship.combat_manager.enemy_ships[enemy_ship_id]
+                pending_animations = enemy_ship.get_pending_weapon_animations()
+                
+                if pending_animations:
+                    print(f"[ANIMATION DEBUG] Processing {len(pending_animations)} weapon animations from {enemy_ship.name}")
+                
+                for animation in pending_animations:
+                    animations_processed += 1
+                    # Get enemy position 
+                    enemy_pixel_pos = hex_grid.get_hex_center(obj.system_q, obj.system_r)
+                    
+                    print(f"[ANIMATION DEBUG] Starting {animation['weapon_type']} animation with {animation['damage']} damage")
+                    
+                    if animation['weapon_type'] == 'phaser':
+                        # Start enemy phaser animation
+                        weapon_animation_manager.enemy_fire_phaser(
+                            enemy_ship, enemy_pixel_pos, player_pixel_pos, animation['damage']
+                        )
+                    elif animation['weapon_type'] == 'torpedo':
+                        # Start enemy torpedo animation  
+                        weapon_animation_manager.enemy_fire_torpedo(
+                            enemy_ship, enemy_pixel_pos, player_pixel_pos, animation['damage']
+                        )
+    
+    # Debug info every few seconds
+    import time
+    if not hasattr(process_enemy_weapon_animations, '_last_debug') or time.time() - process_enemy_weapon_animations._last_debug > 10.0:
+        print(f"[ANIMATION DEBUG] Processed {animations_processed} animations from {enemy_count} enemies in system {current_system}")
+        process_enemy_weapon_animations._last_debug = time.time()
+
 # Add initial welcome message
 add_event_log("Welcome to Star Trek Tactical Game")
 add_event_log("Click to navigate, scan for objects")
@@ -846,6 +899,12 @@ try:
         # Update weapon animations and handle combat events
         current_time = pygame.time.get_ticks()
         weapon_events = game_state.weapon_animation_manager.update(current_time, hex_grid)
+        
+        # Update enemy weapon animations
+        game_state.weapon_animation_manager.update_enemy_animations(current_time)
+        
+        # Process pending enemy weapon animations
+        process_enemy_weapon_animations(systems, game_state.current_system, hex_grid, game_state.weapon_animation_manager)
         
         # Handle weapon combat events
         if weapon_events['phaser_completed']:
@@ -1325,22 +1384,29 @@ try:
                                     if hasattr(player_ship, 'combat_manager') and enemy_id in player_ship.combat_manager.enemy_ships:
                                         enemy_ship = player_ship.combat_manager.enemy_ships[enemy_id]
                                         if enemy_ship.is_moving and enemy_ship.current_destination:
-                                            # Enemy is moving - only update target rotation when destination changes
-                                            dest_key = (enemy_ship.current_destination[0], enemy_ship.current_destination[1])
-                                            if not hasattr(obj, 'last_enemy_dest') or obj.last_enemy_dest != dest_key:
-                                                current_pos = (render_px, render_py)
-                                                dest_pos = hex_grid.get_hex_center(enemy_ship.current_destination[0], enemy_ship.current_destination[1])
-                                                obj.target_rotation = background_and_star_loader.calculate_movement_angle(current_pos, dest_pos)
-                                                obj.last_enemy_dest = dest_key
+                                            # Enemy is moving - calculate rotation based on current animation position to destination
+                                            current_pos = (render_px, render_py)
+                                            dest_pos = hex_grid.get_hex_center(enemy_ship.current_destination[0], enemy_ship.current_destination[1])
+                                            obj.target_rotation = background_and_star_loader.calculate_movement_angle(current_pos, dest_pos)
                                         elif hasattr(obj, 'prev_render_px') and hasattr(obj, 'prev_render_py'):
-                                            # Use previous position to calculate movement direction (for micro-adjustments)
+                                            # Use previous position to calculate movement direction for smooth transitions
                                             prev_pos = (obj.prev_render_px, obj.prev_render_py)
                                             current_pos = (render_px, render_py)
                                             if prev_pos != current_pos:  # Only rotate if actually moved
-                                                # Only update if movement is significant (avoid micro-rotations)
+                                                # Calculate movement direction from actual position change
                                                 import math
                                                 distance_moved = math.hypot(current_pos[0] - prev_pos[0], current_pos[1] - prev_pos[1])
-                                                if distance_moved > 2.0:  # Only rotate for significant movement
+                                                if distance_moved > 1.0:  # Reduce threshold for more responsive rotation
+                                                    obj.target_rotation = background_and_star_loader.calculate_movement_angle(prev_pos, current_pos)
+                                    else:
+                                        # Fallback: if no AI ship found, use position-based rotation
+                                        if hasattr(obj, 'prev_render_px') and hasattr(obj, 'prev_render_py'):
+                                            prev_pos = (obj.prev_render_px, obj.prev_render_py)
+                                            current_pos = (render_px, render_py)
+                                            if prev_pos != current_pos:
+                                                import math
+                                                distance_moved = math.hypot(current_pos[0] - prev_pos[0], current_pos[1] - prev_pos[1])
+                                                if distance_moved > 1.0:
                                                     obj.target_rotation = background_and_star_loader.calculate_movement_angle(prev_pos, current_pos)
                                     
                                     target_rotation = obj.target_rotation
@@ -1613,7 +1679,14 @@ try:
                     elif label == "Torpedo":
                         print(f"[DEBUG] Entered Torpedo button handler: map_mode={game_state.map_mode}, selected_enemy={game_state.combat.selected_enemy}")
                         
-                        # Check if torpedoes are on cooldown first
+                        # Check torpedo availability first
+                        if not player_ship.has_torpedoes():
+                            add_event_log("*** NO TORPEDOES REMAINING ***")
+                            add_event_log("Dock at a starbase to replenish torpedo supplies!")
+                            sound_manager.play_sound('error')  # Play error sound
+                            continue  # Skip the rest of the torpedo logic
+                        
+                        # Check if torpedoes are on cooldown
                         if player_ship.torpedo_system.is_on_cooldown():
                             cooldown_time = (player_ship.torpedo_system._last_fired_time + player_ship.torpedo_system.cooldown_seconds) - time.time()
                             add_event_log(f"Torpedoes reloading - {cooldown_time:.1f}s remaining")
@@ -1649,6 +1722,11 @@ try:
                                     
                                     if result['success']:
                                         add_event_log("Torpedo launched!")
+                                        # Check for low torpedo warning
+                                        if player_ship.torpedo_count <= 3 and player_ship.torpedo_count > 0:
+                                            add_event_log(f"*** LOW TORPEDO SUPPLY: {player_ship.torpedo_count} remaining ***")
+                                        elif player_ship.torpedo_count == 0:
+                                            add_event_log("*** LAST TORPEDO EXPENDED ***")
                                     else:
                                         add_event_log(f"Torpedo launch failed: {result.get('reason', 'Unknown error')}")
                                 else:
@@ -1906,18 +1984,33 @@ try:
                             energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
                             action_msg = "Setting course"
                         
+                        # Calculate dynamic energy cost based on engine power
+                        dynamic_energy_cost = player_ship.get_movement_energy_cost(energy_cost)
+                        
                         # Check if player has enough energy
-                        if player_ship.warp_core_energy >= energy_cost:
+                        if player_ship.warp_core_energy >= dynamic_energy_cost:
+                            # Calculate dynamic movement duration based on engine power
+                            base_duration = 2000  # 2 seconds base warp time
+                            movement_duration = player_ship.get_movement_duration(base_duration)
+                            
                             game_state.animation.dest_q, game_state.animation.dest_r = q, r
                             game_state.animation.ship_moving = True
                             game_state.animation.move_start_time = pygame.time.get_ticks()
+                            game_state.animation.move_duration_ms = movement_duration  # Set dynamic duration
+                            
                             # Set trajectory start position (current animated position for mid-flight changes)
                             trajectory_start_x, trajectory_start_y = game_state.animation.ship_anim_x, game_state.animation.ship_anim_y
                             end_x, end_y = hex_grid.get_hex_center(game_state.animation.dest_q, game_state.animation.dest_r)
-                            # Play warp sound for sector map movement
-                            sound_manager.play_sound('warp')
-                            add_event_log(f"{action_msg} for sector ({q}, {r}) - Energy cost: {energy_cost}")
-                            print(f"Ship moving to hex ({q}, {r}) - Energy cost: {energy_cost}")
+                            
+                            # Play warp sound for dynamic duration
+                            sound_manager.play_movement_sound('warp', movement_duration)
+                            
+                            # Update energy cost in event log
+                            engine_power = player_ship.power_allocation.get('engines', 5)
+                            efficiency = player_ship.get_engine_efficiency()
+                            add_event_log(f"{action_msg} for sector ({q}, {r}) - Engine Power: {engine_power} - Duration: {movement_duration/1000:.1f}s")
+                            add_event_log(f"Energy cost: {dynamic_energy_cost} - Engine efficiency: {efficiency:.1f}x")
+                            print(f"Ship moving to hex ({q}, {r}) - Duration: {movement_duration}ms - Energy cost: {dynamic_energy_cost}")
                         else:
                             add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
                             sound_manager.play_sound('error')  # Play error sound if available
@@ -2038,13 +2131,21 @@ try:
                                 distance = max(dx, dy)  # Hex distance approximation
                                 
                                 # Calculate energy cost: 5 per hex for impulse
-                                energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+                                base_energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+                                # Calculate dynamic energy cost based on engine power
+                                energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
                                 
                                 # Check if player has enough energy
                                 if player_ship.warp_core_energy >= energy_cost:
+                                    # Calculate dynamic movement duration based on engine power
+                                    base_duration = 1000  # 1 second base impulse time
+                                    movement_duration = player_ship.get_movement_duration(base_duration)
+                                    
                                     system_dest_q, system_dest_r = q, r
                                     system_ship_moving = True
                                     system_move_start_time = pygame.time.get_ticks()
+                                    system_move_duration_ms = movement_duration  # Set dynamic duration
+                                    
                                     # Set system trajectory start position (current animated position for mid-flight changes)
                                     if system_ship_anim_x is not None and system_ship_anim_y is not None:
                                         # Use current animated position as starting point
@@ -2054,10 +2155,15 @@ try:
                                         start_pos_x, start_pos_y = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
                                         system_ship_anim_x, system_ship_anim_y = start_pos_x, start_pos_y
                                         system_trajectory_start_x, system_trajectory_start_y = start_pos_x, start_pos_y
-                                    # Play impulse sound for system map movement
-                                    sound_manager.play_sound('impulse')
-                                    add_event_log(f"{action_msg} for system hex ({q}, {r}) - Energy cost: {energy_cost}")
-                                    print(f"System ship moving to hex ({q}, {r}) - Energy cost: {energy_cost}")
+                                    # Play impulse sound for dynamic duration
+                                    sound_manager.play_movement_sound('impulse', movement_duration)
+                                    
+                                    # Update event log with engine power info
+                                    engine_power = player_ship.power_allocation.get('engines', 5)
+                                    efficiency = player_ship.get_engine_efficiency()
+                                    add_event_log(f"{action_msg} for system hex ({q}, {r}) - Engine Power: {engine_power} - Duration: {movement_duration/1000:.1f}s")
+                                    add_event_log(f"Energy cost: {energy_cost} - Engine efficiency: {efficiency:.1f}x")
+                                    print(f"System ship moving to hex ({q}, {r}) - Duration: {movement_duration}ms - Energy cost: {energy_cost}")
                                 else:
                                     add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
                                     sound_manager.play_sound('error')  # Play error sound if available
@@ -2127,12 +2233,16 @@ try:
                 dx = abs(game_state.animation.dest_q - ship_q)
                 dy = abs(game_state.animation.dest_r - ship_r)
                 distance = max(dx, dy)
-                energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
+                base_energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
+                energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
                 player_ship.consume_energy(energy_cost)
                 
                 ship_q, ship_r = game_state.animation.dest_q, game_state.animation.dest_r
                 game_state.animation.ship_moving = False
                 game_state.animation.move_start_time = None
+                
+                # Stop movement sound when warp completes
+                sound_manager.stop_movement_sound()
                 trajectory_start_x, trajectory_start_y = None, None  # Reset trajectory tracking
                 logging.info(f"[MOVE] Ship arrived at ({ship_q}, {ship_r}), consumed {energy_cost} energy")
                 add_event_log(f"Arrived at sector ({ship_q}, {ship_r}) - Energy: {player_ship.warp_core_energy}/{player_ship.max_warp_core_energy}")
@@ -2282,6 +2392,10 @@ try:
                 if game_state.weapon_animation_manager:
                     game_state.weapon_animation_manager.system_objects = system_objects
                 
+                # Update enemy AI through combat manager (after all system objects are generated)
+                delta_time = clock.get_time() / 1000.0  # Convert milliseconds to seconds
+                player_ship.combat_manager.update_enemy_ai(delta_time, systems, game_state.current_system, hex_grid, player_ship)
+                
                 # Show detailed object information
                 add_event_log(f"[SCAN] System contains {len(system_objects)} objects:")
                 obj_summary = {}
@@ -2364,16 +2478,60 @@ try:
                         dx = abs(system_dest_q - player_obj.system_q)
                         dy = abs(system_dest_r - player_obj.system_r)
                         distance = max(dx, dy)
-                        energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+                        base_energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+                        energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
                         player_ship.consume_energy(energy_cost)
                         
                         player_obj.system_q = system_dest_q
                         player_obj.system_r = system_dest_r
                         system_ship_moving = False
                         system_move_start_time = None
+                        
+                        # Stop movement sound when impulse completes
+                        sound_manager.stop_movement_sound()
                         system_trajectory_start_x, system_trajectory_start_y = None, None  # Reset system trajectory tracking
                         add_event_log(f"Arrived at system hex ({system_dest_q}, {system_dest_r}) - Energy: {player_ship.warp_core_energy}/{player_ship.max_warp_core_energy}")
                         print(f"System ship arrived at hex ({system_dest_q}, {system_dest_r}), consumed {energy_cost} energy")
+                        
+                        # Check for starbase docking at this hex
+                        system_objects = systems.get(current_system, [])
+                        for obj in system_objects:
+                            if obj.type == 'starbase':
+                                # Check if player is at the starbase center hex
+                                if hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
+                                    if obj.system_q == system_dest_q and obj.system_r == system_dest_r:
+                                        # Player is at starbase center - this is main docking port
+                                        add_event_log("*** DOCKING WITH STARBASE - MAIN PORT ***")
+                                        add_event_log("Ship systems fully repaired, energy restored, and torpedoes replenished!")
+                                        player_ship.reset_damage()  # Full repair
+                                        player_ship.regenerate_energy()  # Full energy restore
+                                        sound_manager.play_sound('scanner')  # Use scanner sound for docking
+                                        break
+                                else:
+                                    # Calculate if player is on one of the 6 surrounding docking pad hexes
+                                    # The 6 hexes surrounding the starbase center in a flat-topped hex grid
+                                    starbase_center_q = obj.system_q if hasattr(obj, 'system_q') else 10  # Default center
+                                    starbase_center_r = obj.system_r if hasattr(obj, 'system_r') else 10
+                                    
+                                    # Define the 6 adjacent hex positions around the starbase center
+                                    docking_pad_positions = [
+                                        (starbase_center_q + 1, starbase_center_r),     # East
+                                        (starbase_center_q - 1, starbase_center_r),     # West  
+                                        (starbase_center_q, starbase_center_r + 1),     # Southeast
+                                        (starbase_center_q, starbase_center_r - 1),     # Northwest
+                                        (starbase_center_q + 1, starbase_center_r - 1), # Northeast
+                                        (starbase_center_q - 1, starbase_center_r + 1)  # Southwest
+                                    ]
+                                    
+                                    if (system_dest_q, system_dest_r) in docking_pad_positions:
+                                        # Player is at a docking pad
+                                        pad_number = docking_pad_positions.index((system_dest_q, system_dest_r)) + 1
+                                        add_event_log(f"*** DOCKING WITH STARBASE - PAD {pad_number} ***")
+                                        add_event_log("Ship systems fully repaired, energy restored, and torpedoes replenished!")
+                                        player_ship.reset_damage()  # Full repair
+                                        player_ship.regenerate_energy()  # Full energy restore
+                                        sound_manager.play_sound('scanner')  # Use scanner sound for docking
+                                        break
                         
                         # Check if there's a pending orbital request
                         if pending_orbit_center is not None and pending_orbit_key is not None:
@@ -2584,9 +2742,9 @@ try:
                         if hasattr(game_state.combat, 'torpedo_damage_shown'):
                             delattr(game_state.combat, 'torpedo_damage_shown')
 
-        # Update enemy AI through combat manager
-        delta_time = clock.get_time() / 1000.0  # Convert milliseconds to seconds
-        player_ship.combat_manager.update_enemy_ai(delta_time, systems, game_state.current_system, hex_grid, player_ship)
+        # --- Enemy weapon animation drawing ---
+        game_state.weapon_animation_manager.draw_enemy_weapon_animations(screen, current_time)
+
         
         # Update scan positions for moving enemies
         update_enemy_scan_positions()

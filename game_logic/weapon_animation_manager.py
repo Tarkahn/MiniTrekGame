@@ -50,8 +50,14 @@ class WeaponAnimationManager:
         self.torpedo_enemies_hit_by_ring = {}  # Track which enemies have been hit by which ring: {enemy_id: [ring_indices]}
         self.torpedo_explosion_pixel_center = None  # Pixel position of explosion center
         
+        # Enemy weapon animation state
+        self.enemy_phaser_animations = []  # List of active enemy phaser animations
+        self.enemy_torpedo_animations = []  # List of active enemy torpedo animations
+        
         # Animation constants
         self.torpedo_speed = 200  # pixels per second
+        self.enemy_phaser_duration = 600  # ms - slightly longer than player phasers
+        self.enemy_torpedo_speed = 150  # pixels per second - slightly slower than player
         
     def fire_phaser(self, target_enemy, distance):
         """
@@ -462,6 +468,155 @@ class WeaponAnimationManager:
         """Check if any weapon animation is currently active."""
         return self.phaser_animating or self.torpedo_flying
     
+    def enemy_fire_phaser(self, enemy_ship, start_pos, target_pos, damage):
+        """
+        Start an enemy phaser animation targeting the player.
+        
+        Args:
+            enemy_ship: Enemy ship object firing
+            start_pos: Starting position in pixels (enemy position)
+            target_pos: Target position in pixels (player position)
+            damage: Damage amount to apply when animation completes
+        """
+        import time
+        
+        # Create enemy phaser animation
+        animation = {
+            'type': 'phaser',
+            'start_time': time.time() * 1000,  # Convert to milliseconds
+            'duration': self.enemy_phaser_duration,
+            'enemy_ship': enemy_ship,
+            'start_pos': start_pos,
+            'target_pos': target_pos,
+            'damage': damage,
+            'applied': False
+        }
+        
+        self.enemy_phaser_animations.append(animation)
+        
+        # Play enemy phaser sound
+        from ui.sound_manager import get_sound_manager
+        sound_manager = get_sound_manager()
+        sound_manager.play_sound('phaser_shot')  # Reuse same sound for now
+    
+    def enemy_fire_torpedo(self, enemy_ship, start_pos, target_pos, damage):
+        """
+        Start an enemy torpedo animation targeting the player.
+        
+        Args:
+            enemy_ship: Enemy ship object firing
+            start_pos: Starting position in pixels (enemy position)
+            target_pos: Target position in pixels (player position)
+            damage: Damage amount to apply when torpedo hits
+        """
+        import time
+        
+        # Calculate torpedo flight time
+        distance_pixels = math.hypot(target_pos[0] - start_pos[0], target_pos[1] - start_pos[1])
+        flight_time = (distance_pixels / self.enemy_torpedo_speed) * 1000  # Convert to milliseconds
+        
+        # Create enemy torpedo animation
+        animation = {
+            'type': 'torpedo',
+            'start_time': time.time() * 1000,  # Convert to milliseconds
+            'duration': flight_time,
+            'enemy_ship': enemy_ship,
+            'start_pos': start_pos,
+            'target_pos': target_pos,
+            'current_pos': start_pos,
+            'damage': damage,
+            'applied': False
+        }
+        
+        self.enemy_torpedo_animations.append(animation)
+    
+    def update_enemy_animations(self, current_time_ms):
+        """
+        Update all enemy weapon animations and apply damage when appropriate.
+        
+        Args:
+            current_time_ms: Current time in milliseconds
+        """
+        # Update enemy phaser animations
+        for animation in self.enemy_phaser_animations[:]:  # Copy list to avoid modification during iteration
+            elapsed = current_time_ms - animation['start_time']
+            progress = elapsed / animation['duration']
+            
+            if progress >= 1.0:
+                # Phaser animation complete - apply damage
+                if not animation['applied']:
+                    self.player_ship.apply_damage(animation['damage'], animation['enemy_ship'])
+                    animation['applied'] = True
+                    print(f"Player hit by enemy phaser for {animation['damage']} damage!")
+                
+                # Remove completed animation
+                self.enemy_phaser_animations.remove(animation)
+        
+        # Update enemy torpedo animations
+        for animation in self.enemy_torpedo_animations[:]:  # Copy list to avoid modification during iteration
+            elapsed = current_time_ms - animation['start_time']
+            progress = elapsed / animation['duration']
+            
+            if progress >= 1.0:
+                # Torpedo hits target - apply damage
+                if not animation['applied']:
+                    self.player_ship.apply_damage(animation['damage'], animation['enemy_ship'])
+                    animation['applied'] = True
+                    print(f"Player hit by enemy torpedo for {animation['damage']} damage!")
+                
+                # Remove completed animation
+                self.enemy_torpedo_animations.remove(animation)
+            else:
+                # Update torpedo position during flight
+                start_x, start_y = animation['start_pos']
+                target_x, target_y = animation['target_pos']
+                
+                current_x = start_x + (target_x - start_x) * progress
+                current_y = start_y + (target_y - start_y) * progress
+                animation['current_pos'] = (current_x, current_y)
+    
+    def draw_enemy_weapon_animations(self, screen, current_time_ms):
+        """
+        Draw all enemy weapon animations.
+        
+        Args:
+            screen: Pygame screen surface
+            current_time_ms: Current time in milliseconds
+        """
+        # Draw enemy phaser animations
+        for animation in self.enemy_phaser_animations:
+            elapsed = current_time_ms - animation['start_time']
+            progress = elapsed / animation['duration']
+            
+            if 0 <= progress <= 1.0:
+                # Get enemy ship position from animation data
+                start_pos = animation.get('start_pos', (400, 400))  # Fallback position
+                
+                # Draw red phaser beam (different from player's blue/yellow)
+                target_pos = animation['target_pos']
+                
+                # Calculate beam properties
+                alpha = int(255 * (1.0 - progress))  # Fade out over time
+                thickness = max(1, int(4 * (1.0 - progress)))  # Thicken and fade
+                
+                # Draw red enemy phaser beam
+                color = (255, 100, 100, alpha)  # Red color for enemy
+                if alpha > 0:
+                    pygame.draw.line(screen, color[:3], start_pos, target_pos, thickness)
+        
+        # Draw enemy torpedo animations
+        for animation in self.enemy_torpedo_animations:
+            elapsed = current_time_ms - animation['start_time']
+            progress = elapsed / animation['duration']
+            
+            if 0 <= progress <= 1.0:
+                current_pos = animation['current_pos']
+                
+                # Draw red enemy torpedo (different from player's blue/green)
+                pygame.draw.circle(screen, (255, 100, 100), (int(current_pos[0]), int(current_pos[1])), 3)
+                # Add red glow effect
+                pygame.draw.circle(screen, (255, 150, 150, 100), (int(current_pos[0]), int(current_pos[1])), 6, 2)
+
     def stop_all_animations(self):
         """Force stop all weapon animations (emergency cleanup)."""
         self.phaser_animating = False

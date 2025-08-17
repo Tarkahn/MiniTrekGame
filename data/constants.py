@@ -19,6 +19,10 @@ WARP_INITIATION_COST = 5  # Warp initiation cost (reduced for gameplay balance)
 PLAYER_PHASER_POWER = 5   # Base damage before distance modifiers (balanced for shield combat)
 PLAYER_PHASER_RANGE = 18  # Extended range for tactical positioning
 
+# Torpedo System
+STARTING_TORPEDO_COUNT = 10    # Number of torpedoes ship starts with
+MAX_TORPEDO_CAPACITY = 10      # Maximum torpedoes ship can carry
+
 # Ship Defense Systems
 PLAYER_SHIELD_CAPACITY = 75   # Player ship shield strength
 ENEMY_SHIELD_CAPACITY = 75    # Enemy ship shield strength  
@@ -29,9 +33,8 @@ ENEMY_HULL_STRENGTH = 100     # Enemy ship hull integrity
 DEFAULT_PHASER_POWER = 5      # Default phaser power allocation
 DEFAULT_SHIELD_POWER = 5      # Default shield power allocation
 DEFAULT_ENGINE_POWER = 5      # Default engine power (warp/impulse)
-DEFAULT_SENSOR_POWER = 5      # Default sensor power allocation
 DEFAULT_LIFE_SUPPORT_POWER = 9  # Default life support (critical system)
-MAX_TOTAL_POWER = 36          # Maximum total power across tactical systems (4 systems × 9 max)
+MAX_TOTAL_POWER = 27          # Maximum total power across tactical systems (3 systems × 9 max)
 
 # Phaser Distance-Based Damage System
 PHASER_CLOSE_RANGE = 3      # Close range threshold (0-3 hexes)
@@ -66,10 +69,10 @@ SHORT_RANGE_SCAN_COST = 5   # PRD: 5 energy units
 LONG_RANGE_SCAN_COST = 20   # PRD: 20 energy units
 SENSOR_ENERGY_COST_PER_SCAN = 5  # Backward compatibility
 
-# Enemy Ship Weaponry
-ENEMY_PHASER_POWER = 40
+# Enemy Ship Weaponry (Balanced for fair gameplay)
+ENEMY_PHASER_POWER = 4  # Reduced from 40 to 4 for balanced combat (same as player base)
 ENEMY_PHASER_RANGE = 7
-ENEMY_TORPEDO_POWER = 80
+ENEMY_TORPEDO_POWER = 60  # Reduced from 80 to 60 for balance
 ENEMY_TORPEDO_SPEED = 10
 ENEMY_TORPEDO_ACCURACY = 0.7
 
@@ -92,7 +95,7 @@ GRID_COLS = 20
 # Object counts
 NUM_STARS = 30  # Reduced from 100 to allow more room for planets
 NUM_PLANETS = 35  # Increased to ensure at least 1 planet per star (30) plus extras
-NUM_STARBases = 1
+NUM_STARBases = 3
 NUM_ENEMY_SHIPS = 30
 NUM_ANOMALIES = 1
 

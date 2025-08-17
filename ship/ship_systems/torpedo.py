@@ -20,15 +20,25 @@ class Torpedo:
 
     def fire(self, target_distance: int) -> int:
         """
-        Fires a torpedo at a target, consuming energy.
+        Fires a torpedo at a target, consuming energy and torpedo count.
         Returns the damage dealt, or 0 if unable to fire.
         For simplicity, this example assumes instant hit/miss based on accuracy and range.
         """
         if self.is_on_cooldown():
             return 0
+        
+        # Check if ship has torpedoes available
+        if not self.ship.has_torpedoes():
+            print(f"{self.ship.name} has no torpedoes remaining!")
+            return 0
             
         if not self.ship.consume_energy(self.energy_cost):
             print(f"Insufficient energy on {self.ship.name} to fire torpedo.")
+            return 0
+        
+        # Consume one torpedo
+        if not self.ship.consume_torpedo():
+            print(f"{self.ship.name} has no torpedoes remaining!")
             return 0
         
         self._last_fired_time = time.time()  # Set cooldown timer
@@ -42,5 +52,5 @@ class Torpedo:
             damage *= constants.CRITICAL_HIT_MULTIPLIER
             print("Critical Hit!")
 
-        print(f"{self.ship.name} fired torpedo. Potential damage: {damage}. Energy remaining: {self.ship.warp_core_energy}")
+        print(f"{self.ship.name} fired torpedo. Potential damage: {damage}. Torpedoes remaining: {self.ship.torpedo_count}. Energy remaining: {self.ship.warp_core_energy}")
         return damage 

@@ -361,6 +361,14 @@ class CombatManager:
         if current_system not in systems:
             return
         
+        # Debug output every few seconds
+        import time
+        if not hasattr(self, '_last_ai_debug') or time.time() - self._last_ai_debug > 5.0:
+            enemy_count = sum(1 for obj in systems[current_system] if obj.type == 'enemy')
+            print(f"[AI DEBUG] Updating AI for {enemy_count} enemies in system {current_system}")
+            print(f"[AI DEBUG] Enemy ships tracked: {len(self.enemy_ships)}")
+            self._last_ai_debug = time.time()
+        
         for obj in systems[current_system]:
             if obj.type == 'enemy' and hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
                 enemy_ship = self.get_or_create_enemy_ship(obj, player_ship)

@@ -14,6 +14,10 @@ class SoundManager:
         self.volume = 0.7  # Default volume (0.0 to 1.0)
         self.music_volume = 0.3  # Background music volume (lower than sound effects)
         
+        # Movement sound management
+        self.movement_sound_channel = None
+        self.movement_fade_thread = None
+        
         # Initialize pygame mixer if not already done
         if not pygame.mixer.get_init():
             try:
@@ -196,6 +200,123 @@ class SoundManager:
             except pygame.error as e:
                 print(f"[SOUND] Failed to play explosion: {e}")
                 logging.error(f"[SOUND] Failed to play explosion: {e}")
+    
+    def play_movement_sound(self, sound_name, duration_ms):
+        """
+        Play movement sound for specified duration with smooth fade-out.
+        
+        Args:
+            sound_name: Name of the sound to play ('warp' or 'impulse')
+            duration_ms: How long the movement will take in milliseconds
+        """
+        if not self.enabled or sound_name not in self.sounds:
+            if sound_name not in self.sounds:
+                print(f"[SOUND] Movement sound '{sound_name}' not found")
+                logging.warning(f"[SOUND] Movement sound '{sound_name}' not found")
+            return
+        
+        # Stop any existing movement sound
+        self.stop_movement_sound()
+        
+        try:
+            sound = self.sounds[sound_name]
+            
+            # For very short movements (< 1 second), just play once
+            if duration_ms < 1000:
+                sound.play()
+                print(f"[SOUND] Playing short movement sound: {sound_name} (duration: {duration_ms}ms)")
+            else:
+                # For longer movements, play looped and schedule fade-out
+                self.movement_sound_channel = sound.play(-1)  # -1 means loop indefinitely
+                print(f"[SOUND] Started looping movement sound: {sound_name} (duration: {duration_ms}ms)")
+                
+                # Schedule fade-out in a separate thread
+                self.movement_fade_thread = threading.Thread(
+                    target=self._movement_fade_thread, 
+                    args=(duration_ms,), 
+                    daemon=True
+                )
+                self.movement_fade_thread.start()
+                
+        except pygame.error as e:
+            print(f"[SOUND] Failed to play movement sound {sound_name}: {e}")
+            logging.error(f"[SOUND] Failed to play movement sound {sound_name}: {e}")
+    
+    def stop_movement_sound(self, fade_duration_ms=500):
+        """
+        Stop movement sound with optional fade-out.
+        
+        Args:
+            fade_duration_ms: Duration of fade-out in milliseconds
+        """
+        if self.movement_sound_channel and self.movement_sound_channel.get_busy():
+            if fade_duration_ms > 0:
+                # Start fade-out thread
+                threading.Thread(
+                    target=self._fade_out_channel, 
+                    args=(self.movement_sound_channel, fade_duration_ms), 
+                    daemon=True
+                ).start()
+            else:
+                # Immediate stop
+                self.movement_sound_channel.stop()
+            
+            print(f"[SOUND] Stopping movement sound with {fade_duration_ms}ms fade")
+            logging.debug(f"[SOUND] Stopping movement sound with {fade_duration_ms}ms fade")
+    
+    def _movement_fade_thread(self, duration_ms):
+        """
+        Internal thread to handle movement sound fade-out timing.
+        
+        Args:
+            duration_ms: Total movement duration in milliseconds
+        """
+        # Wait for most of the movement duration
+        fade_start_time = max(duration_ms - 500, duration_ms * 0.8)  # Start fade 500ms before end or at 80% completion
+        time.sleep(fade_start_time / 1000.0)
+        
+        # Start fade-out
+        if self.movement_sound_channel and self.movement_sound_channel.get_busy():
+            fade_duration = min(500, duration_ms - fade_start_time)  # Fade for remaining time or 500ms max
+            self._fade_out_channel(self.movement_sound_channel, fade_duration)
+    
+    def _fade_out_channel(self, channel, fade_duration_ms):
+        """
+        Fade out a specific sound channel over time.
+        
+        Args:
+            channel: pygame sound channel to fade
+            fade_duration_ms: Duration of fade in milliseconds
+        """
+        if not channel or not channel.get_busy():
+            return
+        
+        try:
+            fade_steps = 20  # Number of volume steps for smooth fade
+            step_duration = fade_duration_ms / (fade_steps * 1000.0)  # Convert to seconds
+            
+            for step in range(fade_steps):
+                if not channel.get_busy():
+                    break
+                
+                # Calculate fade volume (1.0 to 0.0)
+                fade_volume = 1.0 - (step / fade_steps)
+                channel.set_volume(fade_volume * self.volume)
+                time.sleep(step_duration)
+            
+            # Ensure complete stop
+            if channel.get_busy():
+                channel.stop()
+            
+            print(f"[SOUND] Completed fade-out over {fade_duration_ms}ms")
+            logging.debug(f"[SOUND] Completed fade-out over {fade_duration_ms}ms")
+            
+        except Exception as e:
+            print(f"[SOUND] Error during fade-out: {e}")
+            logging.error(f"[SOUND] Error during fade-out: {e}")
+            # Fallback: immediate stop
+            if channel and channel.get_busy():
+                channel.stop()
 
 # Global sound manager instance
 sound_manager = None

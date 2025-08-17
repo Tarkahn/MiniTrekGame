@@ -101,7 +101,7 @@ class ShipStatusDisplay:
         screen.blit(label, (self.rect.x + 10, y))
         y += 25
         
-        systems = ['phasers', 'shields', 'engines', 'sensors']
+        systems = ['phasers', 'shields', 'engines']
         
         for i, system in enumerate(systems):
             power_level = ship.power_allocation.get(system, 0)
@@ -185,7 +185,7 @@ class ShipStatusDisplay:
             return False
         
         # Check if click is in power allocation area
-        systems = ['phasers', 'shields', 'engines', 'sensors']
+        systems = ['phasers', 'shields', 'engines']
         
         # Use exact coordinates for power allocation bars
         system_coordinates = [160, 180, 200, 220]  # Phasers, Shields, Engines, Sensors
@@ -235,7 +235,7 @@ class ShipStatusDisplay:
         screen.blit(label, (self.rect.x + 10, y))
         y += 25
         
-        systems = ['hull', 'shields', 'phasers', 'engines', 'sensors', 'life_support', 'warp_core']
+        systems = ['hull', 'shields', 'phasers', 'engines', 'life_support', 'warp_core']
         
         for system in systems:
             integrity = ship.system_integrity.get(system, 100)
@@ -374,6 +374,67 @@ class ShipStatusDisplay:
             range_text = f"Range: {phaser.range} hexes, Power: {power_modifier:.1f}x"
             range_surface = self.small_font.render(range_text, True, self.text_color)
             screen.blit(range_surface, (self.rect.x + 10, y))
+            y += 18
+        
+        # Engine efficiency display
+        if hasattr(ship, 'get_engine_efficiency'):
+            engine_power = ship.power_allocation.get('engines', 5)
+            efficiency = ship.get_engine_efficiency()
+            engine_integrity = ship.system_integrity.get('engines', 100)
+            
+            # Color based on efficiency
+            if efficiency >= 1.0:
+                efficiency_color = self.good_color
+            elif efficiency >= 0.7:
+                efficiency_color = self.warning_color
+            else:
+                efficiency_color = self.critical_color
+            
+            engine_text = f"ENGINE POWER: {engine_power}/9 - Efficiency: {efficiency:.1f}x"
+            engine_surface = self.small_font.render(engine_text, True, efficiency_color)
+            screen.blit(engine_surface, (self.rect.x + 10, y))
+            y += 18
+            
+            # Engine status
+            if engine_integrity < 100:
+                damage_text = f"Engine Damage: {100-engine_integrity:.0f}% (Reduces Speed)"
+                damage_surface = self.small_font.render(damage_text, True, self.critical_color)
+                screen.blit(damage_surface, (self.rect.x + 10, y))
+                y += 18
+        
+        # Torpedo status
+        if hasattr(ship, 'torpedo_count'):
+            torpedo_count = ship.torpedo_count
+            max_torpedoes = ship.max_torpedo_capacity
+            
+            # Torpedo count with color coding
+            if torpedo_count > max_torpedoes * 0.6:
+                torpedo_color = self.good_color
+            elif torpedo_count > max_torpedoes * 0.3:
+                torpedo_color = self.warning_color
+            elif torpedo_count > 0:
+                torpedo_color = self.critical_color
+            else:
+                torpedo_color = self.critical_color
+            
+            torpedo_text = f"TORPEDOES: {torpedo_count}/{max_torpedoes}"
+            torpedo_surface = self.small_font.render(torpedo_text, True, torpedo_color)
+            screen.blit(torpedo_surface, (self.rect.x + 10, y))
+            y += 18
+            
+            # Torpedo status indicator
+            if torpedo_count == 0:
+                status_text = "NO TORPEDOES"
+                status_color = self.critical_color
+            elif torpedo_count <= max_torpedoes * 0.3:
+                status_text = "LOW AMMUNITION"
+                status_color = self.warning_color
+            else:
+                status_text = "READY"
+                status_color = self.good_color
+            
+            status_surface = self.small_font.render(status_text, True, status_color)
+            screen.blit(status_surface, (self.rect.x + 10, y))
         
         return y + 25
 

@@ -18,12 +18,15 @@ class BaseShip:
         self.weapons = weapons or []
         self.position = position
         
+        # Torpedo system
+        self.torpedo_count = constants.STARTING_TORPEDO_COUNT
+        self.max_torpedo_capacity = constants.MAX_TORPEDO_CAPACITY
+        
         # PRD: Power allocation system (0-9 scale for each system)
         self.power_allocation = {
             'phasers': constants.DEFAULT_PHASER_POWER,
             'shields': constants.DEFAULT_SHIELD_POWER,      
-            'engines': constants.DEFAULT_ENGINE_POWER,  # Renamed from impulse for dual role
-            'sensors': constants.DEFAULT_SENSOR_POWER
+            'engines': constants.DEFAULT_ENGINE_POWER  # Renamed from impulse for dual role
         }
         
         # Life support is always at maximum - no power allocation needed
@@ -35,7 +38,6 @@ class BaseShip:
             'shields': 100,
             'phasers': 100,
             'engines': 100,  # Renamed from impulse for dual role
-            'sensors': 100,
             'life_support': 100,
             'warp_core': 100
         }
@@ -96,7 +98,10 @@ class BaseShip:
                 self.system_integrity[system] = self.max_hull_strength
             else:
                 self.system_integrity[system] = 100
-                
+        
+        # Replenish torpedoes during starbase repairs
+        self.replenish_torpedoes()
+        
         print(f"{self.name} fully repaired at starbase.")
 
     def allocate_power(self, system: str, power_level: int) -> bool:
@@ -160,3 +165,112 @@ class BaseShip:
 
     def is_alive(self):
         return self.hull_strength > 0 
+    
+    def consume_torpedo(self) -> bool:
+        """
+        Consumes one torpedo if available.
+        Returns True if torpedo was consumed, False if no torpedoes available.
+        """
+        if self.torpedo_count > 0:
+            self.torpedo_count -= 1
+            return True
+        return False
+    
+    def replenish_torpedoes(self):
+        """
+        Restores torpedo count to maximum capacity.
+        Typically called when docking at a starbase.
+        """
+        self.torpedo_count = self.max_torpedo_capacity
+        print(f"{self.name} torpedoes replenished to {self.torpedo_count}")
+    
+    def has_torpedoes(self) -> bool:
+        """
+        Returns True if ship has torpedoes available.
+        """
+        return self.torpedo_count > 0
+    
+    def get_movement_duration(self, base_duration_ms: int) -> int:
+        """
+        Calculate movement duration based on engine power and system integrity.
+        
+        Args:
+            base_duration_ms: Base movement duration in milliseconds
+            
+        Returns:
+            Actual movement duration in milliseconds based on engine power
+        """
+        engine_power = self.power_allocation.get('engines', 5)
+        engine_integrity = self.system_integrity.get('engines', 100) / 100.0
+        
+        # Speed multipliers based on engine power (0-9 scale)
+        speed_multipliers = {
+            0: 0.25,  # Emergency: 4x slower (8 seconds from 2 second base)
+            1: 0.4,   # Very slow: 2.5x slower (5 seconds)
+            2: 0.5,   # Slow: 2x slower (4 seconds)  
+            3: 0.7,   # Below normal: 1.4x slower (2.8 seconds)
+            4: 0.85,  # Slightly slow: 1.2x slower (2.4 seconds)
+            5: 1.0,   # Normal: Standard speed (2 seconds)
+            6: 1.2,   # Fast: 1.2x faster (1.7 seconds)
+            7: 1.4,   # Very fast: 1.4x faster (1.4 seconds)
+            8: 1.7,   # Maximum: 1.7x faster (1.2 seconds)
+            9: 2.0    # Overdrive: 2x faster (1 second)
+        }
+        
+        speed_multiplier = speed_multipliers.get(engine_power, 1.0)
+        # Apply engine damage to reduce effective speed
+        effective_multiplier = speed_multiplier * engine_integrity
+        
+        # Ensure minimum speed (never completely immobilized)
+        effective_multiplier = max(effective_multiplier, 0.1)
+        
+        duration = int(base_duration_ms / effective_multiplier)
+        print(f"[MOVEMENT] Engine power: {engine_power}, integrity: {engine_integrity:.1f}, duration: {duration}ms")
+        return duration
+    
+    def get_engine_efficiency(self) -> float:
+        """
+        Get current engine efficiency as a percentage.
+        
+        Returns:
+            Engine efficiency from 0.0 to 1.0+
+        """
+        engine_power = self.power_allocation.get('engines', 5)
+        engine_integrity = self.system_integrity.get('engines', 100) / 100.0
+        
+        # Base efficiency from power level (0-9 scale maps to 0.25-2.0 multiplier)
+        if engine_power == 0:
+            base_efficiency = 0.25
+        else:
+            # Linear scaling from 0.4 to 2.0 for power levels 1-9
+            base_efficiency = 0.4 + (engine_power - 1) * (2.0 - 0.4) / 8
+        
+        return base_efficiency * engine_integrity
+    
+    def get_movement_energy_cost(self, base_cost: int) -> int:
+        """
+        Calculate energy cost for movement based on engine power usage.
+        
+        Args:
+            base_cost: Base energy cost for movement
+            
+        Returns:
+            Actual energy cost based on engine power
+        """
+        engine_power = self.power_allocation.get('engines', 5)
+        
+        # Higher engine power = more energy consumption
+        # Power 0-3: Reduced energy usage (efficient low power)
+        # Power 4-6: Standard energy usage
+        # Power 7-9: Increased energy usage (high performance cost)
+        
+        if engine_power <= 3:
+            energy_multiplier = 0.7 + (engine_power * 0.1)  # 0.7x to 1.0x
+        elif engine_power <= 6:
+            energy_multiplier = 1.0 + ((engine_power - 4) * 0.1)  # 1.0x to 1.2x
+        else:
+            energy_multiplier = 1.2 + ((engine_power - 6) * 0.2)  # 1.2x to 1.8x
+        
+        cost = int(base_cost * energy_multiplier)
+        print(f"[ENERGY] Engine power: {engine_power}, cost multiplier: {energy_multiplier:.1f}, total cost: {cost}")
+        return cost

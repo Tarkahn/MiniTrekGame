@@ -532,14 +532,16 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, planet_o
     # Build MapObject list
     result = []
     for (obj_type, props), (sys_q, sys_r) in zip(objects_to_place, positions):
-        result.append(
-            MapObject(
-                obj_type,
-                sys_q,
-                sys_r,
-                **props
-            )
+        obj = MapObject(
+            obj_type,
+            q,  # Sector coordinates
+            r,  # Sector coordinates  
+            **props
         )
+        # Set system coordinates for positioning within the system
+        obj.system_q = sys_q
+        obj.system_r = sys_r
+        result.append(obj)
     
     # Debug: log what was actually generated
     obj_counts = {}
