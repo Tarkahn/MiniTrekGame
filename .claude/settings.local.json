@@ -37,7 +37,8 @@
       "mcp__ide__getDiagnostics",
       "Bash(\"C:\\Python313\\python.exe\" test_enemy_personality.py)",
       "Bash(del test_enemy_personality.py)",
-      "Bash(\"C:\\Python313\\python.exe\":*)"
+      "Bash(\"C:\\Python313\\python.exe\":*)",
+      "Bash(del test_enemy_position.py)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

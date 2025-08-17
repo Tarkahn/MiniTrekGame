@@ -336,12 +336,14 @@ class EnemyShip(BaseShip):
         # Range check based on weapon preference and personality
         in_weapon_range = False
         if self.weapon_preference < 0.5:  # Prefer phasers
-            in_weapon_range = distance_to_target <= self.phaser_system.range
+            # Can use phasers OR fall back to torpedoes if out of phaser range
+            in_weapon_range = (distance_to_target <= self.phaser_system.range or 
+                             distance_to_target <= 15)  # Torpedo fallback
         else:  # Prefer torpedoes
             in_weapon_range = distance_to_target <= 15  # Torpedo max range
             
-        # Personality-based range preference
-        in_preferred_range = distance_to_target <= self.range_preference
+        # Personality-based range preference - be more flexible for engagement
+        in_preferred_range = distance_to_target <= max(self.range_preference, 10)
         
         # Combat posture affects attack likelihood
         posture_modifier = {
@@ -361,7 +363,8 @@ class EnemyShip(BaseShip):
         # Don't pursue if too close (prefer to attack) or too far (out of interest)
         if distance_to_target < self.range_preference * 0.5:
             return False
-        if distance_to_target > self.range_preference * 2.0:
+        # Increased max pursuit range - enemies will chase much further
+        if distance_to_target > max(15, self.range_preference * 4.0):
             return False
             
         # Pursuit based on personality
