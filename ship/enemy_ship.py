@@ -273,7 +273,7 @@ class EnemyShip(BaseShip):
         self.update_movement_decisions(current_time)
         
         # Personality-driven combat AI 
-        if self.target and hasattr(self.target, 'is_alive') and self.target.is_alive():
+        if self.target:
             # Add debug output to verify combat AI is running
             if not hasattr(self, '_last_combat_debug') or current_time - self._last_combat_debug > 5.0:
                 print(f"[COMBAT DEBUG] {self.name} updating combat AI - target at distance {self.calculate_distance(self.target.position):.1f}")
@@ -282,19 +282,19 @@ class EnemyShip(BaseShip):
         else:
             # Debug why combat isn't running
             if not hasattr(self, '_last_target_debug') or current_time - self._last_target_debug > 5.0:
-                print(f"[TARGET DEBUG] {self.name} - target: {self.target}, has target: {self.target is not None}")
-                if self.target:
-                    print(f"[TARGET DEBUG] - target has is_alive: {hasattr(self.target, 'is_alive')}")
-                    if hasattr(self.target, 'is_alive'):
-                        print(f"[TARGET DEBUG] - target is alive: {self.target.is_alive()}")
+                print(f"[TARGET DEBUG] {self.name} - no target set!")
                 self._last_target_debug = current_time
     
     def update_combat_ai(self, current_time):
         """Comprehensive personality-driven combat AI system"""
+        print(f"[COMBAT AI] {self.name} update_combat_ai called")
+        
         if not self.target or not hasattr(self.target, 'position'):
+            print(f"[COMBAT AI] {self.name} no target or target has no position")
             return
             
         distance_to_target = self.calculate_distance(self.target.position)
+        print(f"[COMBAT AI] {self.name} distance to target: {distance_to_target:.2f}")
         
         # Check if enemy should retreat based on hull damage and personality
         current_hull_ratio = self.hull_strength / self.max_hull_strength
@@ -309,6 +309,7 @@ class EnemyShip(BaseShip):
         
         # Retreating behavior - try to escape
         if self.is_retreating:
+            print(f"[COMBAT AI] {self.name} is retreating")
             self.retreat_behavior(distance_to_target)
             return
             
@@ -317,13 +318,20 @@ class EnemyShip(BaseShip):
         should_pursue = self.should_pursue(distance_to_target)
         should_evade = self.should_evade(distance_to_target)
         
+        print(f"[COMBAT AI] {self.name} decisions: attack={should_attack}, pursue={should_pursue}, evade={should_evade}")
+        
         # Combat decision priority: evade -> attack -> pursue -> patrol
         if should_evade:
+            print(f"[COMBAT AI] {self.name} EVADING")
             self.evasive_maneuver(distance_to_target)
         elif should_attack:
+            print(f"[COMBAT AI] {self.name} ATTACKING")
             self.execute_attack(distance_to_target, current_time)
         elif should_pursue:
+            print(f"[COMBAT AI] {self.name} PURSUING")
             self.pursue_target()
+        else:
+            print(f"[COMBAT AI] {self.name} NO ACTION")
         # Otherwise continue normal movement patterns
     
     def should_attack(self, current_time, distance_to_target):
@@ -331,6 +339,7 @@ class EnemyShip(BaseShip):
         # Check attack cooldown based on personality
         time_since_attack = current_time - self.last_attack_time
         if time_since_attack < self.attack_frequency:
+            print(f"[SHOULD_ATTACK] {self.name} on cooldown: {time_since_attack:.1f} < {self.attack_frequency:.1f}")
             return False
         
         # Range check based on weapon preference and personality
@@ -356,7 +365,11 @@ class EnemyShip(BaseShip):
         # Surprise factor - random unexpected attacks
         surprise_attack = random.random() < self.surprise_factor
         
-        return (in_weapon_range and in_preferred_range and random.random() < posture_modifier) or surprise_attack
+        attack_decision = (in_weapon_range and in_preferred_range and random.random() < posture_modifier) or surprise_attack
+        
+        print(f"[SHOULD_ATTACK] {self.name}: weapon_range={in_weapon_range}, pref_range={in_preferred_range}, posture={posture_modifier:.2f}, surprise={surprise_attack}, final={attack_decision}")
+        
+        return attack_decision
     
     def should_pursue(self, distance_to_target):
         """Determine if enemy should pursue player based on personality"""
