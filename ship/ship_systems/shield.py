@@ -28,16 +28,12 @@ class Shield:
             print(f"Invalid shield power level: {power_level}. Must be between 0 and {self.max_power_level}.")
             return False
 
-        # Use the ship's power allocation system
-        if hasattr(self.ship, 'allocate_power'):
-            return self.ship.allocate_power('shields', power_level)
-        else:
-            # Fallback: set directly if power allocation system not available
-            if hasattr(self.ship, 'power_allocation'):
-                self.ship.power_allocation['shields'] = power_level
-                print(f"Shields set to power level {power_level}.")
-                return True
-            return False
+        # Set power allocation directly to avoid recursion
+        if hasattr(self.ship, 'power_allocation'):
+            self.ship.power_allocation['shields'] = power_level
+            print(f"Shields set to power level {power_level}.")
+            return True
+        return False
     
     def update(self, delta_time_seconds: float) -> bool:
         """
