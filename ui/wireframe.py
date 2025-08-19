@@ -863,8 +863,14 @@ try:
         # Update enemy weapon animations (visual effects and damage application)
         game_state.weapon_animation_manager.update_enemy_animations(current_time)
         
-        # Update enemy AI continuously (movement animations, tactical decisions)
+        # Update ship systems and enemy AI continuously 
         delta_time = clock.get_time() / 1000.0  # Convert milliseconds to seconds
+        
+        # Update player ship shield system (energy consumption, regeneration)
+        if hasattr(player_ship, 'shield_system'):
+            player_ship.shield_system.update(delta_time)
+        
+        # Update enemy AI (movement animations, tactical decisions)
         player_ship.combat_manager.update_enemy_ai(delta_time, systems, game_state.current_system, hex_grid, player_ship)
         
         # Handle weapon combat events
