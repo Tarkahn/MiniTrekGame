@@ -48,7 +48,7 @@ class EnemyShip(BaseShip):
         # Tactical state
         self.preferred_range = self.personality['attack_range']
         self.last_decision_time = 0
-        self.decision_cooldown = 1000  # 1 second between major decisions
+        self.decision_cooldown = 500   # 0.5 seconds between major decisions
         
         print(f"[KLINGON] {name} warship created with personality: "
               f"Aggression={self.personality['aggression']:.2f}, "

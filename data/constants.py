@@ -155,7 +155,7 @@ KLINGON_MOVE_VARIABILITY_MAX = 0.9  # High variability = very random movement di
 
 # Combat Aggression Parameters
 # ----------------------------
-KLINGON_AGGRESSION_MIN = 0.1        # Defensive, prefers to flee (10% aggression)
+KLINGON_AGGRESSION_MIN = 0.6        # More aggressive baseline (60% aggression)
 KLINGON_AGGRESSION_MAX = 0.95       # Highly aggressive, always advances (95% aggression)
 
 KLINGON_ATTACK_RANGE_MIN = 2        # Prefers close combat (minimum preferred attack range)
@@ -169,8 +169,8 @@ KLINGON_CLOSING_TENDENCY_MAX = 0.9  # Actively seeks close combat (90% tendency)
 KLINGON_WEAPON_POWER_MIN = 3        # Conservative weapon power allocation
 KLINGON_WEAPON_POWER_MAX = 9        # Maximum weapon power allocation
 
-KLINGON_FIRING_FREQUENCY_MIN = 0.05  # Very conservative firing (5% chance per turn)
-KLINGON_FIRING_FREQUENCY_MAX = 0.15  # More reasonable firing (15% chance per turn)
+KLINGON_FIRING_FREQUENCY_MIN = 0.2   # More aggressive firing (20% chance per turn)
+KLINGON_FIRING_FREQUENCY_MAX = 0.4   # High firing rate (40% chance per turn)
 
 KLINGON_WEAPON_ACCURACY_MIN = 0.5   # Poor marksmanship (50% accuracy)
 KLINGON_WEAPON_ACCURACY_MAX = 0.9   # Expert marksmanship (90% accuracy)
@@ -183,8 +183,8 @@ KLINGON_FLANKING_TENDENCY_MAX = 0.8 # Frequently attempts flanking maneuvers
 KLINGON_EVASION_SKILL_MIN = 0.2     # Poor evasion patterns (20% effectiveness)
 KLINGON_EVASION_SKILL_MAX = 0.8     # Excellent evasion patterns (80% effectiveness)
 
-KLINGON_TACTICAL_PATIENCE_MIN = 1   # Impatient, attacks immediately (1 turn wait)
-KLINGON_TACTICAL_PATIENCE_MAX = 8   # Patient, waits for optimal positioning (8 turns)
+KLINGON_TACTICAL_PATIENCE_MIN = 0   # Attacks immediately, no waiting
+KLINGON_TACTICAL_PATIENCE_MAX = 2   # Minimal patience, quick to engage
 
 # Defensive Behavior Parameters  
 # -----------------------------
@@ -224,8 +224,8 @@ KLINGON_AMBUSH_PREFERENCE_MAX = 0.7 # Frequently uses ambush tactics
 
 # Temporal Behavior Parameters
 # ----------------------------
-KLINGON_REACTION_TIME_MIN = 0.5     # Slow to react to player actions
-KLINGON_REACTION_TIME_MAX = 2.0     # Quick to react to player actions
+KLINGON_REACTION_TIME_MIN = 1.5     # Faster reactions (shorter decision intervals)
+KLINGON_REACTION_TIME_MAX = 3.0     # Very quick reactions
 
 KLINGON_PURSUIT_PERSISTENCE_MIN = 0.2 # Gives up pursuit easily
 KLINGON_PURSUIT_PERSISTENCE_MAX = 0.9 # Relentlessly pursues player
