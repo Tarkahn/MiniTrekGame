@@ -51,7 +51,7 @@ ENERGY_REGEN_RATE_PER_TURN = 15  # Energy regenerated per turn (increased for ga
 
 # Shield Systems (PRD Compliant)
 SHIELD_ENERGY_COST_PER_LEVEL = 10  # PRD: Each level costs energy to maintain
-SHIELD_REGEN_RATE_PER_MINUTE = 10  # PRD: 10 units per minute real-time
+SHIELD_REGEN_RATE_PER_MINUTE = 30  # PRD: 30 units per minute real-time (faster for gameplay)
 
 # Torpedo Systems (PRD Compliant)
 TORPEDO_ENERGY_COST = 1  # PRD: 1 torpedo per shot (uses ammo, not energy)
