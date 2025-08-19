@@ -38,7 +38,6 @@ class BaseShip:
             'shields': 100,
             'phasers': 100,
             'engines': 100,  # Renamed from impulse for dual role
-            'life_support': 100,
             'warp_core': 100
         }
 
@@ -76,8 +75,12 @@ class BaseShip:
                 print("CRITICAL HIT! System damaged!")
 
         # Apply any remaining damage to hull
-        self.hull_strength -= remaining_damage
-        self.hull_strength = max(0, self.hull_strength)  # Ensure hull doesn't go below 0
+        if remaining_damage > 0:
+            self.hull_strength -= remaining_damage
+            self.hull_strength = max(0, self.hull_strength)  # Ensure hull doesn't go below 0
+            
+            # Hull damage causes cascading system damage
+            self._apply_cascading_system_damage(remaining_damage)
         
     def _apply_critical_damage(self):
         """
@@ -87,12 +90,46 @@ class BaseShip:
         
         # Select a random system that isn't already disabled
         available_systems = [sys for sys, integrity in self.system_integrity.items() 
-                           if integrity > 0 and sys not in ['hull', 'life_support']]
+                           if integrity > 0 and sys not in ['hull']]
         
         if available_systems:
             damaged_system = random.choice(available_systems)
             self.system_integrity[damaged_system] = 0  # PRD: Disabled until repaired
             print(f"Critical hit damaged {damaged_system} system!")
+
+    def _apply_cascading_system_damage(self, hull_damage: int):
+        """
+        Hull damage causes cascading damage to ship systems.
+        Larger hull damage has higher chance of damaging multiple systems.
+        """
+        import random
+        
+        # Base chance of system damage per hull damage point
+        base_damage_chance = 0.15  # 15% chance per damage point
+        max_systems_damaged = min(3, hull_damage // 10)  # Up to 3 systems, more likely with heavy damage
+        
+        # Calculate how many systems get damaged
+        systems_to_damage = 0
+        for _ in range(max_systems_damaged):
+            if random.random() < (hull_damage * base_damage_chance / 100):
+                systems_to_damage += 1
+        
+        if systems_to_damage == 0:
+            return  # No system damage this time
+        
+        # Select systems to damage (excluding hull itself)
+        available_systems = [sys for sys in self.system_integrity.keys() if sys != 'hull']
+        damaged_systems = random.sample(available_systems, min(systems_to_damage, len(available_systems)))
+        
+        for system in damaged_systems:
+            # Damage amount: 5-20% of current integrity, scaled by hull damage
+            damage_percent = random.uniform(0.05, 0.20) * (hull_damage / 50)  # Scale with hull damage
+            damage_amount = damage_percent * self.system_integrity[system]
+            
+            old_integrity = self.system_integrity[system]
+            self.system_integrity[system] = max(0, self.system_integrity[system] - damage_amount)
+            
+            print(f"Hull breach damaged {system}: {old_integrity:.0f} -> {self.system_integrity[system]:.0f}")
 
     def reset_damage(self):
         """
@@ -101,7 +138,7 @@ class BaseShip:
         """
         self.hull_strength = self.max_hull_strength
         self.shield_system.current_integrity = 100  # Reset shield integrity to full
-        self.shield_system.current_power_level = 0  # Shields start powered down
+        self.power_allocation['shields'] = 0  # Shields start powered down
         
         # PRD: Repair all systems to full integrity
         for system in self.system_integrity:
@@ -285,3 +322,32 @@ class BaseShip:
         cost = int(base_cost * energy_multiplier)
         print(f"[ENERGY] Engine power: {engine_power}, cost multiplier: {energy_multiplier:.1f}, total cost: {cost}")
         return cost
+    
+    def get_effective_max_energy(self) -> int:
+        """
+        Get effective maximum warp core energy based on warp core integrity.
+        Damaged warp core reduces maximum energy capacity.
+        """
+        warp_core_integrity = self.system_integrity.get('warp_core', 100) / 100.0
+        effective_max = int(self.max_warp_core_energy * warp_core_integrity)
+        
+        # Ensure current energy doesn't exceed new maximum
+        if self.warp_core_energy > effective_max:
+            self.warp_core_energy = effective_max
+            
+        return effective_max
+    
+    def get_phaser_damage_multiplier(self) -> float:
+        """
+        Get phaser damage multiplier based on phaser system integrity.
+        Damaged phasers reduce weapon effectiveness.
+        """
+        phaser_integrity = self.system_integrity.get('phasers', 100) / 100.0
+        return phaser_integrity
+    
+    def get_engine_damage_modifier(self) -> float:
+        """
+        Get engine damage modifier for movement calculations.
+        Already implemented in existing engine efficiency methods, but kept for consistency.
+        """
+        return self.system_integrity.get('engines', 100) / 100.0

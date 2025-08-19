@@ -71,8 +71,11 @@ class ShipStatusDisplay:
         bar_rect = pygame.Rect(self.rect.x + 10, y + 20, self.rect.width - 20, 20)
         pygame.draw.rect(screen, self.bar_bg_color, bar_rect)
         
+        # Get effective maximum energy (affected by warp core damage)
+        effective_max_energy = ship.get_effective_max_energy() if hasattr(ship, 'get_effective_max_energy') else ship.max_warp_core_energy
+        
         # Energy fill
-        energy_ratio = ship.warp_core_energy / ship.max_warp_core_energy
+        energy_ratio = ship.warp_core_energy / effective_max_energy if effective_max_energy > 0 else 0
         fill_width = int((self.rect.width - 20) * energy_ratio)
         fill_rect = pygame.Rect(self.rect.x + 10, y + 20, fill_width, 20)
         
@@ -87,8 +90,11 @@ class ShipStatusDisplay:
         pygame.draw.rect(screen, color, fill_rect)
         pygame.draw.rect(screen, self.border_color, bar_rect, 1)
         
-        # Energy text
-        energy_text = f"{ship.warp_core_energy}/{ship.max_warp_core_energy}"
+        # Energy text - show damage indicator if warp core is damaged
+        if effective_max_energy < ship.max_warp_core_energy:
+            energy_text = f"{ship.warp_core_energy}/{effective_max_energy} (MAX: {ship.max_warp_core_energy})"
+        else:
+            energy_text = f"{ship.warp_core_energy}/{effective_max_energy}"
         text_surface = self.small_font.render(energy_text, True, self.text_color)
         text_rect = text_surface.get_rect(center=bar_rect.center)
         screen.blit(text_surface, text_rect)
@@ -235,7 +241,7 @@ class ShipStatusDisplay:
         screen.blit(label, (self.rect.x + 10, y))
         y += 25
         
-        systems = ['hull', 'shields', 'phasers', 'engines', 'life_support', 'warp_core']
+        systems = ['hull', 'shields', 'phasers', 'engines', 'warp_core']
         
         for system in systems:
             integrity = ship.system_integrity.get(system, 100)

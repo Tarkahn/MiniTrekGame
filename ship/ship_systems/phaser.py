@@ -43,8 +43,13 @@ class Phaser:
         if hasattr(self.ship, 'power_allocation'):
             power_level = self.ship.power_allocation.get('phasers', 5)
             power_modifier = power_level / 5.0  # Scale around default level 5
+        
+        # Apply phaser system damage modifier
+        damage_modifier = 1.0
+        if hasattr(self.ship, 'get_phaser_damage_multiplier'):
+            damage_modifier = self.ship.get_phaser_damage_multiplier()
             
-        base_damage = (self.power * power_modifier * 10) - (target_distance * 2)
+        base_damage = (self.power * power_modifier * damage_modifier * 10) - (target_distance * 2)
         
         # PRD: Critical hits (15% chance, 1.5x damage)
         is_critical_hit = random.random() < constants.CRITICAL_HIT_CHANCE
@@ -55,5 +60,10 @@ class Phaser:
         actual_damage = max(0, int(base_damage))
 
         self._last_fired_time = time.time()
-        print(f"{self.ship.name} fired phasers (power {power_modifier:.1f}x). Damage: {actual_damage}. Energy: {self.ship.warp_core_energy}")
+        
+        # Show damage reduction if phasers are damaged
+        if damage_modifier < 1.0:
+            print(f"{self.ship.name} fired phasers (power {power_modifier:.1f}x, damage {damage_modifier:.1f}x). Damage: {actual_damage}. Energy: {self.ship.warp_core_energy}")
+        else:
+            print(f"{self.ship.name} fired phasers (power {power_modifier:.1f}x). Damage: {actual_damage}. Energy: {self.ship.warp_core_energy}")
         return actual_damage 

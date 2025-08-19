@@ -35,6 +35,12 @@ class CombatManager:
         phaser_power = attacker.power_allocation.get('phasers', 5)
         base_damage = phaser_power * constants.PHASER_DAMAGE_PER_POWER_LEVEL
         
+        # Apply phaser system damage modifier
+        damage_modifier = 1.0
+        if hasattr(attacker, 'get_phaser_damage_multiplier'):
+            damage_modifier = attacker.get_phaser_damage_multiplier()
+            base_damage = int(base_damage * damage_modifier)
+        
         # Apply range penalty
         if distance > constants.PHASER_RANGE:
             return {'success': False, 'message': 'Target out of phaser range', 'damage': 0}

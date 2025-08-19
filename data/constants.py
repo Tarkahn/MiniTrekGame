@@ -50,7 +50,7 @@ PHASER_LONG_MULTIPLIER = 0.6    # 60% damage at long range (10-18 hexes)
 ENERGY_REGEN_RATE_PER_TURN = 15  # Energy regenerated per turn (increased for gameplay balance)
 
 # Shield Systems (PRD Compliant)
-SHIELD_ENERGY_COST_PER_LEVEL = 10  # PRD: Each level costs energy to maintain
+SHIELD_ENERGY_COST_PER_LEVEL = 3  # Reduced for better gameplay balance - each level costs 3 energy/sec to maintain
 SHIELD_REGEN_RATE_PER_MINUTE = 30  # PRD: 30 units per minute real-time (faster for gameplay)
 
 # Torpedo Systems (PRD Compliant)
