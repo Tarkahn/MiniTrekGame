@@ -1,840 +1,456 @@
+import random
+import math
+import time
 from .base_ship import BaseShip
 from data import constants
-from ship.ship_systems.phaser import Phaser
-from ship.ship_systems.torpedo import Torpedo
 from ship.ship_systems.shield import Shield
-import random
-import time
-import math
 
 
 class EnemyShip(BaseShip):
+    """Dynamic Klingon warship with intelligent AI and randomized personality"""
+    
     def __init__(self, name, max_shield_strength, hull_strength, energy, max_energy, weapons=None, position=None):
         enemy_shield = Shield(max_shield_strength, self)
         super().__init__(name, enemy_shield, hull_strength, energy, max_energy, weapons, position)
-        self.target = None
-        self.aggression_level = "medium"  # Can be "low", "medium", "high"
-        self.pursuit_range = 500
-        self.attack_range = 200
-        self.phaser_system = Phaser(power=constants.ENEMY_PHASER_POWER, range=constants.ENEMY_PHASER_RANGE, ship=self)  # Example values
-        self.torpedo_system = Torpedo(power=constants.ENEMY_TORPEDO_POWER, speed=constants.ENEMY_TORPEDO_SPEED, accuracy=constants.ENEMY_TORPEDO_ACCURACY, ship=self)  # Example values
         
-        # Generate comprehensive personality parameters
+        # Position and movement state
+        self.position = position if position else (0, 0)
+        self.target_position = None
+        self.is_moving = False
+        self.current_destination = None
+        self.movement_progress = 0.0
+        self.movement_start_time = 0
+        self.movement_duration = 2000  # Base movement time in ms
+        
+        # Combat compatibility properties
+        self._shields = max_shield_strength
+        self._max_shields = max_shield_strength
+        self._health = hull_strength
+        
+        # AI State Management
+        self.target = None
+        self.system_objects = []
+        self.ai_state = "patrol"  # patrol, pursue, attack, retreat, flank
+        self.last_player_position = None
+        self.damage_taken_this_turn = 0
+        self.total_damage_taken = 0
+        self.turns_since_last_attack = 0
+        self.turns_in_current_state = 0
+        
+        # Generate Randomized Personality Parameters
         self.personality = self._generate_personality()
         
-        # Movement personality parameters (enhanced)
-        self.movement_speed = self.personality['movement_speed_base']  # Speed multiplier
-        self.movement_distance = self.personality['movement_distance_pref']  # Distance before changing direction
-        self.dwell_time = random.uniform(1.5, 4.0)  # Time to stay at location (seconds)
-        self.maneuverability = self.personality['movement_frequency']  # How often to change direction
+        # Weapon state
+        self.weapon_cooldown = 0
+        self.last_weapon_fire_time = 0
+        self.pending_weapon_animations = []
         
-        # Combat personality parameters
-        self.attack_frequency = self.personality['attack_frequency']  # Seconds between attacks
-        self.weapon_preference = self.personality['weapon_preference']  # 0.0=phasers, 1.0=torpedoes
-        self.range_preference = self.personality['range_preference']  # Preferred engagement distance
-        self.combat_posture = self.personality['combat_posture']  # defensive/balanced/aggressive/berserker
-        self.evasion_tendency = self.personality['evasion_tendency']  # Likelihood to evade when damaged
-        self.pursuit_aggressiveness = self.personality['pursuit_aggressiveness']  # How aggressively to pursue
-        self.retreat_threshold = self.personality['retreat_threshold']  # Hull % when enemy retreats
+        # Tactical state
+        self.preferred_range = self.personality['attack_range']
+        self.last_decision_time = 0
+        self.decision_cooldown = 1000  # 1 second between major decisions
         
-        # Novel personality parameters
-        self.adaptation_rate = self.personality['adaptation_rate']  # How quickly enemy learns
-        self.desperation_modifier = self.personality['desperation_modifier']  # Damage multiplier when damaged
-        self.coordination_level = self.personality['coordination_level']  # Works with other enemies
-        self.surprise_factor = self.personality['surprise_factor']  # Chance for unexpected moves
-        
-        # Combat state tracking
-        self.last_attack_time = 0
-        self.consecutive_hits_taken = 0
-        self.player_pattern_memory = []  # Track player behavior for adaptation
-        self.is_retreating = False
-        self.desperation_active = False
-        
-        # Reduce dwell time for more active movement
-        self.dwell_time = min(self.dwell_time, 2.0)  # Cap at 2 seconds max
-        
-        # Debug output for personality
-        print(f"[ENEMY AI] {self.name} spawned: {self.get_personality_description()}")
-        
-        # Movement state
-        self.current_destination = None
-        self.movement_start_time = None
-        self.last_decision_time = time.time()
-        # Choose movement pattern based on personality weights
-        patterns = ['patrol', 'circular', 'evasive']
-        weights = self.personality['movement_pattern_weights']
-        self.movement_pattern = random.choices(patterns, weights=weights)[0]
-        self.patrol_points = []
-        self.patrol_index = 0
-        
-        # Ensure initial position is constrained to grid
-        if position:
-            constrained_pos = self._constrain_to_grid_bounds(position[0], position[1])
-            self.position = constrained_pos
-        else:
-            self.position = (10, 10)  # Default to center of 20x20 grid
-        
-        # Animation state for smooth movement (hex coordinates)
-        self.anim_x = self.position[0]
-        self.anim_y = self.position[1]
-        self.is_moving = False
-        self.move_progress = 0.0
-
-    def _constrain_to_grid_bounds(self, q, r, grid_size=20):
-        """Helper method to constrain coordinates during initialization"""
-        q_constrained = max(0, min(grid_size - 1, int(round(q))))
-        r_constrained = max(0, min(grid_size - 1, int(round(r))))
-        return (q_constrained, r_constrained)
+        print(f"[KLINGON] {name} warship created with personality: "
+              f"Aggression={self.personality['aggression']:.2f}, "
+              f"Courage={self.personality['courage']:.2f}, "
+              f"Speed={self.personality['movement_speed']:.2f}")
     
     def _generate_personality(self):
-        """Generate comprehensive personality parameters for unique enemy encounters"""
-        # Choose a random archetype with some having higher probability
-        archetypes = ['predator', 'sniper', 'berserker', 'tactician', 'coward', 'veteran', 'random']
-        archetype_weights = [0.2, 0.15, 0.1, 0.15, 0.1, 0.1, 0.2]  # Predator and random more common
-        archetype = random.choices(archetypes, weights=archetype_weights)[0]
+        """Generate randomized personality parameters for this Klingon warrior"""
+        return {
+            # Movement traits
+            'movement_speed': random.uniform(constants.KLINGON_MOVEMENT_SPEED_MIN, constants.KLINGON_MOVEMENT_SPEED_MAX),
+            'move_distance': random.uniform(constants.KLINGON_MOVE_DISTANCE_MIN, constants.KLINGON_MOVE_DISTANCE_MAX),
+            'move_variability': random.uniform(constants.KLINGON_MOVE_VARIABILITY_MIN, constants.KLINGON_MOVE_VARIABILITY_MAX),
+            
+            # Combat traits
+            'aggression': random.uniform(constants.KLINGON_AGGRESSION_MIN, constants.KLINGON_AGGRESSION_MAX),
+            'attack_range': random.uniform(constants.KLINGON_ATTACK_RANGE_MIN, constants.KLINGON_ATTACK_RANGE_MAX),
+            'closing_tendency': random.uniform(constants.KLINGON_CLOSING_TENDENCY_MIN, constants.KLINGON_CLOSING_TENDENCY_MAX),
+            
+            # Weapon traits
+            'weapon_power': random.uniform(constants.KLINGON_WEAPON_POWER_MIN, constants.KLINGON_WEAPON_POWER_MAX),
+            'firing_frequency': random.uniform(constants.KLINGON_FIRING_FREQUENCY_MIN, constants.KLINGON_FIRING_FREQUENCY_MAX),
+            'weapon_accuracy': random.uniform(constants.KLINGON_WEAPON_ACCURACY_MIN, constants.KLINGON_WEAPON_ACCURACY_MAX),
+            
+            # Tactical traits
+            'flanking_tendency': random.uniform(constants.KLINGON_FLANKING_TENDENCY_MIN, constants.KLINGON_FLANKING_TENDENCY_MAX),
+            'evasion_skill': random.uniform(constants.KLINGON_EVASION_SKILL_MIN, constants.KLINGON_EVASION_SKILL_MAX),
+            'tactical_patience': random.uniform(constants.KLINGON_TACTICAL_PATIENCE_MIN, constants.KLINGON_TACTICAL_PATIENCE_MAX),
+            
+            # Defensive traits
+            'retreat_threshold': random.uniform(constants.KLINGON_RETREAT_THRESHOLD_MIN, constants.KLINGON_RETREAT_THRESHOLD_MAX),
+            'shield_priority': random.uniform(constants.KLINGON_SHIELD_PRIORITY_MIN, constants.KLINGON_SHIELD_PRIORITY_MAX),
+            'damage_avoidance': random.uniform(constants.KLINGON_DAMAGE_AVOIDANCE_MIN, constants.KLINGON_DAMAGE_AVOIDANCE_MAX),
+            
+            # Personality traits
+            'courage': random.uniform(constants.KLINGON_COURAGE_MIN, constants.KLINGON_COURAGE_MAX),
+            'unpredictability': random.uniform(constants.KLINGON_UNPREDICTABILITY_MIN, constants.KLINGON_UNPREDICTABILITY_MAX),
+            'honor_code': random.uniform(constants.KLINGON_HONOR_CODE_MIN, constants.KLINGON_HONOR_CODE_MAX),
+            'vengeance_factor': random.uniform(constants.KLINGON_VENGEANCE_FACTOR_MIN, constants.KLINGON_VENGEANCE_FACTOR_MAX),
+            
+            # Advanced traits
+            'power_management': random.uniform(constants.KLINGON_POWER_MANAGEMENT_MIN, constants.KLINGON_POWER_MANAGEMENT_MAX),
+            'reaction_time': random.uniform(constants.KLINGON_REACTION_TIME_MIN, constants.KLINGON_REACTION_TIME_MAX),
+            'pursuit_persistence': random.uniform(constants.KLINGON_PURSUIT_PERSISTENCE_MIN, constants.KLINGON_PURSUIT_PERSISTENCE_MAX),
+        }
+    
+    @property
+    def shields(self):
+        """Shield strength for combat system compatibility"""
+        return self._shields
+    
+    @shields.setter
+    def shields(self, value):
+        """Set shield strength for combat system compatibility"""
+        old_shields = self._shields
+        self._shields = max(0, value)
+        # Track damage taken for AI reactions
+        if old_shields > self._shields:
+            damage = old_shields - self._shields
+            self.damage_taken_this_turn += damage
+            self.total_damage_taken += damage
+    
+    @property
+    def health(self):
+        """Hull health for combat system compatibility"""
+        return self._health
+    
+    @health.setter
+    def health(self, value):
+        """Set hull health for combat system compatibility"""
+        old_health = self._health
+        self._health = max(0, value)
+        # Track damage taken for AI reactions
+        if old_health > self._health:
+            damage = old_health - self._health
+            self.damage_taken_this_turn += damage
+            self.total_damage_taken += damage
+    
+    @property
+    def max_shields(self):
+        """Maximum shield strength for combat system compatibility"""
+        return self._max_shields
+    
+    def get_health_percentage(self):
+        """Get current health as percentage of maximum"""
+        max_health = self.max_hull_strength
+        return self._health / max_health if max_health > 0 else 0
+    
+    def get_shield_percentage(self):
+        """Get current shields as percentage of maximum"""
+        return self._shields / self._max_shields if self._max_shields > 0 else 0
         
-        if archetype == 'predator':
-            return self._create_predator_personality()
-        elif archetype == 'sniper':
-            return self._create_sniper_personality()
-        elif archetype == 'berserker':
-            return self._create_berserker_personality()
-        elif archetype == 'tactician':
-            return self._create_tactician_personality()
-        elif archetype == 'coward':
-            return self._create_coward_personality()
-        elif archetype == 'veteran':
-            return self._create_veteran_personality()
-        else:  # random
-            return self._create_random_personality()
-    
-    def _create_predator_personality(self):
-        """Aggressive pursuer that likes close combat"""
-        return {
-            'archetype': 'predator',
-            'movement_frequency': random.uniform(0.7, 1.0),  # High movement frequency
-            'movement_speed_base': random.uniform(1.2, 1.8),  # Fast movement
-            'movement_distance_pref': random.uniform(2.0, 4.0),  # Short, aggressive movements
-            'movement_pattern_weights': [0.1, 0.2, 0.7],  # Prefer evasive (hunting) pattern
-            'attack_frequency': random.uniform(0.5, 1.5),  # Very frequent attacks
-            'weapon_preference': random.uniform(0.0, 0.3),  # Prefer phasers for close combat
-            'range_preference': random.uniform(2.0, 6.0),  # Close range preference
-            'combat_posture': 'aggressive',
-            'evasion_tendency': random.uniform(0.1, 0.3),  # Low evasion, aggressive
-            'pursuit_aggressiveness': random.uniform(0.8, 1.0),  # High pursuit
-            'retreat_threshold': random.uniform(0.1, 0.25),  # Fight to near death
-            'adaptation_rate': random.uniform(0.3, 0.6),  # Moderate adaptation
-            'desperation_modifier': random.uniform(1.5, 2.2),  # High desperation damage
-            'coordination_level': random.uniform(0.2, 0.5),  # Some coordination
-            'surprise_factor': random.uniform(0.1, 0.2)  # Some unpredictability
-        }
-    
-    def _create_sniper_personality(self):
-        """Long-range fighter that maintains distance"""
-        return {
-            'archetype': 'sniper',
-            'movement_frequency': random.uniform(0.3, 0.6),  # Moderate movement
-            'movement_speed_base': random.uniform(0.8, 1.2),  # Normal speed
-            'movement_distance_pref': random.uniform(4.0, 7.0),  # Long movements for positioning
-            'movement_pattern_weights': [0.6, 0.3, 0.1],  # Prefer patrol patterns
-            'attack_frequency': random.uniform(1.0, 2.5),  # Moderate attack rate
-            'weapon_preference': random.uniform(0.7, 1.0),  # Heavy torpedo preference
-            'range_preference': random.uniform(8.0, 15.0),  # Long range engagement
-            'combat_posture': 'defensive',
-            'evasion_tendency': random.uniform(0.6, 0.8),  # High evasion
-            'pursuit_aggressiveness': random.uniform(0.1, 0.4),  # Low pursuit
-            'retreat_threshold': random.uniform(0.4, 0.7),  # Retreat when moderately damaged
-            'adaptation_rate': random.uniform(0.4, 0.7),  # Good adaptation
-            'desperation_modifier': random.uniform(1.0, 1.3),  # Low desperation bonus
-            'coordination_level': random.uniform(0.5, 0.8),  # Good coordination
-            'surprise_factor': random.uniform(0.05, 0.15)  # Low surprise factor
-        }
-    
-    def _create_berserker_personality(self):
-        """Reckless all-out attacker"""
-        return {
-            'archetype': 'berserker',
-            'movement_frequency': random.uniform(0.8, 1.0),  # Constant movement
-            'movement_speed_base': random.uniform(1.5, 2.0),  # Very fast
-            'movement_distance_pref': random.uniform(1.0, 3.0),  # Short, erratic movements
-            'movement_pattern_weights': [0.1, 0.1, 0.8],  # Highly evasive/erratic
-            'attack_frequency': random.uniform(0.3, 1.0),  # Extremely frequent attacks
-            'weapon_preference': random.uniform(0.4, 0.6),  # Mixed weapons
-            'range_preference': random.uniform(1.0, 4.0),  # Very close range
-            'combat_posture': 'berserker',
-            'evasion_tendency': random.uniform(0.0, 0.2),  # Almost no evasion
-            'pursuit_aggressiveness': random.uniform(0.9, 1.0),  # Maximum pursuit
-            'retreat_threshold': random.uniform(0.05, 0.15),  # Fight to the death
-            'adaptation_rate': random.uniform(0.1, 0.3),  # Poor adaptation
-            'desperation_modifier': random.uniform(2.0, 2.5),  # Maximum desperation
-            'coordination_level': random.uniform(0.0, 0.2),  # Poor coordination
-            'surprise_factor': random.uniform(0.2, 0.3)  # High unpredictability
-        }
-    
-    def _create_tactician_personality(self):
-        """Balanced fighter that adapts and coordinates"""
-        return {
-            'archetype': 'tactician',
-            'movement_frequency': random.uniform(0.5, 0.8),  # Thoughtful movement
-            'movement_speed_base': random.uniform(1.0, 1.4),  # Good speed
-            'movement_distance_pref': random.uniform(3.0, 6.0),  # Tactical positioning
-            'movement_pattern_weights': [0.4, 0.4, 0.2],  # Balanced patterns
-            'attack_frequency': random.uniform(1.0, 2.0),  # Measured attacks
-            'weapon_preference': random.uniform(0.3, 0.7),  # Situational weapon choice
-            'range_preference': random.uniform(4.0, 10.0),  # Medium range
-            'combat_posture': 'balanced',
-            'evasion_tendency': random.uniform(0.4, 0.7),  # Moderate evasion
-            'pursuit_aggressiveness': random.uniform(0.4, 0.7),  # Tactical pursuit
-            'retreat_threshold': random.uniform(0.3, 0.5),  # Strategic retreat
-            'adaptation_rate': random.uniform(0.7, 1.0),  # High adaptation
-            'desperation_modifier': random.uniform(1.2, 1.6),  # Moderate desperation
-            'coordination_level': random.uniform(0.7, 1.0),  # High coordination
-            'surprise_factor': random.uniform(0.15, 0.25)  # Tactical surprises
-        }
-    
-    def _create_coward_personality(self):
-        """Defensive fighter that avoids confrontation"""
-        return {
-            'archetype': 'coward',
-            'movement_frequency': random.uniform(0.7, 1.0),  # Frequent evasive movement
-            'movement_speed_base': random.uniform(1.1, 1.6),  # Fast escape speed
-            'movement_distance_pref': random.uniform(4.0, 8.0),  # Long evasive movements
-            'movement_pattern_weights': [0.2, 0.1, 0.7],  # Highly evasive
-            'attack_frequency': random.uniform(2.0, 4.0),  # Opportunistic attacks
-            'weapon_preference': random.uniform(0.8, 1.0),  # Long-range torpedoes
-            'range_preference': random.uniform(10.0, 18.0),  # Maximum range
-            'combat_posture': 'defensive',
-            'evasion_tendency': random.uniform(0.8, 1.0),  # Maximum evasion
-            'pursuit_aggressiveness': random.uniform(0.0, 0.2),  # No pursuit
-            'retreat_threshold': random.uniform(0.6, 0.9),  # Retreat early
-            'adaptation_rate': random.uniform(0.2, 0.5),  # Poor adaptation (panicked)
-            'desperation_modifier': random.uniform(0.8, 1.1),  # Lower damage when panicked
-            'coordination_level': random.uniform(0.1, 0.4),  # Poor coordination
-            'surprise_factor': random.uniform(0.0, 0.1)  # Predictable
-        }
-    
-    def _create_veteran_personality(self):
-        """Experienced balanced fighter with high adaptability"""
-        return {
-            'archetype': 'veteran',
-            'movement_frequency': random.uniform(0.6, 0.9),  # Experienced movement
-            'movement_speed_base': random.uniform(1.1, 1.5),  # Good speed
-            'movement_distance_pref': random.uniform(3.0, 7.0),  # Flexible positioning
-            'movement_pattern_weights': [0.35, 0.35, 0.3],  # Balanced patterns
-            'attack_frequency': random.uniform(0.8, 2.0),  # Variable attack timing
-            'weapon_preference': random.uniform(0.2, 0.8),  # Flexible weapon choice
-            'range_preference': random.uniform(3.0, 12.0),  # Flexible range
-            'combat_posture': 'balanced',
-            'evasion_tendency': random.uniform(0.5, 0.8),  # Good evasion
-            'pursuit_aggressiveness': random.uniform(0.4, 0.8),  # Flexible pursuit
-            'retreat_threshold': random.uniform(0.25, 0.45),  # Strategic retreat
-            'adaptation_rate': random.uniform(0.8, 1.0),  # Maximum adaptation
-            'desperation_modifier': random.uniform(1.3, 1.8),  # Good desperation fighting
-            'coordination_level': random.uniform(0.6, 0.9),  # High coordination
-            'surprise_factor': random.uniform(0.2, 0.3)  # Unpredictable tactics
-        }
-    
-    def _create_random_personality(self):
-        """Completely randomized personality for maximum variety"""
-        return {
-            'archetype': 'random',
-            'movement_frequency': random.uniform(0.2, 1.0),
-            'movement_speed_base': random.uniform(0.6, 2.0),
-            'movement_distance_pref': random.uniform(1.0, 8.0),
-            'movement_pattern_weights': [random.uniform(0.1, 0.8), random.uniform(0.1, 0.8), random.uniform(0.1, 0.8)],
-            'attack_frequency': random.uniform(0.5, 3.0),
-            'weapon_preference': random.uniform(0.0, 1.0),
-            'range_preference': random.uniform(1.0, 18.0),
-            'combat_posture': random.choice(['defensive', 'balanced', 'aggressive', 'berserker']),
-            'evasion_tendency': random.uniform(0.0, 1.0),
-            'pursuit_aggressiveness': random.uniform(0.0, 1.0),
-            'retreat_threshold': random.uniform(0.1, 0.9),
-            'adaptation_rate': random.uniform(0.0, 1.0),
-            'desperation_modifier': random.uniform(0.8, 2.5),
-            'coordination_level': random.uniform(0.0, 1.0),
-            'surprise_factor': random.uniform(0.0, 0.3)
-        }
-
     def set_target(self, target):
+        """Set the player ship as our target"""
         self.target = target
+        if target:
+            self.last_player_position = getattr(target, 'position', None)
     
     def set_system_objects(self, system_objects):
-        """Set reference to all objects in the current system for collision detection"""
-        self.system_objects = system_objects
+        """Set all objects in the current system for tactical awareness"""
+        self.system_objects = system_objects if system_objects else []
 
     def update_ai(self, delta_time):
-        """Update AI logic including movement and combat decisions"""
-        current_time = time.time()
-        
-        # Update smooth movement animation
-        self.update_movement_animation(delta_time)
-        
-        # Make movement decisions
-        self.update_movement_decisions(current_time)
-        
-        # Personality-driven combat AI 
-        if self.target:
-            # Add debug output to verify combat AI is running
-            if not hasattr(self, '_last_combat_debug') or current_time - self._last_combat_debug > 5.0:
-                print(f"[COMBAT DEBUG] {self.name} updating combat AI - target at distance {self.calculate_distance(self.target.position):.1f}")
-                self._last_combat_debug = current_time
-            self.update_combat_ai(current_time)
-        else:
-            # Debug why combat isn't running
-            if not hasattr(self, '_last_target_debug') or current_time - self._last_target_debug > 5.0:
-                print(f"[TARGET DEBUG] {self.name} - no target set!")
-                self._last_target_debug = current_time
-    
-    def update_combat_ai(self, current_time):
-        """Comprehensive personality-driven combat AI system"""
-        print(f"[COMBAT AI] {self.name} update_combat_ai called")
-        
-        if not self.target or not hasattr(self.target, 'position'):
-            print(f"[COMBAT AI] {self.name} no target or target has no position")
+        """Main AI update loop - makes decisions and executes actions"""
+        if not self.target:
             return
             
-        distance_to_target = self.calculate_distance(self.target.position)
-        print(f"[COMBAT AI] {self.name} distance to target: {distance_to_target:.2f}")
+        current_time = time.time() * 1000  # Convert to milliseconds
         
-        # Check if enemy should retreat based on hull damage and personality
-        current_hull_ratio = self.hull_strength / self.max_hull_strength
-        if current_hull_ratio <= self.retreat_threshold and not self.is_retreating:
-            self.is_retreating = True
-            print(f"{self.name} ({self.personality['archetype']}) is retreating!")
-            
-        # Activate desperation mode when heavily damaged
-        if current_hull_ratio <= 0.3 and not self.desperation_active:
-            self.desperation_active = True
-            print(f"{self.name} ({self.personality['archetype']}) enters desperation mode!")
+        # Update movement animation if moving
+        self._update_movement_animation(current_time)
         
-        # Retreating behavior - try to escape
-        if self.is_retreating:
-            print(f"[COMBAT AI] {self.name} is retreating")
-            self.retreat_behavior(distance_to_target)
+        # Update weapon cooldowns
+        self._update_weapon_cooldowns(current_time)
+        
+        # Make tactical decisions based on personality and situation
+        decision_interval = self.decision_cooldown / self.personality['reaction_time']
+        time_since_last_decision = current_time - self.last_decision_time
+        
+        if time_since_last_decision > decision_interval:
+            self._make_tactical_decision(current_time)
+            self.last_decision_time = current_time
+        
+        # Execute current AI state
+        self._execute_ai_state(current_time)
+        
+        # Reset per-turn damage tracking
+        self.damage_taken_this_turn = 0
+        self.turns_in_current_state += 1
+    
+    def _update_movement_animation(self, current_time):
+        """Update position if currently moving"""
+        if not self.is_moving or not self.target_position:
             return
             
-        # Determine if enemy should engage in combat
-        should_attack = self.should_attack(current_time, distance_to_target)
-        should_pursue = self.should_pursue(distance_to_target)
-        should_evade = self.should_evade(distance_to_target)
+        elapsed = current_time - self.movement_start_time
+        progress = min(elapsed / self.movement_duration, 1.0)
         
-        print(f"[COMBAT AI] {self.name} decisions: attack={should_attack}, pursue={should_pursue}, evade={should_evade}")
-        
-        # Combat decision priority: evade -> attack -> pursue -> patrol
-        if should_evade:
-            print(f"[COMBAT AI] {self.name} EVADING")
-            self.evasive_maneuver(distance_to_target)
-        elif should_attack:
-            print(f"[COMBAT AI] {self.name} ATTACKING")
-            self.execute_attack(distance_to_target, current_time)
-        elif should_pursue:
-            print(f"[COMBAT AI] {self.name} PURSUING")
-            self.pursue_target()
+        if progress >= 1.0:
+            # Movement complete
+            self.position = self.target_position
+            self.is_moving = False
+            self.target_position = None
+            self.current_destination = None
         else:
-            print(f"[COMBAT AI] {self.name} NO ACTION")
-        # Otherwise continue normal movement patterns
-    
-    def should_attack(self, current_time, distance_to_target):
-        """Determine if enemy should attack based on personality and conditions"""
-        # Check attack cooldown based on personality
-        time_since_attack = current_time - self.last_attack_time
-        if time_since_attack < self.attack_frequency:
-            print(f"[SHOULD_ATTACK] {self.name} on cooldown: {time_since_attack:.1f} < {self.attack_frequency:.1f}")
-            return False
-        
-        # Range check based on weapon preference and personality
-        in_weapon_range = False
-        if self.weapon_preference < 0.5:  # Prefer phasers
-            # Can use phasers OR fall back to torpedoes if out of phaser range
-            in_weapon_range = (distance_to_target <= self.phaser_system.range or 
-                             distance_to_target <= 15)  # Torpedo fallback
-        else:  # Prefer torpedoes
-            in_weapon_range = distance_to_target <= 15  # Torpedo max range
-            
-        # Personality-based range preference - be more flexible for engagement
-        in_preferred_range = distance_to_target <= max(self.range_preference, 10)
-        
-        # Combat posture affects attack likelihood (made more aggressive)
-        posture_modifier = {
-            'defensive': 0.6,   # Increased from 0.3 to 0.6
-            'balanced': 0.8,    # Increased from 0.7 to 0.8
-            'aggressive': 0.95, # Increased from 0.9 to 0.95
-            'berserker': 1.0
-        }.get(self.combat_posture, 0.8)
-        
-        # Surprise factor - random unexpected attacks
-        surprise_attack = random.random() < self.surprise_factor
-        
-        attack_decision = (in_weapon_range and in_preferred_range and random.random() < posture_modifier) or surprise_attack
-        
-        print(f"[SHOULD_ATTACK] {self.name}: weapon_range={in_weapon_range}, pref_range={in_preferred_range}, posture={posture_modifier:.2f}, surprise={surprise_attack}, final={attack_decision}")
-        
-        return attack_decision
-    
-    def should_pursue(self, distance_to_target):
-        """Determine if enemy should pursue player based on personality"""
-        # Don't pursue if too close (prefer to attack) or too far (out of interest)
-        if distance_to_target < self.range_preference * 0.5:
-            return False
-        # Increased max pursuit range - enemies will chase much further
-        if distance_to_target > max(15, self.range_preference * 4.0):
-            return False
-            
-        # Pursuit based on personality
-        return random.random() < self.pursuit_aggressiveness
-    
-    def should_evade(self, distance_to_target):
-        """Determine if enemy should perform evasive maneuvers"""
-        # Only evade when VERY close to player (much more restrictive)
-        very_close_to_player = distance_to_target < 3.0  # Fixed close distance instead of percentage
-        under_fire = self.consecutive_hits_taken > 0  # Track if recently hit by player
-        
-        # Much reduced evasion chance - prioritize combat over evasion
-        evasion_chance = self.evasion_tendency * 0.2  # Further reduced base evasion
-        if very_close_to_player:
-            evasion_chance *= 2.0  # Only double when very close
-        if under_fire:
-            evasion_chance *= 1.2  # Slight increase when under fire
-        if self.desperation_active:
-            evasion_chance *= 0.1  # Almost no evasion when desperate
-            
-        return random.random() < min(evasion_chance, 0.4)  # Cap at 40% max evasion
-    
-    def execute_attack(self, distance_to_target, current_time):
-        """Execute attack based on weapon preference and personality"""
-        self.last_attack_time = current_time
-        
-        # Choose weapon based on preference and tactical situation
-        use_torpedoes = False
-        if self.weapon_preference > 0.5:  # Prefer torpedoes
-            use_torpedoes = distance_to_target > 3 and self.has_torpedoes()
-        else:  # Prefer phasers
-            use_torpedoes = distance_to_target > self.phaser_system.range and self.has_torpedoes()
-        
-        # Tactical weapon switching for tactician archetype
-        if self.personality['archetype'] == 'tactician':
-            if distance_to_target < 4:
-                use_torpedoes = False  # Use phasers for close combat
-            elif not self.target.shield_system.current_power_level > 0:
-                use_torpedoes = True  # Use torpedoes against unshielded targets
-        
-        # Apply desperation modifier to damage
-        if use_torpedoes:
-            damage = self.fire_torpedoes_at_target(distance_to_target)
-        else:
-            damage = self.fire_phasers_at_target(distance_to_target)
-            
-        if damage > 0 and self.desperation_active:
-            # Note: Actual damage application would need to be modified in weapon systems
-            print(f"{self.name} desperate attack! (x{self.desperation_modifier:.1f} personality modifier)")
-    
-    def fire_phasers_at_target(self, distance_to_target):
-        """Fire phasers with personality-based power allocation"""
-        if distance_to_target > self.phaser_system.range or self.phaser_system.is_on_cooldown():
-            return 0
-            
-        # Allocate phaser power based on combat posture
-        power_allocation = {
-            'defensive': random.randint(3, 6),
-            'balanced': random.randint(4, 7),
-            'aggressive': random.randint(6, 8),
-            'berserker': random.randint(7, 9)
-        }.get(self.combat_posture, 5)
-        
-        # Apply power allocation to ship's systems
-        self.allocate_power('phasers', power_allocation)
-        
-        damage = self.phaser_system.fire(distance_to_target)
-        if damage > 0:
-            # Use weapon animation system instead of direct damage
-            self._trigger_weapon_animation('phaser', distance_to_target, damage)
-            print(f"{self.name} ({self.personality['archetype']}) fires phasers at {power_allocation} power! Damage: {damage}")
-        return damage
-    
-    def fire_torpedoes_at_target(self, distance_to_target):
-        """Fire torpedoes at target"""
-        if not self.has_torpedoes() or self.torpedo_system.is_on_cooldown():
-            return 0
-            
-        damage = self.torpedo_system.fire(distance_to_target)
-        if damage > 0:
-            # Use weapon animation system instead of direct damage
-            self._trigger_weapon_animation('torpedo', distance_to_target, damage)
-            print(f"{self.name} ({self.personality['archetype']}) fires torpedo! Damage: {damage}")
-        return damage
-    
-    def evasive_maneuver(self, distance_to_target):
-        """Perform evasive movement to avoid player attacks"""
-        if self.is_moving:
-            return  # Already moving
-            
-        # Evasive movement away from player
-        current_x, current_y = self.position
-        target_x, target_y = self.target.position
-        
-        # Calculate direction away from player
-        dx = current_x - target_x
-        dy = current_y - target_y
-        
-        # Normalize and scale by evasion distance
-        distance = math.hypot(dx, dy)
-        if distance > 0:
-            evasion_distance = min(self.movement_distance * 0.7, 3)  # Quick evasive moves
-            evade_x = current_x + (dx / distance) * evasion_distance
-            evade_y = current_y + (dy / distance) * evasion_distance
-            
-            # Add some randomness for unpredictability
-            evade_x += random.uniform(-1, 1)
-            evade_y += random.uniform(-1, 1)
-            
-            self.set_destination((evade_x, evade_y))
-    
-    def retreat_behavior(self, distance_to_target):
-        """Retreat behavior when hull is critically damaged"""
-        if self.is_moving:
-            return
-            
-        # Move away from player toward map edges
-        current_x, current_y = self.position
-        target_x, target_y = self.target.position
-        
-        # Direction away from player
-        dx = current_x - target_x  
-        dy = current_y - target_y
-        
-        # Head toward nearest map edge
-        to_left = current_x
-        to_right = 19 - current_x
-        to_top = current_y
-        to_bottom = 19 - current_y
-        
-        min_edge = min(to_left, to_right, to_top, to_bottom)
-        
-        if min_edge == to_left:
-            retreat_x, retreat_y = 0, current_y
-        elif min_edge == to_right:
-            retreat_x, retreat_y = 19, current_y
-        elif min_edge == to_top:
-            retreat_x, retreat_y = current_x, 0
-        else:
-            retreat_x, retreat_y = current_x, 19
-            
-        self.set_destination((retreat_x, retreat_y))
-
-    def update_movement_animation(self, delta_time):
-        """Update smooth movement animation similar to player ship"""
-        if self.is_moving and self.current_destination:
-            # Calculate movement progress
-            move_duration = 2.0 / self.movement_speed  # Base 2 seconds adjusted by speed
-            if self.movement_start_time is None:
-                self.movement_start_time = time.time()
-            
-            elapsed = time.time() - self.movement_start_time
-            self.move_progress = min(elapsed / move_duration, 1.0)
-            
             # Interpolate position
             start_x, start_y = self.position
-            dest_x, dest_y = self.current_destination
+            target_x, target_y = self.target_position
+            current_x = start_x + (target_x - start_x) * progress
+            current_y = start_y + (target_y - start_y) * progress
+            self.current_destination = (current_x, current_y)
+    
+    def _update_weapon_cooldowns(self, current_time):
+        """Update weapon system cooldowns"""
+        if self.weapon_cooldown > 0:
+            time_since_last_shot = current_time - self.last_weapon_fire_time
+            self.weapon_cooldown = max(0, self.weapon_cooldown - time_since_last_shot)
+    
+    def _make_tactical_decision(self, current_time):
+        """Make high-level tactical decisions based on situation and personality"""
+        if not self.target:
+            self.ai_state = "patrol"
+            return
             
-            self.anim_x = start_x + (dest_x - start_x) * self.move_progress
-            self.anim_y = start_y + (dest_y - start_y) * self.move_progress
-            
-            # Check if arrived
-            if self.move_progress >= 1.0:
-                self.position = self.current_destination
-                self.anim_x, self.anim_y = self.current_destination
-                self.is_moving = False
-                self.current_destination = None
-                self.movement_start_time = None
-                self.last_decision_time = time.time()
-
-    def update_movement_decisions(self, current_time):
-        """Make decisions about where to move next"""
-        if self.is_moving:
-            return  # Still moving to current destination
-            
-        # Check if it's time to make a new movement decision
-        time_since_decision = current_time - self.last_decision_time
-        should_move = time_since_decision >= self.dwell_time
+        # Calculate situation factors
+        distance_to_player = self._get_distance_to_target()
+        health_percentage = self.get_health_percentage()
+        shield_percentage = self.get_shield_percentage()
         
-        if should_move and random.random() < self.maneuverability:
-            self.choose_next_destination()
-
-    def choose_next_destination(self):
-        """Choose next destination based on movement pattern"""
-        current_x, current_y = self.position
-        
-        if self.movement_pattern == "patrol":
-            self.patrol_movement()
-        elif self.movement_pattern == "circular":
-            self.circular_movement()
-        elif self.movement_pattern == "evasive":
-            self.evasive_movement()
-            
-    def patrol_movement(self):
-        """Move in a patrol pattern within hex grid boundaries"""
-        if not self.patrol_points:
-            # Generate patrol points within reasonable distance and grid boundaries
-            base_x, base_y = self.position
-            max_distance = min(self.movement_distance, 4)  # Limit patrol distance
-            
-            for _ in range(4):
-                # Generate random offsets within grid bounds
-                attempts = 0
-                while attempts < 10:  # Prevent infinite loops
-                    offset_x = random.randint(-int(max_distance), int(max_distance))
-                    offset_y = random.randint(-int(max_distance), int(max_distance))
-                    patrol_x = base_x + offset_x
-                    patrol_y = base_y + offset_y
-                    
-                    # Check if point is within grid boundaries
-                    if 0 <= patrol_x < 20 and 0 <= patrol_y < 20:
-                        self.patrol_points.append((patrol_x, patrol_y))
-                        break
-                    attempts += 1
-                
-            
-            # Ensure we have at least one patrol point
-            if not self.patrol_points:
-                self.patrol_points.append((base_x, base_y))
-        
-        # Move to next patrol point
-        self.patrol_index = (self.patrol_index + 1) % len(self.patrol_points)
-        self.set_destination(self.patrol_points[self.patrol_index])
-
-    def circular_movement(self):
-        """Move in a circular pattern within hex grid boundaries"""
-        center_x, center_y = self.position
-        if not hasattr(self, 'circle_center'):
-            self.circle_center = (center_x, center_y)
-            self.circle_angle = 0
-        
-        # Find a suitable radius that keeps us within grid bounds
-        max_radius = min(
-            self.movement_distance,
-            min(self.circle_center[0], 19 - self.circle_center[0]),  # Distance to left/right edges
-            min(self.circle_center[1], 19 - self.circle_center[1])   # Distance to top/bottom edges
-        )
-        max_radius = max(1, int(max_radius))  # Ensure at least radius of 1
-        
-        self.circle_angle += random.uniform(45, 90)  # 45-90 degree steps
-        radius = random.randint(1, max_radius)
-        
-        dest_x = self.circle_center[0] + radius * math.cos(math.radians(self.circle_angle))
-        dest_y = self.circle_center[1] + radius * math.sin(math.radians(self.circle_angle))
-        self.set_destination((dest_x, dest_y))
-
-    def evasive_movement(self):
-        """Move evasively with random direction changes within hex grid boundaries"""
-        current_x, current_y = self.position
-        
-        # Generate a random hex destination within movement range and grid bounds
-        max_distance = min(self.movement_distance, 3)  # Limit evasive distance
-        attempts = 0
-        
-        while attempts < 20:  # Multiple attempts to find valid destination
-            angle = random.uniform(0, 360)
-            distance = random.randint(1, int(max_distance))
-            
-            dest_x = current_x + distance * math.cos(math.radians(angle))
-            dest_y = current_y + distance * math.sin(math.radians(angle))
-            
-            # Round to nearest hex center
-            dest_x = round(dest_x)
-            dest_y = round(dest_y)
-            
-            # Check if destination is within grid bounds
-            if 0 <= dest_x < 20 and 0 <= dest_y < 20:
-                self.set_destination((dest_x, dest_y))
+        # Determine if we should retreat
+        if health_percentage < self.personality['retreat_threshold']:
+            if self.personality['courage'] < 0.5 or random.random() < (1.0 - self.personality['courage']):
+                self.ai_state = "retreat"
                 return
-            
-            attempts += 1
         
-        # If no valid destination found, stay put or move to adjacent hex
-        adjacent_hexes = [
-            (current_x + 1, current_y), (current_x - 1, current_y),
-            (current_x, current_y + 1), (current_x, current_y - 1),
-            (current_x + 1, current_y - 1), (current_x - 1, current_y + 1)
-        ]
-        
-        # Find valid adjacent hex
-        for dest_x, dest_y in adjacent_hexes:
-            if 0 <= dest_x < 20 and 0 <= dest_y < 20:
-                self.set_destination((dest_x, dest_y))
-                return
-
-    def constrain_to_grid(self, q, r, grid_size=20):
-        """Constrain coordinates to stay within hex grid boundaries and snap to hex centers"""
-        # Clamp to grid boundaries (0 to grid_size-1)
-        q_constrained = max(0, min(grid_size - 1, int(round(q))))
-        r_constrained = max(0, min(grid_size - 1, int(round(r))))
-        return (q_constrained, r_constrained)
-
-    def set_destination(self, destination):
-        """Set a new movement destination, constrained to hex grid and avoiding collisions"""
-        # Constrain destination to grid boundaries and snap to hex centers
-        constrained_dest = self.constrain_to_grid(destination[0], destination[1])
-        
-        # Check for collisions with other objects (player ship, other enemies, etc.)
-        if self.is_destination_blocked(constrained_dest):
-            # Try to find an alternative destination nearby
-            alternative_dest = self.find_alternative_destination(constrained_dest)
-            if alternative_dest:
-                constrained_dest = alternative_dest
+        # Determine combat state based on distance and aggression
+        if distance_to_player <= self.preferred_range * 1.5:
+            # Close enough to engage
+            if self.personality['aggression'] > 0.6:
+                self.ai_state = "attack"
+            elif random.random() < self.personality['flanking_tendency']:
+                self.ai_state = "flank"
             else:
-                # If no alternative found, don't move
-                return
-        
-        self.current_destination = constrained_dest
-        self.is_moving = True
-        self.movement_start_time = time.time()
-        self.move_progress = 0.0
-
-    def get_render_position(self):
-        """Get the current position for rendering (animated position)"""
-        return (self.anim_x, self.anim_y)
-
-    def calculate_distance(self, other_position):
-        """Calculate distance to another position"""
-        return math.sqrt((self.position[0] - other_position[0])**2 + (self.position[1] - other_position[1])**2)
-
-    def fire_at_target(self, target_distance):
-        """Legacy method - now uses personality-driven combat system"""
-        current_time = time.time()
-        self.execute_attack(target_distance, current_time)
+                self.ai_state = "pursue"
+        else:
+            # Too far away, need to close distance
+            if self.personality['closing_tendency'] > 0.5:
+                self.ai_state = "pursue"
+            else:
+                self.ai_state = "patrol"
     
-    def take_damage_from_player(self, damage):
-        """Track damage taken from player for adaptation and evasion AI"""
-        self.consecutive_hits_taken += 1
-        
-        # Reset hit counter after some time (adaptation memory)
-        def reset_hit_counter():
-            time.sleep(5.0)  # 5 second memory
-            self.consecutive_hits_taken = max(0, self.consecutive_hits_taken - 1)
-        
-        import threading
-        threading.Thread(target=reset_hit_counter, daemon=True).start()
-        
-        # Add to player pattern memory for future adaptation
-        if len(self.player_pattern_memory) >= 10:
-            self.player_pattern_memory.pop(0)  # Keep only recent patterns
-        self.player_pattern_memory.append({
-            'time': time.time(),
-            'damage': damage,
-            'distance': self.calculate_distance(self.target.position) if self.target else 0
-        })
+    def _execute_ai_state(self, current_time):
+        """Execute actions based on current AI state"""
+        if self.ai_state == "attack":
+            self._execute_attack_behavior(current_time)
+        elif self.ai_state == "pursue":
+            self._execute_pursue_behavior(current_time)
+        elif self.ai_state == "retreat":
+            self._execute_retreat_behavior(current_time)
+        elif self.ai_state == "flank":
+            self._execute_flank_behavior(current_time)
+        else:  # patrol
+            self._execute_patrol_behavior(current_time)
     
-    def get_personality_description(self):
-        """Get a description of this enemy's personality for debugging/display"""
-        archetype = self.personality['archetype']
-        combat_posture = self.combat_posture
-        weapon_pref = "Phasers" if self.weapon_preference < 0.5 else "Torpedoes"
+    def _execute_attack_behavior(self, current_time):
+        """Aggressive attack behavior"""
+        # Try to fire weapons
+        if self._should_fire_weapon() and self.weapon_cooldown <= 0:
+            self._fire_weapon(current_time)
         
-        return f"{archetype.title()} ({combat_posture}) - Prefers {weapon_pref} at {self.range_preference:.1f} hex range"
+        # Move to optimal attack range
+        distance = self._get_distance_to_target()
+        if distance > self.preferred_range:
+            self._move_toward_target()
+        elif distance < self.preferred_range * 0.7:
+            # Too close, back off slightly
+            self._move_away_from_target()
     
-    def _trigger_weapon_animation(self, weapon_type, distance, damage):
-        """Trigger weapon animation through the game's weapon animation manager"""
-        # This will be called by the game loop to connect to the weapon animation manager
-        # We'll store the weapon firing data for the game loop to pick up
-        if not hasattr(self, 'pending_weapon_animations'):
-            self.pending_weapon_animations = []
+    def _execute_pursue_behavior(self, current_time):
+        """Chase the player to get into attack range"""
+        distance = self._get_distance_to_target()
+        if distance > self.preferred_range:
+            self._move_toward_target()
+        else:
+            # In range, switch to attack
+            self.ai_state = "attack"
+    
+    def _execute_retreat_behavior(self, current_time):
+        """Defensive retreat behavior"""
+        self._move_away_from_target()
         
-        animation_data = {
-            'weapon_type': weapon_type,
-            'distance': distance,
-            'damage': damage,
-            'timestamp': time.time()
+        # Occasionally fire while retreating if brave enough
+        if (self.personality['courage'] > 0.3 and 
+            random.random() < self.personality['firing_frequency'] * 0.5 and
+            self.weapon_cooldown <= 0):
+            self._fire_weapon(current_time)
+    
+    def _execute_flank_behavior(self, current_time):
+        """Attempt flanking maneuvers"""
+        # Move to a flanking position (perpendicular to player)
+        self._move_to_flank_position()
+        
+        # Fire if in good position
+        if self._should_fire_weapon() and self.weapon_cooldown <= 0:
+            self._fire_weapon(current_time)
+    
+    def _execute_patrol_behavior(self, current_time):
+        """Random patrol movement"""
+        self._move_randomly()
+    
+    def _get_distance_to_target(self):
+        """Calculate distance to the target player"""
+        if not self.target or not hasattr(self.target, 'position'):
+            return float('inf')
+        
+        px, py = self.target.position
+        ex, ey = self.position
+        return math.hypot(px - ex, py - ey)
+    
+    def _should_fire_weapon(self):
+        """Determine if we should fire a weapon this turn"""
+        # Use personality-based firing frequency with proper balance
+        # Since this is called ~60 times per second, convert personality trait to per-frame chance
+        base_firing_chance = self.personality['firing_frequency']  # 0.05 to 0.15 typically
+        firing_chance_per_frame = base_firing_chance * 0.005  # Convert to reasonable per-frame rate
+        
+        should_fire = random.random() < firing_chance_per_frame
+        
+        
+        return should_fire
+    
+    def _fire_weapon(self, current_time):
+        """Fire disruptors at the target"""
+        if not self.target:
+            return
+            
+            
+        
+        # Create weapon animation for disruptor fire
+        weapon_animation = {
+            'type': 'disruptor',
+            'start_time': current_time,
+            'target': self.target,
+            'accuracy': self.personality['weapon_accuracy'],
+            'power': self.personality['weapon_power']
         }
-        self.pending_weapon_animations.append(animation_data)
+        
+        self.pending_weapon_animations.append(weapon_animation)
+        self.weapon_cooldown = constants.ENEMY_WEAPON_COOLDOWN_SECONDS * 1000  # Convert seconds to milliseconds
+        self.last_weapon_fire_time = current_time
+    
+    def _move_toward_target(self):
+        """Move closer to the target"""
+        if not self.target or self.is_moving:
+            return
+            
+        target_pos = getattr(self.target, 'position', None)
+        if not target_pos:
+            return
+        
+        # Calculate direction to target
+        tx, ty = target_pos
+        ex, ey = self.position
+        
+        # Add some personality-based variation
+        angle_variance = self.personality['unpredictability'] * 0.5  # Up to 30 degrees
+        angle = math.atan2(ty - ey, tx - ex) + random.uniform(-angle_variance, angle_variance)
+        
+        # Calculate new position
+        distance = self.personality['move_distance'] * (1 + random.uniform(-self.personality['move_variability'], self.personality['move_variability']))
+        new_x = ex + math.cos(angle) * distance
+        new_y = ey + math.sin(angle) * distance
+        
+        self._start_movement((new_x, new_y))
+    
+    def _move_away_from_target(self):
+        """Move away from the target"""
+        if not self.target or self.is_moving:
+            return
+            
+        target_pos = getattr(self.target, 'position', None)
+        if not target_pos:
+            return
+        
+        # Calculate direction away from target
+        tx, ty = target_pos
+        ex, ey = self.position
+        
+        angle = math.atan2(ey - ty, ex - tx)  # Reverse direction
+        
+        # Add evasion patterns based on skill
+        if random.random() < self.personality['evasion_skill']:
+            angle += random.uniform(-0.7, 0.7)  # Evasive maneuvering
+        
+        distance = self.personality['move_distance']
+        new_x = ex + math.cos(angle) * distance
+        new_y = ey + math.sin(angle) * distance
+        
+        self._start_movement((new_x, new_y))
+    
+    def _move_to_flank_position(self):
+        """Move to a flanking position relative to target"""
+        if not self.target or self.is_moving:
+            return
+            
+        target_pos = getattr(self.target, 'position', None)
+        if not target_pos:
+            return
+        
+        tx, ty = target_pos
+        ex, ey = self.position
+        
+        # Calculate perpendicular angle for flanking
+        to_target_angle = math.atan2(ty - ey, tx - ex)
+        flank_angle = to_target_angle + (math.pi / 2 if random.random() < 0.5 else -math.pi / 2)
+        
+        distance = self.preferred_range * 0.8
+        new_x = tx + math.cos(flank_angle) * distance
+        new_y = ty + math.sin(flank_angle) * distance
+        
+        self._start_movement((new_x, new_y))
+    
+    def _move_randomly(self):
+        """Random patrol movement"""
+        if self.is_moving:
+            return
+            
+        angle = random.uniform(0, 2 * math.pi)
+        distance = self.personality['move_distance'] * random.uniform(0.5, 1.5)
+        
+        ex, ey = self.position
+        new_x = ex + math.cos(angle) * distance
+        new_y = ey + math.sin(angle) * distance
+        self._start_movement((new_x, new_y))
+    
+    def _start_movement(self, target_position):
+        """Begin movement animation to target position"""
+        # Enforce hex grid boundaries
+        constrained_position = self._constrain_to_grid(target_position)
+        self.target_position = constrained_position
+        self.is_moving = True
+        self.movement_start_time = time.time() * 1000
+        self.movement_duration = 2000 / self.personality['movement_speed']  # Adjusted by speed
+    
+    def _constrain_to_grid(self, position):
+        """Constrain position to stay within hex grid boundaries"""
+        x, y = position
+        # Grid boundaries from constants.py: 20x20 hex grid (0-19 for both x and y)
+        constrained_x = max(0, min(x, constants.GRID_COLS - 1))
+        constrained_y = max(0, min(y, constants.GRID_ROWS - 1))
+        
+        
+        return (constrained_x, constrained_y)
+    
+    def get_render_position(self):
+        """Get current position for rendering (includes animation)"""
+        if self.is_moving and self.current_destination:
+            return self.current_destination
+        return self.position
     
     def get_pending_weapon_animations(self):
-        """Get and clear pending weapon animations for processing by game loop"""
-        if hasattr(self, 'pending_weapon_animations'):
-            animations = self.pending_weapon_animations.copy()
-            self.pending_weapon_animations.clear()
-            return animations
-        return []
-    
-    def apply_damage(self, raw_damage: int, attacker_ship=None):
-        """Override base apply_damage to track damage from player for AI adaptation"""
-        # Call parent method to handle actual damage
-        super().apply_damage(raw_damage, attacker_ship)
-        
-        # Track damage from player for personality-driven AI adaptation
-        if attacker_ship and hasattr(attacker_ship, 'name') and 'Enterprise' in attacker_ship.name:
-            self.take_damage_from_player(raw_damage)
-    
-    def is_destination_blocked(self, destination):
-        """Check if a destination hex is blocked by other objects"""
-        dest_x, dest_y = int(destination[0]), int(destination[1])
-        
-        # Check collision with player ship
-        if hasattr(self, 'target') and self.target and hasattr(self.target, 'position'):
-            player_x, player_y = int(self.target.position[0]), int(self.target.position[1])
-            if dest_x == player_x and dest_y == player_y:
-                return True
-        
-        # Check collision with other objects in the system
-        if hasattr(self, 'system_objects') and self.system_objects:
-            for obj in self.system_objects:
-                if hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
-                    obj_x, obj_y = int(obj.system_q), int(obj.system_r)
-                    if dest_x == obj_x and dest_y == obj_y:
-                        # Don't collide with ourselves
-                        if obj.type == 'enemy' and (obj_x, obj_y) == (int(self.position[0]), int(self.position[1])):
-                            continue
-                        # Block movement to occupied hexes (but allow planets and some other objects)
-                        if obj.type in ['starbase', 'star']:  # Only block major objects
-                            return True
-                        # Allow movement to same hex as player for close combat
-                        # Allow movement to hexes with planets (can orbit)
-                        # Only block other enemies if very close to avoid clustering
-        
-        return False
-    
-    def find_alternative_destination(self, blocked_destination):
-        """Find an alternative destination near the blocked one"""
-        dest_x, dest_y = blocked_destination
-        
-        # Try positions in a circle around the blocked destination
-        for radius in range(1, 4):  # Try radius 1, 2, 3
-            for angle in range(0, 360, 45):  # Try 8 directions
-                offset_x = radius * math.cos(math.radians(angle))
-                offset_y = radius * math.sin(math.radians(angle))
-                
-                alt_x = dest_x + offset_x
-                alt_y = dest_y + offset_y
-                
-                # Constrain to grid
-                alt_dest = self.constrain_to_grid(alt_x, alt_y)
-                
-                # Check if this alternative is not blocked
-                if not self.is_destination_blocked(alt_dest):
-                    return alt_dest
-        
-        return None  # No alternative found
-
-    def pursue_target(self):
-        """Move towards target when in pursuit range"""
-        if not self.is_moving:
-            current_x, current_y = self.position
-            target_x, target_y = self.target.position
-            
-            dx = target_x - current_x
-            dy = target_y - current_y
-            
-            # Calculate direction but move to hex centers
-            if abs(dx) > abs(dy):
-                # Move horizontally toward target
-                dest_x = current_x + (1 if dx > 0 else -1)
-                dest_y = current_y
-            else:
-                # Move vertically toward target
-                dest_x = current_x
-                dest_y = current_y + (1 if dy > 0 else -1)
-            
-            # Ensure destination is within grid bounds
-            dest_x = max(0, min(19, dest_x))
-            dest_y = max(0, min(19, dest_y))
-            
-            self.set_destination((dest_x, dest_y)) 
+        """Return list of weapon animations for the combat system"""
+        animations = self.pending_weapon_animations.copy()
+        self.pending_weapon_animations.clear()  # Clear after returning
+        return animations

@@ -49,12 +49,23 @@ class BaseShip:
         """
         import random
         
+        # Debug output for testing
+        print(f"[DAMAGE DEBUG] Player ship taking {raw_damage} damage")
+        print(f"[DAMAGE DEBUG] Hull before: {self.hull_strength}/{self.max_hull_strength}")
+        shield_level = getattr(self.shield_system, 'current_power_level', 0)
+        print(f"[DAMAGE DEBUG] Shield level before: {shield_level}")
+        
         # Check if shields are operational and powered
         shields_active = (hasattr(self.shield_system, 'current_power_level') and 
                          self.shield_system.current_power_level > 0 and
                          self.shield_system.is_operational())
         
         remaining_damage = self.shield_system.absorb_damage(raw_damage)
+        
+        # Debug output after shield absorption
+        shield_level_after = getattr(self.shield_system, 'current_power_level', 0)
+        print(f"[DAMAGE DEBUG] Shield level after absorption: {shield_level_after}")
+        print(f"[DAMAGE DEBUG] Remaining damage to hull: {remaining_damage}")
         
         # PRD: Critical hits when shields are down (10% chance)
         if remaining_damage > 0 and not shields_active:

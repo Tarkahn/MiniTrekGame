@@ -39,6 +39,9 @@ class Shield:
         if absorbed > 0:
             integrity_damage = min(absorbed, self.current_integrity)
             self.current_integrity -= integrity_damage
+            # Also update the ship's system integrity display for shields
+            if hasattr(self.ship, 'system_integrity'):
+                self.ship.system_integrity['shields'] = max(0, self.current_integrity)
             
         print(f"Shields (level {self.current_power_level}) absorbed {absorbed}/{incoming_damage} damage. Integrity: {self.current_integrity:.1f}")
         return incoming_damage - absorbed

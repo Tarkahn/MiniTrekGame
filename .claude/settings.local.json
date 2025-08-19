@@ -1,4 +1,8 @@
 {
+  "model": "claude-opus-4"
+}
+
+{
   "permissions": {
     "allow": [
       "Bash(python:*)",
@@ -39,7 +43,8 @@
       "Bash(del test_enemy_personality.py)",
       "Bash(\"C:\\Python313\\python.exe\":*)",
       "Bash(del test_enemy_position.py)",
-      "Bash(del test_enemy_ai.py)"
+      "Bash(del test_enemy_ai.py)",
+      "Bash(del test_enemy_movement.py test_animation_timing.py)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

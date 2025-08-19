@@ -119,6 +119,8 @@ class GameState:
         """Initialize the weapon animation manager with combat systems"""
         from game_logic.weapon_animation_manager import WeaponAnimationManager
         self.weapon_animation_manager = WeaponAnimationManager(combat_manager, player_ship)
+        # Set the weapon animation manager reference in combat manager for enemy weapons
+        combat_manager.set_weapon_animation_manager(self.weapon_animation_manager)
     
     def _update_animation_position(self):
         """Update animation position based on current ship position"""

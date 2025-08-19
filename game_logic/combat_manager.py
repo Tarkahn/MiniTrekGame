@@ -1,410 +1,227 @@
 """
-Combat Manager - Handles all combat-related game logic
-Separates combat mechanics from UI code for better architecture
-Includes enemy AI and movement management
+Combat Manager - Handles combat-related game logic for player weapons only
+Enemy ships are purely static decorative objects
 """
 
+import time
+import random
 from data import constants
 from ship.enemy_ship import EnemyShip
 
 
 class CombatManager:
     """
-    Manages all combat interactions between ships, weapons, and targets.
-    Provides a clean interface for combat actions while maintaining separation
-    of concerns between game logic and UI.
+    Manages combat interactions for player weapons only.
+    Enemy ships are static and do not participate in combat.
     """
-    
+
     def __init__(self):
-        # Enemy AI management
-        self.enemy_ships = {}  # Dictionary to store EnemyShip instances keyed by enemy object id
-    
-    def fire_phasers(self, attacker_ship, target_enemy, distance):
+        self.enemy_ships = {}  # Maps enemy object ID to static EnemyShip instances
+        self.weapon_animation_manager = None  # Will be set by game initialization
+
+    def calculate_phaser_damage(self, attacker, target, distance):
         """
-        Execute a phaser attack from attacker to target.
+        Calculate phaser damage based on range, power allocation, and target defenses.
         
         Args:
-            attacker_ship: Ship object with phaser system
-            target_enemy: Enemy map object or ship object to attack
-            distance: Distance in hexes between attacker and target
+            attacker: Ship firing phasers
+            target: Target enemy object (with health, shields, etc.)
+            distance: Distance to target in hexes
             
         Returns:
-            dict: Combat result with damage dealt, range description, etc.
+            Dict with combat result including damage amounts and success status
         """
-        # Use the ship's phaser system for proper power allocation and calculations
-        damage = attacker_ship.phaser_system.fire(int(distance))
+        # Calculate base damage using power allocation
+        phaser_power = attacker.power_allocation.get('phasers', 5)
+        base_damage = phaser_power * constants.PHASER_DAMAGE_PER_POWER_LEVEL
         
-        # Determine range description for UI display
-        if distance <= constants.PHASER_CLOSE_RANGE:
-            range_description = "CLOSE RANGE"
-        elif distance <= constants.PHASER_MEDIUM_RANGE:
-            range_description = "MEDIUM RANGE"
-        else:
-            range_description = "LONG RANGE"
+        # Apply range penalty
+        if distance > constants.PHASER_RANGE:
+            return {'success': False, 'message': 'Target out of phaser range', 'damage': 0}
         
-        # Initialize enemy attributes if they don't exist (always, regardless of damage)
-        if not hasattr(target_enemy, 'shields'):
-            target_enemy.shields = constants.ENEMY_SHIELD_CAPACITY
-        if not hasattr(target_enemy, 'max_shields'):
-            target_enemy.max_shields = constants.ENEMY_SHIELD_CAPACITY
-        if not hasattr(target_enemy, 'health'):
-            target_enemy.health = constants.ENEMY_HULL_STRENGTH
-        if not hasattr(target_enemy, 'max_health'):
-            target_enemy.max_health = constants.ENEMY_HULL_STRENGTH
+        # Range penalty: -3 damage per hex
+        range_penalty = distance * constants.PHASER_RANGE_PENALTY
+        final_damage = max(0, base_damage - range_penalty)
         
-        # Apply damage to target if any was dealt
-        damage_applied = 0
-        shield_damage = 0
-        hull_damage = 0
-        target_destroyed = False
-        
-        if damage > 0:
-            
-            remaining_damage = damage
-            
-            # Shields absorb damage first
-            if target_enemy.shields > 0:
-                shield_damage = min(remaining_damage, target_enemy.shields)
-                target_enemy.shields -= shield_damage
-                remaining_damage -= shield_damage
-            
-            # Remaining damage goes to hull
-            if remaining_damage > 0 and target_enemy.shields <= 0:
-                hull_damage = min(remaining_damage, target_enemy.health)
-                target_enemy.health -= hull_damage
-                remaining_damage -= hull_damage
-            
-            damage_applied = damage - remaining_damage
-            target_destroyed = target_enemy.health <= 0
-        
-        # Return comprehensive combat result
         return {
-            'damage_calculated': damage,
-            'damage_applied': damage_applied,
-            'shield_damage': shield_damage,
-            'hull_damage': hull_damage,
-            'distance': distance,
-            'range_description': range_description,
-            'target_destroyed': target_destroyed,
-            'target_shields': getattr(target_enemy, 'shields', 0),
-            'target_max_shields': getattr(target_enemy, 'max_shields', 0),
-            'target_health': getattr(target_enemy, 'health', 0),
-            'target_max_health': getattr(target_enemy, 'max_health', 0),
-            'success': True  # Always show effects if combat manager was called
+            'success': True,
+            'damage': final_damage,
+            'damage_calculated': final_damage,
+            'base_damage': base_damage,
+            'range_penalty': range_penalty,
+            'distance': distance
         }
-    
-    def fire_torpedoes(self, attacker_ship, target_enemy, distance):
+
+    def calculate_torpedo_damage(self, attacker, target, distance):
         """
-        Execute a torpedo attack from attacker to target.
+        Calculate torpedo damage. Torpedoes have fixed damage but limited quantity.
         
         Args:
-            attacker_ship: Ship object with torpedo system
-            target_enemy: Enemy map object or ship object to attack
-            distance: Distance in hexes between attacker and target
+            attacker: Ship firing torpedoes
+            target: Target enemy object
+            distance: Distance to target in hexes
             
         Returns:
-            dict: Combat result similar to fire_phasers
+            Dict with combat result including damage and success status
         """
-        # Use the ship's torpedo system
-        damage = attacker_ship.torpedo_system.fire(int(distance))
+        # Check if player has torpedoes
+        if attacker.torpedo_count <= 0:
+            return {'success': False, 'message': 'No torpedoes remaining', 'damage': 0}
         
-        # Initialize enemy attributes if they don't exist (always, regardless of damage)
-        if not hasattr(target_enemy, 'shields'):
-            target_enemy.shields = constants.ENEMY_SHIELD_CAPACITY
-        if not hasattr(target_enemy, 'max_shields'):
-            target_enemy.max_shields = constants.ENEMY_SHIELD_CAPACITY
-        if not hasattr(target_enemy, 'health'):
-            target_enemy.health = constants.ENEMY_HULL_STRENGTH
-        if not hasattr(target_enemy, 'max_health'):
-            target_enemy.max_health = constants.ENEMY_HULL_STRENGTH
+        # Torpedoes have much longer range than phasers
+        if distance > constants.TORPEDO_RANGE:
+            return {'success': False, 'message': 'Target out of torpedo range', 'damage': 0}
         
-        # Apply damage to target if any was dealt
-        damage_applied = 0
-        shield_damage = 0
-        hull_damage = 0
-        target_destroyed = False
+        # Torpedoes do fixed damage
+        torpedo_damage = constants.TORPEDO_DAMAGE
         
-        if damage > 0:
-            
-            remaining_damage = damage
-            
-            # Shields absorb damage first
-            if target_enemy.shields > 0:
-                shield_damage = min(remaining_damage, target_enemy.shields)
-                target_enemy.shields -= shield_damage
-                remaining_damage -= shield_damage
-            
-            # Remaining damage goes to hull
-            if remaining_damage > 0 and target_enemy.shields <= 0:
-                hull_damage = min(remaining_damage, target_enemy.health)
-                target_enemy.health -= hull_damage
-                remaining_damage -= hull_damage
-            
-            damage_applied = damage - remaining_damage
-            target_destroyed = target_enemy.health <= 0
-        
-        # Return comprehensive combat result
         return {
-            'damage_calculated': damage,
-            'damage_applied': damage_applied,
-            'shield_damage': shield_damage,
-            'hull_damage': hull_damage,
+            'success': True,
+            'damage': torpedo_damage,
+            'damage_calculated': torpedo_damage,
             'distance': distance,
-            'target_destroyed': target_destroyed,
-            'target_shields': getattr(target_enemy, 'shields', 0),
-            'target_max_shields': getattr(target_enemy, 'max_shields', 0),
-            'target_health': getattr(target_enemy, 'health', 0),
-            'target_max_health': getattr(target_enemy, 'max_health', 0),
-            'success': damage > 0
+            'torpedoes_remaining': attacker.torpedo_count - 1
         }
-    
-    def calculate_phaser_damage(self, attacker_ship, target_enemy, distance):
-        """
-        Calculate phaser damage without applying it to the target.
-        
-        Args:
-            attacker_ship: Ship object with phaser system
-            target_enemy: Enemy map object or ship object to attack
-            distance: Distance in hexes between attacker and target
-            
-        Returns:
-            dict: Combat calculation with damage amounts but target not modified
-        """
-        # Use the ship's phaser system for damage calculation
-        damage = attacker_ship.phaser_system.fire(int(distance))
-        
-        # Determine range description for UI display
-        if distance <= constants.PHASER_CLOSE_RANGE:
-            range_description = "CLOSE RANGE"
-        elif distance <= constants.PHASER_MEDIUM_RANGE:
-            range_description = "MEDIUM RANGE"
-        else:
-            range_description = "LONG RANGE"
-        
-        # Initialize enemy attributes if they don't exist (for calculations only)
-        current_shields = getattr(target_enemy, 'shields', constants.ENEMY_SHIELD_CAPACITY)
-        max_shields = getattr(target_enemy, 'max_shields', constants.ENEMY_SHIELD_CAPACITY)
-        current_health = getattr(target_enemy, 'health', constants.ENEMY_HULL_STRENGTH)
-        max_health = getattr(target_enemy, 'max_health', constants.ENEMY_HULL_STRENGTH)
-        
-        # Calculate damage distribution without applying it
-        damage_applied = 0
-        shield_damage = 0
-        hull_damage = 0
-        target_destroyed = False
-        
-        if damage > 0:
-            remaining_damage = damage
-            
-            # Calculate shield damage
-            if current_shields > 0:
-                shield_damage = min(remaining_damage, current_shields)
-                remaining_damage -= shield_damage
-            
-            # Calculate hull damage
-            if remaining_damage > 0 and (current_shields - shield_damage) <= 0:
-                hull_damage = min(remaining_damage, current_health)
-                remaining_damage -= hull_damage
-            
-            damage_applied = damage - remaining_damage
-            target_destroyed = (current_health - hull_damage) <= 0
-        
-        # Return calculation result without modifying target
-        return {
-            'damage_calculated': damage,
-            'damage_applied': damage_applied,
-            'shield_damage': shield_damage,
-            'hull_damage': hull_damage,
-            'distance': distance,
-            'range_description': range_description,
-            'target_destroyed': target_destroyed,
-            'target_shields_after': current_shields - shield_damage,
-            'target_max_shields': max_shields,
-            'target_health_after': current_health - hull_damage,
-            'target_max_health': max_health,
-            'success': True  # Always show effects if combat manager was called
-        }
-    
-    def calculate_torpedo_damage(self, attacker_ship, target_enemy, distance):
-        """
-        Calculate torpedo damage without applying it to the target.
-        
-        Args:
-            attacker_ship: Ship object with torpedo system
-            target_enemy: Enemy map object or ship object to attack
-            distance: Distance in hexes between attacker and target
-            
-        Returns:
-            dict: Combat calculation similar to calculate_phaser_damage
-        """
-        # Use the ship's torpedo system
-        damage = attacker_ship.torpedo_system.fire(int(distance))
-        
-        # Initialize enemy attributes if they don't exist (for calculations only)
-        current_shields = getattr(target_enemy, 'shields', constants.ENEMY_SHIELD_CAPACITY)
-        max_shields = getattr(target_enemy, 'max_shields', constants.ENEMY_SHIELD_CAPACITY)
-        current_health = getattr(target_enemy, 'health', constants.ENEMY_HULL_STRENGTH)
-        max_health = getattr(target_enemy, 'max_health', constants.ENEMY_HULL_STRENGTH)
-        
-        # Calculate damage distribution without applying it
-        damage_applied = 0
-        shield_damage = 0
-        hull_damage = 0
-        target_destroyed = False
-        
-        if damage > 0:
-            remaining_damage = damage
-            
-            # Calculate shield damage
-            if current_shields > 0:
-                shield_damage = min(remaining_damage, current_shields)
-                remaining_damage -= shield_damage
-            
-            # Calculate hull damage  
-            if remaining_damage > 0 and (current_shields - shield_damage) <= 0:
-                hull_damage = min(remaining_damage, current_health)
-                remaining_damage -= hull_damage
-            
-            damage_applied = damage - remaining_damage
-            target_destroyed = (current_health - hull_damage) <= 0
-        
-        # Return calculation result without modifying target
-        return {
-            'damage_calculated': damage,
-            'damage_applied': damage_applied,
-            'shield_damage': shield_damage,
-            'hull_damage': hull_damage,
-            'distance': distance,
-            'target_destroyed': target_destroyed,
-            'target_shields_after': current_shields - shield_damage,
-            'target_max_shields': max_shields,
-            'target_health_after': current_health - hull_damage,
-            'target_max_health': max_health,
-            'success': damage > 0
-        }
-    
+
     def apply_damage_to_enemy(self, target_enemy, combat_result):
         """
-        Apply previously calculated damage to the target enemy.
+        Apply calculated damage to an enemy, updating their health and shields.
         
         Args:
-            target_enemy: Enemy map object to damage
-            combat_result: Result from calculate_phaser_damage or calculate_torpedo_damage
+            target_enemy: Enemy object to damage
+            combat_result: Result from calculate_*_damage function
             
         Returns:
-            dict: Updated combat result with actual enemy status after damage
+            Updated combat result with final enemy status
         """
-        # Initialize enemy attributes if they don't exist
-        if not hasattr(target_enemy, 'shields'):
-            target_enemy.shields = constants.ENEMY_SHIELD_CAPACITY
-        if not hasattr(target_enemy, 'max_shields'):
-            target_enemy.max_shields = constants.ENEMY_SHIELD_CAPACITY
-        if not hasattr(target_enemy, 'health'):
-            target_enemy.health = constants.ENEMY_HULL_STRENGTH
-        if not hasattr(target_enemy, 'max_health'):
-            target_enemy.max_health = constants.ENEMY_HULL_STRENGTH
+        damage = combat_result.get('damage', 0)
         
-        # Apply the calculated damage
-        if combat_result['shield_damage'] > 0:
-            target_enemy.shields = max(0, target_enemy.shields - combat_result['shield_damage'])
+        # Apply damage to shields first, then hull (even if damage is 0)
+        initial_shields = target_enemy.shields
+        shield_damage = min(damage, target_enemy.shields) if damage > 0 else 0
+        hull_damage = damage - shield_damage if damage > 0 else 0
         
-        if combat_result['hull_damage'] > 0:
-            target_enemy.health = max(0, target_enemy.health - combat_result['hull_damage'])
+        # Only apply actual damage if damage > 0
+        if damage > 0:
+            target_enemy.shields -= shield_damage
+            target_enemy.health -= hull_damage
+            target_enemy.health = max(0, target_enemy.health)  # Don't go below 0
         
-        # Update the combat result with actual final status
+        # Always update the combat result with damage fields (even when 0)
         updated_result = combat_result.copy()
+        updated_result['shield_damage'] = shield_damage
+        updated_result['hull_damage'] = hull_damage
         updated_result['target_shields'] = target_enemy.shields
         updated_result['target_health'] = target_enemy.health
+        updated_result['target_max_health'] = target_enemy.max_hull_strength
+        updated_result['target_max_shields'] = target_enemy.max_shields
         updated_result['target_destroyed'] = target_enemy.health <= 0
         
         return updated_result
-    
-    def calculate_distance(self, pos1, pos2):
-        """
-        Calculate hex grid distance between two positions.
-        
-        Args:
-            pos1: Tuple of (q, r) coordinates
-            pos2: Tuple of (q, r) coordinates
-            
-        Returns:
-            float: Distance in hexes
-        """
-        import math
-        dx = pos2[0] - pos1[0]
-        dy = pos2[1] - pos1[1]
-        return math.hypot(dx, dy)
-    
-    # Enemy AI Management Methods
-    
+
     def get_or_create_enemy_ship(self, enemy_obj, player_ship):
-        """Get existing enemy ship instance or create new one"""
+        """Get existing static enemy ship instance or create new one"""
         enemy_id = id(enemy_obj)
         
         if enemy_id not in self.enemy_ships:
-            # Create new EnemyShip instance
+            # Create new dynamic EnemyShip instance with randomized personality
             position = (enemy_obj.system_q, enemy_obj.system_r) if hasattr(enemy_obj, 'system_q') else (0, 0)
+            
             self.enemy_ships[enemy_id] = EnemyShip(
-                name="Klingon Warship",
+                name=f"Klingon Warship K-{enemy_id % 1000}",  # Give each ship a unique designation
                 max_shield_strength=constants.ENEMY_SHIELD_CAPACITY,
                 hull_strength=constants.ENEMY_HULL_STRENGTH,
                 energy=1000,
                 max_energy=1000,
                 position=position
             )
-            self.enemy_ships[enemy_id].set_target(player_ship)
         
         return self.enemy_ships[enemy_id]
     
     def update_enemy_ai(self, delta_time, systems, current_system, hex_grid, player_ship):
-        """Update AI for all enemy ships in current system"""
+        """Update dynamic Klingon AI for all enemies in current system"""
         if current_system not in systems:
             return
+            
+        # Find all enemy objects in the current system
+        enemy_objects = [obj for obj in systems[current_system] if obj.type == 'enemy']
         
-        # Debug output every few seconds
-        import time
-        if not hasattr(self, '_last_ai_debug') or time.time() - self._last_ai_debug > 5.0:
-            enemy_count = sum(1 for obj in systems[current_system] if obj.type == 'enemy')
-            print(f"[AI DEBUG] Updating AI for {enemy_count} enemies in system {current_system}")
-            print(f"[AI DEBUG] Enemy ships tracked: {len(self.enemy_ships)}")
-            self._last_ai_debug = time.time()
+        if not enemy_objects:
+            return
         
-        for obj in systems[current_system]:
-            if obj.type == 'enemy' and hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
-                enemy_ship = self.get_or_create_enemy_ship(obj, player_ship)
-                # Provide system objects for collision detection
-                enemy_ship.set_system_objects(systems[current_system])
-                enemy_ship.update_ai(delta_time)
-                
-                # Update enemy object position from ship's smooth animation
-                render_pos = enemy_ship.get_render_position()
-                # Convert hex coordinates to pixel coordinates and store for rendering
-                pixel_x, pixel_y = hex_grid.get_hex_center(render_pos[0], render_pos[1])
-                obj.anim_px = pixel_x
-                obj.anim_py = pixel_y
-                
-                # Update logical hex position when enemy ship completes movement
-                # This ensures right-click detection works at the new location
-                if not enemy_ship.is_moving:
-                    obj.system_q = int(enemy_ship.position[0])
-                    obj.system_r = int(enemy_ship.position[1])
+            
+        for enemy_obj in enemy_objects:
+            # Get or create the EnemyShip instance for this enemy
+            enemy_ship = self.get_or_create_enemy_ship(enemy_obj, player_ship)
+            
+            # Set the player as the target
+            enemy_ship.set_target(player_ship)
+            
+            # Provide system awareness for tactical decisions
+            enemy_ship.set_system_objects(systems[current_system])
+            
+            # Update the AI
+            enemy_ship.update_ai(delta_time)
+            
+            # Sync the MapObject position with the EnemyShip position
+            current_position = enemy_ship.get_render_position()
+            enemy_obj.system_q = int(current_position[0])
+            enemy_obj.system_r = int(current_position[1])
+            
+            # Process any weapon animations the enemy wants to fire
+            weapon_animations = enemy_ship.get_pending_weapon_animations()
+            for animation in weapon_animations:
+                # Start visual/audio weapon animation using animation manager
+                self._start_enemy_weapon_animation(animation, enemy_ship, player_ship, hex_grid)
     
     def cleanup_enemy_ships(self, systems, current_system):
         """Remove enemy ship instances for enemies that no longer exist"""
         if current_system not in systems:
             return
             
-        # Get current enemy object IDs in the system
+        # Get all current enemy object IDs in the system
         current_enemy_ids = set()
         for obj in systems[current_system]:
             if obj.type == 'enemy':
                 current_enemy_ids.add(id(obj))
         
-        # Remove enemy ships that are no longer in the system
-        to_remove = []
+        # Remove enemy ships that no longer exist
+        enemy_ids_to_remove = []
         for enemy_id in self.enemy_ships:
             if enemy_id not in current_enemy_ids:
-                to_remove.append(enemy_id)
+                enemy_ids_to_remove.append(enemy_id)
         
-        for enemy_id in to_remove:
+        for enemy_id in enemy_ids_to_remove:
             del self.enemy_ships[enemy_id]
+    
+    def _start_enemy_weapon_animation(self, weapon_animation, enemy_ship, player_ship, hex_grid):
+        """Start visual/audio weapon animation using the weapon animation manager"""
+        if not self.weapon_animation_manager:
+            return  # No animation manager available
+            
+        weapon_power = weapon_animation.get('power', 5)
+        weapon_type = weapon_animation.get('type', 'disruptor')
+        
+        
+        
+        # Calculate damage based on weapon power
+        base_damage = int(weapon_power * 3)  # Increased damage for more visible effects
+        
+        # Convert hex positions to pixel positions for animation using proper hex grid
+        enemy_pos = enemy_ship.get_render_position()
+        player_pos = player_ship.position
+        
+        # Use proper hex-to-pixel conversion
+        enemy_pixel_pos = hex_grid.get_hex_center(enemy_pos[0], enemy_pos[1])
+        player_pixel_pos = hex_grid.get_hex_center(player_pos[0], player_pos[1])
+        
+        # Start the appropriate weapon animation
+        if weapon_type == 'disruptor' or weapon_type == 'phaser':
+            self.weapon_animation_manager.enemy_fire_phaser(
+                enemy_ship, enemy_pixel_pos, player_pixel_pos, base_damage, weapon_type
+            )
+        # Could add torpedo animations here later if needed
+    
+    def set_weapon_animation_manager(self, manager):
+        """Set the weapon animation manager reference"""
+        self.weapon_animation_manager = manager

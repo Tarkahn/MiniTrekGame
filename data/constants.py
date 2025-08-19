@@ -17,7 +17,10 @@ WARP_INITIATION_COST = 5  # Warp initiation cost (reduced for gameplay balance)
 
 # Player Ship Systems (PRD Compliant)
 PLAYER_PHASER_POWER = 5   # Base damage before distance modifiers (balanced for shield combat)
+PHASER_DAMAGE_PER_POWER_LEVEL = 3  # Damage multiplier per power allocation level
 PLAYER_PHASER_RANGE = 18  # Extended range for tactical positioning
+PHASER_RANGE = 18  # General phaser range (same as player)
+PHASER_RANGE_PENALTY = 3  # Damage reduction per hex distance
 
 # Torpedo System
 STARTING_TORPEDO_COUNT = 10    # Number of torpedoes ship starts with
@@ -53,6 +56,8 @@ SHIELD_REGEN_RATE_PER_MINUTE = 10  # PRD: 10 units per minute real-time
 # Torpedo Systems (PRD Compliant)
 TORPEDO_ENERGY_COST = 1  # PRD: 1 torpedo per shot (uses ammo, not energy)
 TORPEDO_MAX_POWER = 100  # Maximum damage a torpedo can deal
+TORPEDO_DAMAGE = 80  # Standard torpedo damage
+TORPEDO_RANGE = 30  # Torpedo range in hexes (longer than phasers)
 PLAYER_TORPEDO_POWER = 80  # Player torpedo damage
 PLAYER_TORPEDO_SPEED = 12  # Player torpedo speed
 PLAYER_TORPEDO_ACCURACY = 0.85  # Player torpedo accuracy (85%)
@@ -75,6 +80,7 @@ ENEMY_PHASER_RANGE = 7
 ENEMY_TORPEDO_POWER = 60  # Reduced from 80 to 60 for balance
 ENEMY_TORPEDO_SPEED = 10
 ENEMY_TORPEDO_ACCURACY = 0.7
+ENEMY_WEAPON_COOLDOWN_SECONDS = 3.0  # Minimum seconds between enemy weapon shots
 
 # Critical Hit System (PRD Compliant)
 CRITICAL_HIT_CHANCE = 0.15  # 15% base chance for a critical hit
@@ -131,3 +137,98 @@ BLUE = (0, 0, 255)
 YELLOW = (255, 255, 0)
 CYAN = (0, 255, 255)
 MAGENTA = (255, 0, 255)
+
+# ====================================================================
+# KLINGON AI BEHAVIOR PARAMETERS - Randomizable for Dynamic Enemies
+# ====================================================================
+
+# Movement Behavior Parameters
+# ----------------------------
+KLINGON_MOVEMENT_SPEED_MIN = 0.8    # Minimum movement speed multiplier (80% of base speed)
+KLINGON_MOVEMENT_SPEED_MAX = 1.5    # Maximum movement speed multiplier (150% of base speed)
+
+KLINGON_MOVE_DISTANCE_MIN = 1       # Minimum hexes per move
+KLINGON_MOVE_DISTANCE_MAX = 4       # Maximum hexes per move
+
+KLINGON_MOVE_VARIABILITY_MIN = 0.2  # Low variability = consistent movement distances
+KLINGON_MOVE_VARIABILITY_MAX = 0.9  # High variability = very random movement distances
+
+# Combat Aggression Parameters
+# ----------------------------
+KLINGON_AGGRESSION_MIN = 0.1        # Defensive, prefers to flee (10% aggression)
+KLINGON_AGGRESSION_MAX = 0.95       # Highly aggressive, always advances (95% aggression)
+
+KLINGON_ATTACK_RANGE_MIN = 2        # Prefers close combat (minimum preferred attack range)
+KLINGON_ATTACK_RANGE_MAX = 12       # Prefers long range combat (maximum preferred attack range)
+
+KLINGON_CLOSING_TENDENCY_MIN = 0.1  # Avoids closing in on player (10% tendency)
+KLINGON_CLOSING_TENDENCY_MAX = 0.9  # Actively seeks close combat (90% tendency)
+
+# Weapon System Parameters
+# ------------------------
+KLINGON_WEAPON_POWER_MIN = 3        # Conservative weapon power allocation
+KLINGON_WEAPON_POWER_MAX = 9        # Maximum weapon power allocation
+
+KLINGON_FIRING_FREQUENCY_MIN = 0.05  # Very conservative firing (5% chance per turn)
+KLINGON_FIRING_FREQUENCY_MAX = 0.15  # More reasonable firing (15% chance per turn)
+
+KLINGON_WEAPON_ACCURACY_MIN = 0.5   # Poor marksmanship (50% accuracy)
+KLINGON_WEAPON_ACCURACY_MAX = 0.9   # Expert marksmanship (90% accuracy)
+
+# Tactical Intelligence Parameters
+# ---------------------------------
+KLINGON_FLANKING_TENDENCY_MIN = 0.0 # Never attempts flanking maneuvers
+KLINGON_FLANKING_TENDENCY_MAX = 0.8 # Frequently attempts flanking maneuvers
+
+KLINGON_EVASION_SKILL_MIN = 0.2     # Poor evasion patterns (20% effectiveness)
+KLINGON_EVASION_SKILL_MAX = 0.8     # Excellent evasion patterns (80% effectiveness)
+
+KLINGON_TACTICAL_PATIENCE_MIN = 1   # Impatient, attacks immediately (1 turn wait)
+KLINGON_TACTICAL_PATIENCE_MAX = 8   # Patient, waits for optimal positioning (8 turns)
+
+# Defensive Behavior Parameters  
+# -----------------------------
+KLINGON_RETREAT_THRESHOLD_MIN = 0.1 # Fights to the death (retreats at 10% health)
+KLINGON_RETREAT_THRESHOLD_MAX = 0.7 # Cowardly, retreats early (retreats at 70% health)
+
+KLINGON_SHIELD_PRIORITY_MIN = 0.2   # Low shield management priority
+KLINGON_SHIELD_PRIORITY_MAX = 0.9   # High shield management priority
+
+KLINGON_DAMAGE_AVOIDANCE_MIN = 0.1  # Reckless, ignores incoming damage
+KLINGON_DAMAGE_AVOIDANCE_MAX = 0.9  # Cautious, actively avoids damage
+
+# Personality Trait Parameters
+# ----------------------------
+KLINGON_COURAGE_MIN = 0.2           # Cowardly disposition
+KLINGON_COURAGE_MAX = 0.95          # Fearless warrior disposition
+
+KLINGON_UNPREDICTABILITY_MIN = 0.1  # Highly predictable behavior patterns
+KLINGON_UNPREDICTABILITY_MAX = 0.8  # Chaotic, unpredictable behavior patterns
+
+KLINGON_HONOR_CODE_MIN = 0.0        # Dishonorable, uses any tactics
+KLINGON_HONOR_CODE_MAX = 0.9        # Honorable warrior, follows combat ethics
+
+KLINGON_VENGEANCE_FACTOR_MIN = 0.1  # Quickly forgets damage taken
+KLINGON_VENGEANCE_FACTOR_MAX = 0.9  # Remembers and prioritizes revenge
+
+# Advanced Combat Parameters
+# --------------------------
+KLINGON_POWER_MANAGEMENT_MIN = 0.3  # Poor power allocation skills
+KLINGON_POWER_MANAGEMENT_MAX = 0.9  # Expert power allocation skills
+
+KLINGON_MULTI_TARGET_MIN = 0.0      # Focuses on single target only
+KLINGON_MULTI_TARGET_MAX = 0.6      # May engage multiple targets
+
+KLINGON_AMBUSH_PREFERENCE_MIN = 0.0 # Never uses ambush tactics
+KLINGON_AMBUSH_PREFERENCE_MAX = 0.7 # Frequently uses ambush tactics
+
+# Temporal Behavior Parameters
+# ----------------------------
+KLINGON_REACTION_TIME_MIN = 0.5     # Slow to react to player actions
+KLINGON_REACTION_TIME_MAX = 2.0     # Quick to react to player actions
+
+KLINGON_PURSUIT_PERSISTENCE_MIN = 0.2 # Gives up pursuit easily
+KLINGON_PURSUIT_PERSISTENCE_MAX = 0.9 # Relentlessly pursues player
+
+KLINGON_LEARNING_RATE_MIN = 0.0     # Never adapts to player tactics
+KLINGON_LEARNING_RATE_MAX = 0.5     # Adapts quickly to player tactics

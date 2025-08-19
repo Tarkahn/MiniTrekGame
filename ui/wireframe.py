@@ -574,6 +574,17 @@ def perform_enemy_scan(enemy_obj, enemy_id):
 
 def get_enemy_current_position(enemy_obj, hex_grid):
     """Get the current position of an enemy (animated if moving, otherwise static)"""
+    # First check if there's a dynamic EnemyShip instance for this MapObject
+    enemy_ship_id = id(enemy_obj)
+    
+    if hasattr(player_ship, 'combat_manager') and enemy_ship_id in player_ship.combat_manager.enemy_ships:
+        enemy_ship = player_ship.combat_manager.enemy_ships[enemy_ship_id]
+        # Get the dynamic position from the EnemyShip AI
+        dynamic_position = enemy_ship.get_render_position()
+        # Convert hex coordinates to pixel coordinates
+        return hex_grid.get_hex_center(dynamic_position[0], dynamic_position[1])
+    
+    # Fallback to legacy animation positions
     if hasattr(enemy_obj, 'anim_px') and hasattr(enemy_obj, 'anim_py'):
         # Enemy has animated pixel position - return it directly
         return (enemy_obj.anim_px, enemy_obj.anim_py)
@@ -834,58 +845,7 @@ sound_manager = get_sound_manager()
 # Start background music
 sound_manager.play_background_music()
 
-def process_enemy_weapon_animations(systems, current_system, hex_grid, weapon_animation_manager):
-    """Process pending enemy weapon animations and trigger visual effects"""
-    if current_system not in systems:
-        return
-    
-    # Find player position for targeting
-    player_obj = next((obj for obj in systems[current_system] if obj.type == 'player'), None)
-    if not player_obj:
-        return
-    
-    player_pixel_pos = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
-    
-    # Check all enemies for pending weapon animations
-    enemy_count = 0
-    animations_processed = 0
-    for obj in systems[current_system]:
-        if obj.type == 'enemy':
-            enemy_count += 1
-            # Get enemy ship from combat manager
-            enemy_ship_id = id(obj)
-            if (hasattr(player_ship, 'combat_manager') and 
-                enemy_ship_id in player_ship.combat_manager.enemy_ships):
-                
-                enemy_ship = player_ship.combat_manager.enemy_ships[enemy_ship_id]
-                pending_animations = enemy_ship.get_pending_weapon_animations()
-                
-                if pending_animations:
-                    print(f"[ANIMATION DEBUG] Processing {len(pending_animations)} weapon animations from {enemy_ship.name}")
-                
-                for animation in pending_animations:
-                    animations_processed += 1
-                    # Get enemy position 
-                    enemy_pixel_pos = hex_grid.get_hex_center(obj.system_q, obj.system_r)
-                    
-                    print(f"[ANIMATION DEBUG] Starting {animation['weapon_type']} animation with {animation['damage']} damage")
-                    
-                    if animation['weapon_type'] == 'phaser':
-                        # Start enemy phaser animation
-                        weapon_animation_manager.enemy_fire_phaser(
-                            enemy_ship, enemy_pixel_pos, player_pixel_pos, animation['damage']
-                        )
-                    elif animation['weapon_type'] == 'torpedo':
-                        # Start enemy torpedo animation  
-                        weapon_animation_manager.enemy_fire_torpedo(
-                            enemy_ship, enemy_pixel_pos, player_pixel_pos, animation['damage']
-                        )
-    
-    # Debug info every few seconds
-    import time
-    if not hasattr(process_enemy_weapon_animations, '_last_debug') or time.time() - process_enemy_weapon_animations._last_debug > 10.0:
-        print(f"[ANIMATION DEBUG] Processed {animations_processed} animations from {enemy_count} enemies in system {current_system}")
-        process_enemy_weapon_animations._last_debug = time.time()
+# Enemy weapon animation function removed - enemies are static decorative objects
 
 # Add initial welcome message
 add_event_log("Welcome to Star Trek Tactical Game")
@@ -900,16 +860,17 @@ try:
         current_time = pygame.time.get_ticks()
         weapon_events = game_state.weapon_animation_manager.update(current_time, hex_grid)
         
-        # Update enemy weapon animations
+        # Update enemy weapon animations (visual effects and damage application)
         game_state.weapon_animation_manager.update_enemy_animations(current_time)
         
-        # Process pending enemy weapon animations
-        process_enemy_weapon_animations(systems, game_state.current_system, hex_grid, game_state.weapon_animation_manager)
+        # Update enemy AI continuously (movement animations, tactical decisions)
+        delta_time = clock.get_time() / 1000.0  # Convert milliseconds to seconds
+        player_ship.combat_manager.update_enemy_ai(delta_time, systems, game_state.current_system, hex_grid, player_ship)
         
         # Handle weapon combat events
         if weapon_events['phaser_completed']:
             phaser_event = weapon_events['phaser_completed']
-            combat_result = phaser_event['damage_info']
+            combat_result = phaser_event['combat_result']  # Use the updated result with damage info
             updated_result = phaser_event['combat_result']
             
             # Log damage results
@@ -941,6 +902,43 @@ try:
             if combat_result['target_destroyed']:
                 add_event_log("Enemy ship destroyed!")
                 systems[current_system].remove(phaser_event['target_enemy'])
+                if enemy_id:
+                    enemy_scan_panel.remove_scan_result(enemy_id)
+                game_state.combat.selected_enemy = None
+        
+        # Handle direct torpedo hits (for static enemies)
+        if weapon_events['torpedo_explosion']:
+            torpedo_event = weapon_events['torpedo_explosion']
+            combat_result = torpedo_event['combat_result']
+            target_enemy = torpedo_event['target_enemy']
+            
+            # Log torpedo direct hit
+            if combat_result['shield_damage'] > 0 and combat_result['hull_damage'] > 0:
+                add_event_log(f"Torpedo direct hit! Shields: {combat_result['shield_damage']} Hull: {combat_result['hull_damage']}")
+            elif combat_result['shield_damage'] > 0:
+                add_event_log(f"Torpedo hit shields for {combat_result['shield_damage']} damage")
+            elif combat_result['hull_damage'] > 0:
+                add_event_log(f"Hull breach! Torpedo damage: {combat_result['hull_damage']}")
+            else:
+                add_event_log(f"Torpedo hit - Absorbed by shields")
+            
+            # Update scan panel for the target enemy
+            enemy_id = None
+            for eid, enemy_obj in game_state.combat.targeted_enemies.items():
+                if enemy_obj is target_enemy:
+                    enemy_id = eid
+                    break
+            
+            if enemy_id and enemy_id in enemy_scan_panel.scanned_enemies:
+                enemy_scan_panel.scanned_enemies[enemy_id]['shields'] = combat_result['target_shields']
+                enemy_scan_panel.scanned_enemies[enemy_id]['hull'] = combat_result['target_health']
+                enemy_scan_panel.scanned_enemies[enemy_id]['max_hull'] = combat_result['target_max_health']
+                enemy_scan_panel.scanned_enemies[enemy_id]['max_shields'] = combat_result['target_max_shields']
+            
+            # Check if target destroyed
+            if combat_result['target_destroyed']:
+                add_event_log("Enemy ship destroyed!")
+                systems[current_system].remove(target_enemy)
                 if enemy_id:
                     enemy_scan_panel.remove_scan_result(enemy_id)
                 game_state.combat.selected_enemy = None
@@ -1359,11 +1357,8 @@ try:
                                 color = (0, 0, 255)
                                 pygame.draw.rect(screen, color, (int(px)-6, int(py)-6, 12, 12))
                         elif obj.type == 'enemy':
-                            # Use animated pixel position if available, otherwise static hex position
-                            if hasattr(obj, 'anim_px') and hasattr(obj, 'anim_py'):
-                                render_px, render_py = obj.anim_px, obj.anim_py
-                            else:
-                                render_px, render_py = px, py
+                            # Get current position from dynamic EnemyShip AI or static position
+                            render_px, render_py = get_enemy_current_position(obj, hex_grid)
                             
                             # Use enemy ship image if available, otherwise fallback to triangle
                             enemy_img = background_and_star_loader.get_enemy_ship_image()
@@ -2672,12 +2667,12 @@ try:
                                 # Apply the calculated damage to the enemy
                                 updated_combat_result = player_ship.apply_damage_to_enemy(game_state.combat.torpedo_target_enemy, combat_result)
                                 
-                                if combat_result['shield_damage'] > 0 and combat_result['hull_damage'] > 0:
-                                    add_event_log(f"Torpedo hit! Shields: {combat_result['shield_damage']} Hull: {combat_result['hull_damage']}")
-                                elif combat_result['shield_damage'] > 0:
-                                    add_event_log(f"Torpedo hit shields for {combat_result['shield_damage']} damage")
-                                elif combat_result['hull_damage'] > 0:
-                                    add_event_log(f"Hull breach! Torpedo damage: {combat_result['hull_damage']}")
+                                if updated_combat_result['shield_damage'] > 0 and updated_combat_result['hull_damage'] > 0:
+                                    add_event_log(f"Torpedo hit! Shields: {updated_combat_result['shield_damage']} Hull: {updated_combat_result['hull_damage']}")
+                                elif updated_combat_result['shield_damage'] > 0:
+                                    add_event_log(f"Torpedo hit shields for {updated_combat_result['shield_damage']} damage")
+                                elif updated_combat_result['hull_damage'] > 0:
+                                    add_event_log(f"Hull breach! Torpedo damage: {updated_combat_result['hull_damage']}")
                                 
                                 # Update scan panel with current enemy status after damage is applied
                                 torpedo_enemy_id = None
@@ -2743,7 +2738,23 @@ try:
                             delattr(game_state.combat, 'torpedo_damage_shown')
 
         # --- Enemy weapon animation drawing ---
-        game_state.weapon_animation_manager.draw_enemy_weapon_animations(screen, current_time)
+        # Determine actual player render position for accurate targeting
+        player_render_pos = None
+        if game_state.map_mode == 'system':
+            # System mode - use system animation position if available, otherwise static position
+            if 'system_ship_anim_x' in locals() and system_ship_anim_x is not None and system_ship_anim_y is not None:
+                player_render_pos = (system_ship_anim_x, system_ship_anim_y)
+            else:
+                # Fallback to static player position
+                player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
+                if player_obj:
+                    player_render_pos = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+        elif game_state.map_mode == 'sector':
+            # Sector mode - use sector animation position if available
+            if hasattr(game_state.animation, 'ship_anim_x') and game_state.animation.ship_anim_x is not None and game_state.animation.ship_anim_y is not None:
+                player_render_pos = (game_state.animation.ship_anim_x, game_state.animation.ship_anim_y)
+        
+        game_state.weapon_animation_manager.draw_enemy_weapon_animations(screen, current_time, hex_grid, player_render_pos)
 
         
         # Update scan positions for moving enemies
