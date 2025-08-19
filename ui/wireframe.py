@@ -1378,11 +1378,12 @@ try:
                                     enemy_id = id(obj)
                                     if hasattr(player_ship, 'combat_manager') and enemy_id in player_ship.combat_manager.enemy_ships:
                                         enemy_ship = player_ship.combat_manager.enemy_ships[enemy_id]
-                                        if enemy_ship.is_moving and enemy_ship.current_destination:
-                                            # Enemy is moving - calculate rotation based on current animation position to destination
+                                        if enemy_ship.is_moving and enemy_ship.target_position:
+                                            # Enemy is moving - calculate rotation based on current position to final destination
                                             current_pos = (render_px, render_py)
-                                            dest_pos = hex_grid.get_hex_center(enemy_ship.current_destination[0], enemy_ship.current_destination[1])
-                                            obj.target_rotation = background_and_star_loader.calculate_movement_angle(current_pos, dest_pos)
+                                            dest_pos = hex_grid.get_hex_center(enemy_ship.target_position[0], enemy_ship.target_position[1])
+                                            new_target_rotation = background_and_star_loader.calculate_movement_angle(current_pos, dest_pos)
+                                            obj.target_rotation = new_target_rotation
                                         elif hasattr(obj, 'prev_render_px') and hasattr(obj, 'prev_render_py'):
                                             # Use previous position to calculate movement direction for smooth transitions
                                             prev_pos = (obj.prev_render_px, obj.prev_render_py)
