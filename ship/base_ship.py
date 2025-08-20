@@ -40,6 +40,11 @@ class BaseShip:
             'engines': 100,  # Renamed from impulse for dual role
             'warp_core': 100
         }
+        
+        # Ship state tracking
+        self.ship_state = "operational"  # operational, hull_breach, warp_core_breach, destroyed
+        self.hull_breach_start_time = None
+        self.warp_core_breach_countdown = 0
 
     def apply_damage(self, raw_damage: int, attacker_ship=None):
         """
@@ -76,11 +81,17 @@ class BaseShip:
 
         # Apply any remaining damage to hull
         if remaining_damage > 0:
+            old_hull = self.hull_strength
             self.hull_strength -= remaining_damage
             self.hull_strength = max(0, self.hull_strength)  # Ensure hull doesn't go below 0
             
-            # Hull damage causes cascading system damage
-            self._apply_cascading_system_damage(remaining_damage)
+            # Check for hull breach (hull reaches zero)
+            if old_hull > 0 and self.hull_strength <= 0:
+                print(f"CRITICAL: {self.name} hull breach detected! All systems failing!")
+                self._handle_hull_breach()
+            elif self.hull_strength > 0:
+                # Normal hull damage causes cascading system damage
+                self._apply_cascading_system_damage(remaining_damage)
         
     def _apply_critical_damage(self):
         """
@@ -131,6 +142,107 @@ class BaseShip:
             
             print(f"Hull breach damaged {system}: {old_integrity:.0f} -> {self.system_integrity[system]:.0f}")
 
+    def _handle_hull_breach(self):
+        """
+        Handle catastrophic hull breach - all systems take massive damage.
+        Ship enters critical state where systems continue failing until warp core breach.
+        """
+        import time
+        
+        self.ship_state = "hull_breach"
+        self.hull_breach_start_time = time.time()
+        
+        print(f"*** HULL BREACH CRITICAL ALERT on {self.name} ***")
+        print("All systems taking massive damage! Warp core destabilizing!")
+        
+        # Massive damage to all systems (30-60% immediate damage)
+        for system in self.system_integrity.keys():
+            if system != 'hull':  # Hull is already at zero
+                import random
+                damage_percent = random.uniform(0.30, 0.60)  # 30-60% damage
+                damage_amount = damage_percent * self.system_integrity[system]
+                
+                old_integrity = self.system_integrity[system]
+                self.system_integrity[system] = max(0, self.system_integrity[system] - damage_amount)
+                
+                print(f"CRITICAL SYSTEM FAILURE: {system} {old_integrity:.0f} -> {self.system_integrity[system]:.0f}")
+        
+        # Set warp core breach countdown if warp core is still functional
+        if self.system_integrity['warp_core'] > 0:
+            self.warp_core_breach_countdown = 10.0  # 10 seconds until core breach
+            print(f"WARP CORE BREACH IMMINENT: {self.warp_core_breach_countdown:.0f} seconds until explosion!")
+
+    def update_critical_state(self, delta_time_seconds: float):
+        """
+        Update ship critical state - handle ongoing system failures and warp core breach countdown.
+        Should be called every frame when ship is in critical state.
+        """
+        if self.ship_state == "hull_breach":
+            # Continue damaging all systems every second
+            import time
+            import random
+            
+            current_time = time.time()
+            time_since_breach = current_time - self.hull_breach_start_time
+            
+            # Damage systems over time (every 0.5 seconds)
+            if hasattr(self, '_last_critical_damage_time'):
+                if current_time - self._last_critical_damage_time >= 0.5:
+                    self._apply_critical_system_damage()
+                    self._last_critical_damage_time = current_time
+            else:
+                self._last_critical_damage_time = current_time
+            
+            # Countdown to warp core breach
+            if self.warp_core_breach_countdown > 0:
+                self.warp_core_breach_countdown -= delta_time_seconds
+                
+                # Warning messages at key intervals
+                if self.warp_core_breach_countdown <= 5 and int(self.warp_core_breach_countdown) % 1 == 0:
+                    print(f"WARP CORE BREACH IN {int(self.warp_core_breach_countdown)} SECONDS!")
+                
+                # Warp core breach occurs
+                if self.warp_core_breach_countdown <= 0:
+                    self._trigger_warp_core_breach()
+        
+        elif self.ship_state == "warp_core_breach":
+            # Ship is exploding - handle explosion effects
+            pass  # Will implement explosion effects later
+
+    def _apply_critical_system_damage(self):
+        """Apply ongoing damage to all systems during hull breach state."""
+        import random
+        
+        for system in self.system_integrity.keys():
+            if system != 'hull' and self.system_integrity[system] > 0:
+                # 5-15% damage per interval
+                damage_percent = random.uniform(0.05, 0.15)
+                damage_amount = damage_percent * self.system_integrity[system]
+                
+                old_integrity = self.system_integrity[system]
+                self.system_integrity[system] = max(0, self.system_integrity[system] - damage_amount)
+                
+                if old_integrity > 0 and self.system_integrity[system] <= 0:
+                    print(f"SYSTEM OFFLINE: {system} has failed completely!")
+
+    def _trigger_warp_core_breach(self):
+        """Trigger warp core breach and ship explosion."""
+        self.ship_state = "warp_core_breach"
+        self.system_integrity['warp_core'] = 0
+        self.warp_core_energy = 0
+        
+        print(f"*** WARP CORE BREACH! {self.name} IS EXPLODING! ***")
+        
+        # Set all systems to zero
+        for system in self.system_integrity.keys():
+            self.system_integrity[system] = 0
+        
+        # Mark ship as destroyed
+        self.ship_state = "destroyed"
+        
+        # TODO: Trigger explosion visual/audio effects
+        return True  # Signal that explosion occurred
+
     def reset_damage(self):
         """
         PRD: Resets hull and shield integrity to their maximum values.
@@ -149,6 +261,11 @@ class BaseShip:
         
         # Replenish torpedoes during starbase repairs
         self.replenish_torpedoes()
+        
+        # Reset ship critical state
+        self.ship_state = "operational"
+        self.hull_breach_start_time = None
+        self.warp_core_breach_countdown = 0
         
         print(f"{self.name} fully repaired at starbase.")
 
@@ -212,7 +329,7 @@ class BaseShip:
         self.warp_core_energy = min(self.max_warp_core_energy, self.warp_core_energy + constants.ENERGY_REGEN_RATE_PER_TURN)
 
     def is_alive(self):
-        return self.hull_strength > 0 
+        return self.ship_state not in ["warp_core_breach", "destroyed"] and self.hull_strength > 0 
     
     def consume_torpedo(self) -> bool:
         """

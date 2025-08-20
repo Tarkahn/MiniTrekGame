@@ -37,11 +37,32 @@ class ShipStatusDisplay:
         pygame.draw.rect(screen, self.bg_color, self.rect)
         pygame.draw.rect(screen, self.border_color, self.rect, 2)
         
-        # Title
-        title_text = self.large_font.render(f"{ship.name} STATUS", True, self.border_color)
-        screen.blit(title_text, (self.rect.x + 10, self.rect.y + 5))
+        # Title with critical status alert
+        title_text = f"{ship.name} STATUS"
+        title_color = self.border_color
         
+        # Check for critical ship state
+        if hasattr(ship, 'ship_state'):
+            if ship.ship_state == "hull_breach":
+                title_text = f"*** {ship.name} HULL BREACH ***"
+                title_color = self.critical_color
+            elif ship.ship_state == "warp_core_breach":
+                title_text = f"*** {ship.name} EXPLODING ***"
+                title_color = self.critical_color
+            elif ship.ship_state == "destroyed":
+                title_text = f"*** {ship.name} DESTROYED ***"
+                title_color = (128, 128, 128)  # Gray for destroyed
+        
+        title_surface = self.large_font.render(title_text, True, title_color)
+        screen.blit(title_surface, (self.rect.x + 10, self.rect.y + 5))
+        
+        # Show warp core breach countdown if applicable
         current_y = self.rect.y + 35
+        if hasattr(ship, 'warp_core_breach_countdown') and ship.warp_core_breach_countdown > 0:
+            countdown_text = f"WARP CORE BREACH IN {ship.warp_core_breach_countdown:.1f}s"
+            countdown_surface = self.font.render(countdown_text, True, self.critical_color)
+            screen.blit(countdown_surface, (self.rect.x + 10, current_y))
+            current_y += 25
         
         # Energy Status
         current_y = self.draw_energy_status(screen, ship, current_y)

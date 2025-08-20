@@ -870,6 +870,10 @@ try:
         if hasattr(player_ship, 'shield_system'):
             player_ship.shield_system.update(delta_time)
         
+        # Update player ship critical state (hull breach, warp core breach countdown)
+        if hasattr(player_ship, 'update_critical_state') and player_ship.ship_state != "operational":
+            player_ship.update_critical_state(delta_time)
+        
         # Update enemy AI (movement animations, tactical decisions)
         player_ship.combat_manager.update_enemy_ai(delta_time, systems, game_state.current_system, hex_grid, player_ship)
         
