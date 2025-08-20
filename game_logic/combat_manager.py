@@ -170,9 +170,10 @@ class CombatManager:
             enemy_ship.update_ai(delta_time)
             
             # Sync the MapObject position with the EnemyShip position
+            # Ensure enemy ships are always positioned on hex centers
             current_position = enemy_ship.get_render_position()
-            enemy_obj.system_q = int(current_position[0])
-            enemy_obj.system_r = int(current_position[1])
+            enemy_obj.system_q = int(round(current_position[0]))
+            enemy_obj.system_r = int(round(current_position[1]))
             
             # Process any weapon animations the enemy wants to fire
             weapon_animations = enemy_ship.get_pending_weapon_animations()

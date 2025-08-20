@@ -341,7 +341,7 @@ class EnemyShip(BaseShip):
         self.last_weapon_fire_time = current_time
     
     def _move_toward_target(self):
-        """Move closer to the target"""
+        """Move closer to the target using hex-based navigation"""
         if not self.target or self.is_moving:
             return
             
@@ -349,23 +349,40 @@ class EnemyShip(BaseShip):
         if not target_pos:
             return
         
-        # Calculate direction to target
-        tx, ty = target_pos
-        ex, ey = self.position
+        # Get current and target hex coordinates
+        current_hex = (int(self.position[0]), int(self.position[1]))
+        target_hex = (int(target_pos[0]), int(target_pos[1]))
         
-        # Add some personality-based variation
-        angle_variance = self.personality['unpredictability'] * 0.5  # Up to 30 degrees
-        angle = math.atan2(ty - ey, tx - ex) + random.uniform(-angle_variance, angle_variance)
+        # Calculate direction to target in hex space
+        dx = target_hex[0] - current_hex[0]
+        dy = target_hex[1] - current_hex[1]
         
-        # Calculate new position
-        distance = self.personality['move_distance'] * (1 + random.uniform(-self.personality['move_variability'], self.personality['move_variability']))
-        new_x = ex + math.cos(angle) * distance
-        new_y = ey + math.sin(angle) * distance
+        if dx == 0 and dy == 0:
+            return  # Already at target hex
         
-        self._start_movement((new_x, new_y))
+        # Determine movement distance (1-3 hexes based on personality)
+        max_move_distance = int(self.personality['move_distance'])
+        move_distance = random.randint(1, max_move_distance)
+        
+        # Calculate unit direction vector
+        distance_to_target = math.sqrt(dx * dx + dy * dy)
+        if distance_to_target > 0:
+            unit_dx = dx / distance_to_target
+            unit_dy = dy / distance_to_target
+            
+            # Calculate new hex position
+            new_hex_x = current_hex[0] + int(unit_dx * move_distance)
+            new_hex_y = current_hex[1] + int(unit_dy * move_distance)
+            
+            # Add some personality-based variation (occasionally move to adjacent hex)
+            if random.random() < self.personality['unpredictability']:
+                new_hex_x += random.randint(-1, 1)
+                new_hex_y += random.randint(-1, 1)
+            
+            self._start_movement((new_hex_x, new_hex_y))
     
     def _move_away_from_target(self):
-        """Move away from the target"""
+        """Move away from the target using hex-based navigation"""
         if not self.target or self.is_moving:
             return
             
@@ -373,24 +390,41 @@ class EnemyShip(BaseShip):
         if not target_pos:
             return
         
-        # Calculate direction away from target
-        tx, ty = target_pos
-        ex, ey = self.position
+        # Get current and target hex coordinates
+        current_hex = (int(self.position[0]), int(self.position[1]))
+        target_hex = (int(target_pos[0]), int(target_pos[1]))
         
-        angle = math.atan2(ey - ty, ex - tx)  # Reverse direction
+        # Calculate direction away from target in hex space
+        dx = current_hex[0] - target_hex[0]  # Reverse direction
+        dy = current_hex[1] - target_hex[1]
+        
+        # Determine movement distance (1-3 hexes based on personality)
+        max_move_distance = int(self.personality['move_distance'])
+        move_distance = random.randint(1, max_move_distance)
+        
+        # If already far enough, don't move further away
+        distance_to_target = math.sqrt(dx * dx + dy * dy)
+        if distance_to_target == 0:
+            # Same hex as target, pick random direction
+            dx, dy = random.choice([(1,0), (-1,0), (0,1), (0,-1), (1,1), (-1,-1), (1,-1), (-1,1)])
+        else:
+            # Normalize direction
+            dx = dx / distance_to_target
+            dy = dy / distance_to_target
+        
+        # Calculate new hex position
+        new_hex_x = current_hex[0] + int(dx * move_distance)
+        new_hex_y = current_hex[1] + int(dy * move_distance)
         
         # Add evasion patterns based on skill
         if random.random() < self.personality['evasion_skill']:
-            angle += random.uniform(-0.7, 0.7)  # Evasive maneuvering
+            new_hex_x += random.randint(-1, 1)
+            new_hex_y += random.randint(-1, 1)
         
-        distance = self.personality['move_distance']
-        new_x = ex + math.cos(angle) * distance
-        new_y = ey + math.sin(angle) * distance
-        
-        self._start_movement((new_x, new_y))
+        self._start_movement((new_hex_x, new_hex_y))
     
     def _move_to_flank_position(self):
-        """Move to a flanking position relative to target"""
+        """Move to a flanking position relative to target using hex-based navigation"""
         if not self.target or self.is_moving:
             return
             
@@ -398,31 +432,62 @@ class EnemyShip(BaseShip):
         if not target_pos:
             return
         
-        tx, ty = target_pos
-        ex, ey = self.position
+        # Get current and target hex coordinates
+        current_hex = (int(self.position[0]), int(self.position[1]))
+        target_hex = (int(target_pos[0]), int(target_pos[1]))
         
-        # Calculate perpendicular angle for flanking
-        to_target_angle = math.atan2(ty - ey, tx - ex)
-        flank_angle = to_target_angle + (math.pi / 2 if random.random() < 0.5 else -math.pi / 2)
+        # Calculate perpendicular directions for flanking
+        dx = target_hex[0] - current_hex[0]
+        dy = target_hex[1] - current_hex[1]
         
-        distance = self.preferred_range * 0.8
-        new_x = tx + math.cos(flank_angle) * distance
-        new_y = ty + math.sin(flank_angle) * distance
+        # Choose a perpendicular direction (rotate 90 degrees)
+        if random.random() < 0.5:
+            flank_dx, flank_dy = -dy, dx  # Rotate left
+        else:
+            flank_dx, flank_dy = dy, -dx  # Rotate right
         
-        self._start_movement((new_x, new_y))
+        # Normalize and scale by desired flanking distance
+        flank_distance = int(self.preferred_range * 0.8)
+        if flank_distance == 0:
+            flank_distance = 2
+        
+        # Calculate flanking hex position
+        if flank_dx != 0 or flank_dy != 0:
+            flank_length = math.sqrt(flank_dx * flank_dx + flank_dy * flank_dy)
+            flank_dx = int((flank_dx / flank_length) * flank_distance)
+            flank_dy = int((flank_dy / flank_length) * flank_distance)
+        
+        new_hex_x = target_hex[0] + flank_dx
+        new_hex_y = target_hex[1] + flank_dy
+        
+        self._start_movement((new_hex_x, new_hex_y))
     
     def _move_randomly(self):
-        """Random patrol movement"""
+        """Random patrol movement using hex-based navigation"""
         if self.is_moving:
             return
-            
-        angle = random.uniform(0, 2 * math.pi)
-        distance = self.personality['move_distance'] * random.uniform(0.5, 1.5)
         
-        ex, ey = self.position
-        new_x = ex + math.cos(angle) * distance
-        new_y = ey + math.sin(angle) * distance
-        self._start_movement((new_x, new_y))
+        # Get current hex coordinates
+        current_hex = (int(self.position[0]), int(self.position[1]))
+        
+        # Choose random direction (8 directions + stay put)
+        directions = [
+            (1, 0), (-1, 0), (0, 1), (0, -1),  # Cardinal directions
+            (1, 1), (-1, -1), (1, -1), (-1, 1),  # Diagonal directions
+            (0, 0)  # Stay put (low chance)
+        ]
+        
+        direction = random.choice(directions)
+        
+        # Determine movement distance (1-3 hexes based on personality)
+        max_move_distance = int(self.personality['move_distance'])
+        move_distance = random.randint(1, max_move_distance)
+        
+        # Calculate new hex position
+        new_hex_x = current_hex[0] + (direction[0] * move_distance)
+        new_hex_y = current_hex[1] + (direction[1] * move_distance)
+        
+        self._start_movement((new_hex_x, new_hex_y))
     
     def _start_movement(self, target_position):
         """Begin movement animation to target position"""
@@ -434,12 +499,15 @@ class EnemyShip(BaseShip):
         self.movement_duration = 2000 / self.personality['movement_speed']  # Adjusted by speed
     
     def _constrain_to_grid(self, position):
-        """Constrain position to stay within hex grid boundaries"""
+        """Constrain position to stay within hex grid boundaries and ensure integer hex coordinates"""
         x, y = position
-        # Grid boundaries from constants.py: 20x20 hex grid (0-19 for both x and y)
-        constrained_x = max(0, min(x, constants.GRID_COLS - 1))
-        constrained_y = max(0, min(y, constants.GRID_ROWS - 1))
+        # Ensure coordinates are integers for hex-based navigation
+        hex_x = int(round(x))
+        hex_y = int(round(y))
         
+        # Grid boundaries from constants.py: 20x20 hex grid (0-19 for both x and y)
+        constrained_x = max(0, min(hex_x, constants.GRID_COLS - 1))
+        constrained_y = max(0, min(hex_y, constants.GRID_ROWS - 1))
         
         return (constrained_x, constrained_y)
     
