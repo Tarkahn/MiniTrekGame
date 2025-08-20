@@ -473,6 +473,57 @@ def get_enemy_id(enemy_obj):
     game_state.add_targeted_enemy(enemy_id, enemy_obj)
     return enemy_id
 
+def show_game_over_screen(screen, ship_name):
+    """Show game over screen when player ship is destroyed."""
+    pygame.init()
+    font = pygame.font.Font(None, 36)
+    title_font = pygame.font.Font(None, 48)
+    
+    screen_width, screen_height = screen.get_size()
+    
+    # Colors
+    text_color = (255, 0, 0)  # Red
+    subtitle_color = (255, 255, 255)  # White
+    
+    clock = pygame.time.Clock()
+    start_time = pygame.time.get_ticks()
+    
+    while True:
+        current_time = pygame.time.get_ticks()
+        elapsed = current_time - start_time
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                if elapsed > 3000:  # Only allow exit after 3 seconds
+                    pygame.quit()
+                    exit()
+        
+        # Draw semi-transparent overlay
+        overlay = pygame.Surface((screen_width, screen_height))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        screen.blit(overlay, (0, 0))
+        
+        # Draw game over text
+        title_text = title_font.render("*** GAME OVER ***", True, text_color)
+        title_rect = title_text.get_rect(center=(screen_width // 2, screen_height // 2 - 50))
+        screen.blit(title_text, title_rect)
+        
+        ship_text = font.render(f"{ship_name} has been destroyed", True, subtitle_color)
+        ship_rect = ship_text.get_rect(center=(screen_width // 2, screen_height // 2))
+        screen.blit(ship_text, ship_rect)
+        
+        if elapsed > 3000:
+            exit_text = font.render("Press any key to exit", True, subtitle_color)
+            exit_rect = exit_text.get_rect(center=(screen_width // 2, screen_height // 2 + 50))
+            screen.blit(exit_text, exit_rect)
+        
+        pygame.display.flip()
+        clock.tick(60)
+
 def perform_enemy_scan(enemy_obj, enemy_id):
     """Perform a detailed scan of an enemy and add results to scan panel."""
     import random
@@ -873,6 +924,12 @@ try:
         # Update player ship critical state (hull breach, warp core breach countdown)
         if hasattr(player_ship, 'update_critical_state') and player_ship.ship_state != "operational":
             player_ship.update_critical_state(delta_time)
+        
+        # Check for game over condition
+        if hasattr(player_ship, 'ship_state') and player_ship.ship_state == "destroyed":
+            # Show game over screen
+            show_game_over_screen(screen, player_ship.name)
+            # Game over screen will exit the program
         
         # Update enemy AI (movement animations, tactical decisions)
         player_ship.combat_manager.update_enemy_ai(delta_time, systems, game_state.current_system, hex_grid, player_ship)
@@ -1454,6 +1511,11 @@ try:
                             color = (255, 0, 255)
                             pygame.draw.circle(screen, color, (int(px), int(py)), 5)
                         elif obj.type == 'player':
+                            # Only draw player ship if it's not destroyed
+                            if hasattr(player_ship, 'ship_state') and player_ship.ship_state == "destroyed":
+                                # Ship is destroyed - don't draw it
+                                continue
+                            
                             # Draw player ship at appropriate position using image if available
                             player_img = background_and_star_loader.get_player_ship_image()
                             if player_img:
@@ -1685,6 +1747,24 @@ try:
                     elif label == "Torpedo":
                         print(f"[DEBUG] Entered Torpedo button handler: map_mode={game_state.map_mode}, selected_enemy={game_state.combat.selected_enemy}")
                         
+                        # Check if ship is capable of firing weapons
+                        if not player_ship.is_alive():
+                            add_event_log("Ship is destroyed - weapons offline!")
+                            sound_manager.play_sound('error')
+                            continue
+                        
+                        if hasattr(player_ship, 'ship_state') and player_ship.ship_state != "operational":
+                            add_event_log("Ship systems critical - weapons disabled!")
+                            sound_manager.play_sound('error')
+                            continue
+                        
+                        # Check if weapon systems are functional
+                        phaser_integrity = player_ship.system_integrity.get('phasers', 100)
+                        if phaser_integrity <= 0:
+                            add_event_log("Weapon systems offline - cannot fire!")
+                            sound_manager.play_sound('error')
+                            continue
+                        
                         # Check torpedo availability first
                         if not player_ship.has_torpedoes():
                             add_event_log("*** NO TORPEDOES REMAINING ***")
@@ -1880,6 +1960,24 @@ try:
                     elif label == "Fire":
                         print(f"[DEBUG] Entered Fire button handler: map_mode={game_state.map_mode}, selected_enemy={game_state.combat.selected_enemy}")
                         
+                        # Check if ship is capable of firing weapons
+                        if not player_ship.is_alive():
+                            add_event_log("Ship is destroyed - weapons offline!")
+                            sound_manager.play_sound('error')
+                            continue
+                        
+                        if hasattr(player_ship, 'ship_state') and player_ship.ship_state != "operational":
+                            add_event_log("Ship systems critical - weapons disabled!")
+                            sound_manager.play_sound('error')
+                            continue
+                        
+                        # Check if weapon systems are functional
+                        phaser_integrity = player_ship.system_integrity.get('phasers', 100)
+                        if phaser_integrity <= 0:
+                            add_event_log("Weapon systems offline - cannot fire!")
+                            sound_manager.play_sound('error')
+                            continue
+                        
                         # Check if phasers are on cooldown first
                         if player_ship.phaser_system.is_on_cooldown():
                             cooldown_time = (player_ship.phaser_system._last_fired_time + player_ship.phaser_system.cooldown_seconds) - time.time()
@@ -1989,6 +2087,21 @@ try:
                         else:
                             energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
                             action_msg = "Setting course"
+                        
+                        # Check if ship is capable of movement
+                        if not player_ship.is_alive():
+                            add_event_log("Ship is destroyed - movement impossible!")
+                            continue
+                        
+                        if hasattr(player_ship, 'ship_state') and player_ship.ship_state != "operational":
+                            add_event_log("Ship systems critical - movement disabled!")
+                            continue
+                        
+                        # Check if engines are functional
+                        engine_integrity = player_ship.system_integrity.get('engines', 100)
+                        if engine_integrity <= 0:
+                            add_event_log("Engine systems offline - movement impossible!")
+                            continue
                         
                         # Calculate dynamic energy cost based on engine power
                         dynamic_energy_cost = player_ship.get_movement_energy_cost(energy_cost)
@@ -2138,6 +2251,22 @@ try:
                                 
                                 # Calculate energy cost: 5 per hex for impulse
                                 base_energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+                                
+                                # Check if ship is capable of movement
+                                if not player_ship.is_alive():
+                                    add_event_log("Ship is destroyed - movement impossible!")
+                                    continue
+                                
+                                if hasattr(player_ship, 'ship_state') and player_ship.ship_state != "operational":
+                                    add_event_log("Ship systems critical - movement disabled!")
+                                    continue
+                                
+                                # Check if engines are functional
+                                engine_integrity = player_ship.system_integrity.get('engines', 100)
+                                if engine_integrity <= 0:
+                                    add_event_log("Engine systems offline - movement impossible!")
+                                    continue
+                                
                                 # Calculate dynamic energy cost based on engine power
                                 energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
                                 
