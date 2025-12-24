@@ -90,6 +90,11 @@ class BaseShip:
                 print(f"CRITICAL: {self.name} hull breach detected! All systems failing!")
                 self._handle_hull_breach()
             elif self.hull_strength > 0:
+                # Hull damage can now penetrate to systems based on hull integrity
+                hull_penetration_damage = self._calculate_hull_penetration_damage(remaining_damage)
+                if hull_penetration_damage > 0:
+                    self._apply_hull_penetration_damage(hull_penetration_damage)
+                
                 # Normal hull damage causes cascading system damage
                 self._apply_cascading_system_damage(remaining_damage)
         
@@ -141,6 +146,83 @@ class BaseShip:
             self.system_integrity[system] = max(0, self.system_integrity[system] - damage_amount)
             
             print(f"Hull breach damaged {system}: {old_integrity:.0f} -> {self.system_integrity[system]:.0f}")
+
+    def _calculate_hull_penetration_damage(self, incoming_damage: int) -> int:
+        """
+        Calculate damage that penetrates through weakened hull to damage systems directly.
+        Similar to how damaged shields become less effective, damaged hull provides less protection.
+        
+        Args:
+            incoming_damage: The damage amount hitting the hull
+            
+        Returns:
+            Amount of damage that penetrates to systems
+        """
+        # Calculate hull integrity as percentage
+        hull_integrity_percent = self.hull_strength / self.max_hull_strength
+        
+        # Hull protection effectiveness decreases as hull gets damaged
+        # At 100% hull: 95% protection (5% penetration)
+        # At 50% hull: 75% protection (25% penetration) 
+        # At 25% hull: 50% protection (50% penetration)
+        # At 10% hull: 25% protection (75% penetration)
+        
+        # Base protection when hull is at 100%
+        base_protection = 0.95  # 95% protection at full hull
+        
+        # Protection factor decreases as hull integrity drops
+        protection_factor = base_protection * hull_integrity_percent
+        
+        # Calculate penetration percentage (inverse of protection)
+        penetration_percent = 1.0 - protection_factor
+        
+        # Calculate actual penetrating damage
+        penetration_damage = int(incoming_damage * penetration_percent)
+        
+        if penetration_damage > 0:
+            hull_percent = int(hull_integrity_percent * 100)
+            print(f"Hull integrity at {hull_percent}% - {penetration_damage} damage penetrating to systems")
+        
+        return penetration_damage
+
+    def _apply_hull_penetration_damage(self, penetration_damage: int):
+        """
+        Apply damage that has penetrated through weakened hull directly to ship systems.
+        This represents how a damaged hull fails to protect internal systems.
+        
+        Args:
+            penetration_damage: Amount of damage penetrating to systems
+        """
+        import random
+        
+        # Determine how many systems get hit (1-3 systems based on damage amount)
+        max_systems_hit = min(3, max(1, penetration_damage // 15))  # 1 system per 15 damage
+        systems_hit = random.randint(1, max_systems_hit)
+        
+        # Select systems to damage (excluding hull, which already took damage)
+        available_systems = [sys for sys in self.system_integrity.keys() 
+                           if sys != 'hull' and self.system_integrity[sys] > 0]
+        
+        if not available_systems:
+            return  # No systems to damage
+        
+        # Randomly select systems to hit
+        systems_to_damage = random.sample(available_systems, min(systems_hit, len(available_systems)))
+        
+        # Distribute damage among selected systems
+        damage_per_system = penetration_damage // len(systems_to_damage)
+        
+        for system in systems_to_damage:
+            # Apply direct damage to system integrity
+            old_integrity = self.system_integrity[system]
+            direct_damage = random.randint(damage_per_system // 2, damage_per_system * 2)  # Add randomness
+            
+            self.system_integrity[system] = max(0, self.system_integrity[system] - direct_damage)
+            
+            if old_integrity > 0 and self.system_integrity[system] <= 0:
+                print(f"SYSTEM FAILURE: {system} destroyed by hull penetration!")
+            else:
+                print(f"Hull penetration damaged {system}: {old_integrity:.0f} -> {self.system_integrity[system]:.0f}")
 
     def _handle_hull_breach(self):
         """

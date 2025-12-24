@@ -50,6 +50,11 @@ class EnemyShip(BaseShip):
         self.last_decision_time = 0
         self.decision_cooldown = 500   # 0.5 seconds between major decisions
         
+        # Retaliation state
+        self.under_attack = False
+        self.last_attacked_time = 0
+        self.retaliation_mode_duration = 10000  # 10 seconds of aggressive retaliation
+        
         print(f"[KLINGON] {name} warship created with personality: "
               f"Aggression={self.personality['aggression']:.2f}, "
               f"Courage={self.personality['courage']:.2f}, "
@@ -110,6 +115,8 @@ class EnemyShip(BaseShip):
             damage = old_shields - self._shields
             self.damage_taken_this_turn += damage
             self.total_damage_taken += damage
+            # Trigger immediate retaliation mode
+            self._trigger_retaliation_mode()
     
     @property
     def health(self):
@@ -126,6 +133,8 @@ class EnemyShip(BaseShip):
             damage = old_health - self._health
             self.damage_taken_this_turn += damage
             self.total_damage_taken += damage
+            # Trigger immediate retaliation mode
+            self._trigger_retaliation_mode()
     
     @property
     def max_shields(self):
@@ -151,12 +160,33 @@ class EnemyShip(BaseShip):
         """Set all objects in the current system for tactical awareness"""
         self.system_objects = system_objects if system_objects else []
 
+    def _trigger_retaliation_mode(self):
+        """Trigger immediate aggressive retaliation when ship takes damage"""
+        import time
+        current_time = time.time() * 1000
+        
+        self.under_attack = True
+        self.last_attacked_time = current_time
+        self.ai_state = "attack"  # Immediately switch to attack mode
+        
+        # Reset decision cooldown for immediate response
+        self.last_decision_time = 0
+        
+        print(f"[KLINGON] {self.name} under attack! Engaging with extreme prejudice!")
+
     def update_ai(self, delta_time):
         """Main AI update loop - makes decisions and executes actions"""
         if not self.target:
             return
             
         current_time = time.time() * 1000  # Convert to milliseconds
+        
+        # Check if still in retaliation mode
+        if self.under_attack:
+            time_since_attacked = current_time - self.last_attacked_time
+            if time_since_attacked > self.retaliation_mode_duration:
+                self.under_attack = False
+                print(f"[KLINGON] {self.name} retaliation mode expired, returning to normal tactics")
         
         # Update movement animation if moving
         self._update_movement_animation(current_time)
@@ -165,7 +195,12 @@ class EnemyShip(BaseShip):
         self._update_weapon_cooldowns(current_time)
         
         # Make tactical decisions based on personality and situation
-        decision_interval = self.decision_cooldown / self.personality['reaction_time']
+        # In retaliation mode, react much faster
+        if self.under_attack:
+            decision_interval = 100  # 0.1 seconds - immediate decisions when retaliating
+        else:
+            decision_interval = self.decision_cooldown / self.personality['reaction_time']
+        
         time_since_last_decision = current_time - self.last_decision_time
         
         if time_since_last_decision > decision_interval:

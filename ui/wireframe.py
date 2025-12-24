@@ -28,6 +28,7 @@ from ui.enemy_scan_panel import create_enemy_scan_panel
 from ship.player_ship import PlayerShip
 from game.game_state import GameState
 from data import constants
+from data.constants import PLANET_CLASSES, STAR_CLASSES
 from data.constants import STARTING_ENERGY, PLAYER_SHIELD_CAPACITY
 
 # Calculate compact window dimensions based on layout needs
@@ -183,6 +184,10 @@ game_state.current_system = (ship_q, ship_r)
 current_system = game_state.current_system
 game_state.set_ship_position(ship_q, ship_r, hex_grid)
 
+# Track currently scanned celestial object
+current_scanned_object = None
+current_scanned_image = None
+
 # Ensure systems[current_system] always contains at least a star object
 if current_system not in systems or not any(obj.type == 'star' for obj in systems[current_system]):
     print(f"[INIT] Adding missing star object to systems at {current_system}")
@@ -304,7 +309,7 @@ def create_enemy_popup(enemy_id, enemy_obj):
     # Position popups in the dedicated dock area
     popup_dock_x = map_size + RIGHT_EVENT_LOG_WIDTH  # Start of popup dock area
     popup_x = popup_dock_x + 10  # 10px padding from dock edge
-    popup_y = STATUS_HEIGHT + 50 + (len(enemy_popups) * (popup_height + 10))  # Stack vertically below "Scan Results" label
+    popup_y = STATUS_HEIGHT + 50 + (len(game_state.scan.enemy_popups) * (popup_height + 10))  # Stack vertically below "Scan Results" label
     
     # Initialize enemy stats if not present (using consistent values with player ship)
     if not hasattr(enemy_obj, 'health'):
@@ -881,6 +886,98 @@ def wrap_text(text, max_width, font):
         lines.append(current_line)
     
     return lines
+
+def perform_planet_scan(planet_q, planet_r):
+    """Perform a detailed scan of a planet and display results."""
+    global current_scanned_object, current_scanned_image
+    
+    # Determine planet class randomly but consistently for this position
+    planet_classes = list(PLANET_CLASSES.keys())
+    # Use position as seed for consistent planet type
+    import hashlib
+    position_seed = f"{planet_q}_{planet_r}_{current_system}"
+    planet_type = planet_classes[hash(position_seed) % len(planet_classes)]
+    
+    planet_info = PLANET_CLASSES[planet_type]
+    
+    # Select random image for this planet type
+    available_images = planet_info['images']
+    image_filename = available_images[hash(position_seed + "_image") % len(available_images)]
+    
+    # Load the planet image
+    try:
+        image_path = os.path.join('assets', 'planets', image_filename)
+        planet_image = pygame.image.load(image_path)
+        current_scanned_image = planet_image
+    except pygame.error as e:
+        print(f"Failed to load planet image {image_filename}: {e}")
+        current_scanned_image = None
+    
+    # Create scan data
+    scan_data = {
+        'type': 'planet',
+        'class': planet_type,
+        'name': planet_info['name'],
+        'description': planet_info['description'],
+        'position': (planet_q, planet_r),
+        'image': image_filename
+    }
+    
+    current_scanned_object = scan_data
+    
+    # Log the scan
+    add_event_log(f"Scanning {planet_info['name']} at ({planet_q}, {planet_r})")
+    add_event_log(f"Class {planet_type}: {planet_info['description']}")
+    
+    # Play scan sound
+    sound_manager.play_sound('scanner')
+
+
+def perform_star_scan(star_q, star_r):
+    """Perform a detailed scan of a star and display results."""
+    global current_scanned_object, current_scanned_image
+    
+    # Determine star class randomly but consistently for this position
+    star_classes = list(STAR_CLASSES.keys())
+    # Use position as seed for consistent star type
+    import hashlib
+    position_seed = f"{star_q}_{star_r}_{current_system}"
+    star_type = star_classes[hash(position_seed) % len(star_classes)]
+    
+    star_info = STAR_CLASSES[star_type]
+    
+    # Select image for this star type (most star types have only one image)
+    available_images = star_info['images']
+    image_filename = available_images[hash(position_seed + "_image") % len(available_images)]
+    
+    # Load the star image
+    try:
+        image_path = os.path.join('assets', 'stars', image_filename)
+        star_image = pygame.image.load(image_path)
+        current_scanned_image = star_image
+    except pygame.error as e:
+        print(f"Failed to load star image {image_filename}: {e}")
+        current_scanned_image = None
+    
+    # Create scan data
+    scan_data = {
+        'type': 'star',
+        'class': star_type,
+        'name': star_info['name'],
+        'description': star_info['description'],
+        'position': (star_q, star_r),
+        'image': image_filename
+    }
+    
+    current_scanned_object = scan_data
+    
+    # Log the scan
+    add_event_log(f"Scanning {star_info['name']} at ({star_q}, {star_r})")
+    add_event_log(f"{star_type.replace('_', ' ').title()}: {star_info['description']}")
+    
+    # Play scan sound
+    sound_manager.play_sound('scanner')
+
 
 def add_event_log(message):
     # Split on newlines and handle each part
@@ -1688,6 +1785,40 @@ try:
         pygame.draw.rect(screen, COLOR_IMAGE_DISPLAY, image_rect)
         image_label = label_font.render('Target Image Display', True, COLOR_TEXT)
         screen.blit(image_label, (20, bottom_pane_y + 20))
+        
+        # Display scanned object image and info
+        if current_scanned_object and current_scanned_image:
+            # Calculate image display area (below the label)
+            image_display_y = bottom_pane_y + 50
+            image_display_height = bottom_pane_height - 80  # Leave room for label and info text
+            
+            # Scale and center the image
+            scaled_image = pygame.transform.scale(current_scanned_image, 
+                                                (min(image_display_width - 40, 150), 
+                                                 min(image_display_height - 60, 150)))
+            image_x = 20 + (image_display_width - 40 - scaled_image.get_width()) // 2
+            image_y = image_display_y + 10
+            screen.blit(scaled_image, (image_x, image_y))
+            
+            # Display object information below the image
+            info_y = image_y + scaled_image.get_height() + 15
+            
+            # Object name
+            name_text = font.render(current_scanned_object['name'], True, COLOR_TEXT)
+            screen.blit(name_text, (20, info_y))
+            info_y += 20
+            
+            # Object class
+            if current_scanned_object['type'] == 'planet':
+                class_text = font.render(f"Class {current_scanned_object['class']}", True, COLOR_TEXT)
+            else:  # star
+                class_text = font.render(current_scanned_object['class'].replace('_', ' ').title(), True, COLOR_TEXT)
+            screen.blit(class_text, (20, info_y))
+        elif current_scanned_object is None:
+            # Show instructions when no object is scanned
+            instruction_text = font.render('Right-click on a planet or star to scan', True, COLOR_TEXT)
+            text_y = bottom_pane_y + 60
+            screen.blit(instruction_text, (20, text_y))
 
         # Control Panel (bottom right)
         control_rect = pygame.Rect(image_display_width, bottom_pane_y, 
@@ -2103,6 +2234,12 @@ try:
                             add_event_log("Engine systems offline - movement impossible!")
                             continue
                         
+                        # Check if engines have power allocated
+                        engine_power = player_ship.power_allocation.get('engines', 5)
+                        if engine_power <= 0:
+                            add_event_log("Engine power offline - allocate power to engines for movement!")
+                            continue
+                        
                         # Calculate dynamic energy cost based on engine power
                         dynamic_energy_cost = player_ship.get_movement_energy_cost(energy_cost)
                         
@@ -2171,10 +2308,23 @@ try:
                                                         current_player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
                                                         if current_player_obj and current_player_obj.system_q == q and current_player_obj.system_r == r:
                                                             # Already at planet location - start orbiting immediately
+                                                            # Calculate initial orbital angle based on ship's current position
+                                                            if system_ship_anim_x is not None and system_ship_anim_y is not None:
+                                                                # Ship has animated position - calculate angle from planet center
+                                                                dx = system_ship_anim_x - planet_px
+                                                                dy = system_ship_anim_y - planet_py
+                                                                initial_angle = math.atan2(dy, dx)
+                                                            else:
+                                                                # Use hex position to calculate angle
+                                                                ship_px, ship_py = hex_grid.get_hex_center(current_player_obj.system_q, current_player_obj.system_r)
+                                                                dx = ship_px - planet_px
+                                                                dy = ship_py - planet_py
+                                                                initial_angle = math.atan2(dy, dx)
+
                                                             game_state.orbital.player_orbiting_planet = True
                                                             game_state.orbital.player_orbit_center = (planet_px, planet_py)
                                                             player_orbit_key = key
-                                                            game_state.orbital.orbital_angle = 0.0
+                                                            game_state.orbital.orbital_angle = initial_angle
                                                             add_event_log(f"Entering orbit around planet at ({q}, {r})")
                                                         else:
                                                             # Need to move to planet first, then orbit
@@ -2267,6 +2417,12 @@ try:
                                     add_event_log("Engine systems offline - movement impossible!")
                                     continue
                                 
+                                # Check if engines have power allocated
+                                engine_power = player_ship.power_allocation.get('engines', 5)
+                                if engine_power <= 0:
+                                    add_event_log("Engine power offline - allocate power to engines for movement!")
+                                    continue
+                                
                                 # Calculate dynamic energy cost based on engine power
                                 energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
                                 
@@ -2309,11 +2465,52 @@ try:
                 if map_rect.collidepoint(mx, my) and game_state.map_mode == 'system':
                     q, r = hex_grid.pixel_to_hex(mx, my)
                     print(f"[DEBUG] Right-click at pixel=({mx},{my}), hex=({q},{r})")
-                    print("[DEBUG] Enemy objects in current system:")
-                    for obj in systems.get(current_system, []):
-                        if obj.type == 'enemy' and hasattr(obj, 'system_q'):
-                            print(f"  Enemy at ({obj.system_q}, {obj.system_r})")
                     if q is not None and r is not None:
+                        # First, check if we right-clicked on a planet or star for scanning
+                        scanned_celestial_object = False
+                        
+                        # Check for planets at clicked location
+                        planets_in_system = [orbit for orbit in planet_orbits if orbit['star'] == current_system]
+                        for orbit in planets_in_system:
+                            star_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'star'), None)
+                            if star_obj and hasattr(star_obj, 'system_q') and hasattr(star_obj, 'system_r'):
+                                star_px, star_py = hex_grid.get_hex_center(star_obj.system_q, star_obj.system_r)
+                                hex_size = hex_grid.hex_size if hasattr(hex_grid, 'hex_size') else 20
+                                orbit_radius_px = orbit['hex_radius'] * hex_size
+                                key = (orbit['star'], orbit['planet'])
+                                angle = planet_anim_state.get(key, orbit['angle'])
+                                planet_px = star_px + orbit_radius_px * math.cos(angle)
+                                planet_py = star_py + orbit_radius_px * math.sin(angle)
+                                
+                                planet_q, planet_r = hex_grid.pixel_to_hex(planet_px, planet_py)
+                                if planet_q is not None and planet_r is not None:
+                                    planet_hexes = get_planet_hexes(planet_q, planet_r)
+                                    if (q, r) in planet_hexes:
+                                        # Perform planet scan
+                                        perform_planet_scan(q, r)
+                                        scanned_celestial_object = True
+                                        break
+                        
+                        # Check for stars at clicked location
+                        if not scanned_celestial_object:
+                            for obj in systems.get(current_system, []):
+                                if obj.type == 'star' and hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
+                                    star_hexes = get_star_hexes(obj.system_q, obj.system_r)
+                                    if (q, r) in star_hexes:
+                                        # Perform star scan
+                                        perform_star_scan(obj.system_q, obj.system_r)
+                                        scanned_celestial_object = True
+                                        break
+                        
+                        # If we scanned a celestial object, skip enemy targeting
+                        if scanned_celestial_object:
+                            continue
+                        
+                        print("[DEBUG] Enemy objects in current system:")
+                        for obj in systems.get(current_system, []):
+                            if obj.type == 'enemy' and hasattr(obj, 'system_q'):
+                                print(f"  Enemy at ({obj.system_q}, {obj.system_r})")
+                        
                         # Find enemy at this hex
                         found_enemy = None
                         for obj in systems.get(current_system, []):
@@ -2671,12 +2868,17 @@ try:
                         # Check if there's a pending orbital request
                         if pending_orbit_center is not None and pending_orbit_key is not None:
                             # Start orbiting the planet we moved to
+                            # Calculate initial orbital angle based on ship's arrival position
+                            dx = system_ship_anim_x - pending_orbit_center[0]
+                            dy = system_ship_anim_y - pending_orbit_center[1]
+                            initial_angle = math.atan2(dy, dx)
+
                             game_state.orbital.player_orbiting_planet = True
                             game_state.orbital.player_orbit_center = pending_orbit_center
                             player_orbit_key = pending_orbit_key
-                            game_state.orbital.orbital_angle = 0.0
+                            game_state.orbital.orbital_angle = initial_angle
                             add_event_log(f"Entering orbit around planet at ({system_dest_q}, {system_dest_r})")
-                            
+
                             # Clear pending orbit
                             pending_orbit_center = None
                             pending_orbit_key = None

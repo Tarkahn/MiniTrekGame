@@ -155,22 +155,22 @@ KLINGON_MOVE_VARIABILITY_MAX = 0.9  # High variability = very random movement di
 
 # Combat Aggression Parameters
 # ----------------------------
-KLINGON_AGGRESSION_MIN = 0.6        # More aggressive baseline (60% aggression)
-KLINGON_AGGRESSION_MAX = 0.95       # Highly aggressive, always advances (95% aggression)
+KLINGON_AGGRESSION_MIN = 0.8        # Highly aggressive baseline (80% aggression)
+KLINGON_AGGRESSION_MAX = 0.99       # Extremely aggressive, always attacks (99% aggression)
 
 KLINGON_ATTACK_RANGE_MIN = 2        # Prefers close combat (minimum preferred attack range)
-KLINGON_ATTACK_RANGE_MAX = 12       # Prefers long range combat (maximum preferred attack range)
+KLINGON_ATTACK_RANGE_MAX = 10       # Reduced max range to encourage closer combat
 
-KLINGON_CLOSING_TENDENCY_MIN = 0.1  # Avoids closing in on player (10% tendency)
-KLINGON_CLOSING_TENDENCY_MAX = 0.9  # Actively seeks close combat (90% tendency)
+KLINGON_CLOSING_TENDENCY_MIN = 0.6  # Strong tendency to close in on player (60% tendency)
+KLINGON_CLOSING_TENDENCY_MAX = 0.95 # Extremely aggressive closing behavior (95% tendency)
 
 # Weapon System Parameters
 # ------------------------
-KLINGON_WEAPON_POWER_MIN = 3        # Conservative weapon power allocation
+KLINGON_WEAPON_POWER_MIN = 5        # Higher minimum weapon power allocation
 KLINGON_WEAPON_POWER_MAX = 9        # Maximum weapon power allocation
 
-KLINGON_FIRING_FREQUENCY_MIN = 0.2   # More aggressive firing (20% chance per turn)
-KLINGON_FIRING_FREQUENCY_MAX = 0.4   # High firing rate (40% chance per turn)
+KLINGON_FIRING_FREQUENCY_MIN = 0.6   # Very aggressive firing (60% chance per turn)
+KLINGON_FIRING_FREQUENCY_MAX = 0.9   # Extremely high firing rate (90% chance per turn)
 
 KLINGON_WEAPON_ACCURACY_MIN = 0.5   # Poor marksmanship (50% accuracy)
 KLINGON_WEAPON_ACCURACY_MAX = 0.9   # Expert marksmanship (90% accuracy)
@@ -184,7 +184,7 @@ KLINGON_EVASION_SKILL_MIN = 0.2     # Poor evasion patterns (20% effectiveness)
 KLINGON_EVASION_SKILL_MAX = 0.8     # Excellent evasion patterns (80% effectiveness)
 
 KLINGON_TACTICAL_PATIENCE_MIN = 0   # Attacks immediately, no waiting
-KLINGON_TACTICAL_PATIENCE_MAX = 2   # Minimal patience, quick to engage
+KLINGON_TACTICAL_PATIENCE_MAX = 0   # No patience - immediate engagement
 
 # Defensive Behavior Parameters  
 # -----------------------------
@@ -224,11 +224,123 @@ KLINGON_AMBUSH_PREFERENCE_MAX = 0.7 # Frequently uses ambush tactics
 
 # Temporal Behavior Parameters
 # ----------------------------
-KLINGON_REACTION_TIME_MIN = 1.5     # Faster reactions (shorter decision intervals)
-KLINGON_REACTION_TIME_MAX = 3.0     # Very quick reactions
+KLINGON_REACTION_TIME_MIN = 0.5     # Lightning fast reactions (shorter decision intervals)
+KLINGON_REACTION_TIME_MAX = 1.0     # Very quick reactions - immediate response
 
 KLINGON_PURSUIT_PERSISTENCE_MIN = 0.2 # Gives up pursuit easily
 KLINGON_PURSUIT_PERSISTENCE_MAX = 0.9 # Relentlessly pursues player
 
 KLINGON_LEARNING_RATE_MIN = 0.0     # Never adapts to player tactics
 KLINGON_LEARNING_RATE_MAX = 0.5     # Adapts quickly to player tactics
+
+# ====================================================================
+# PLANET AND STAR CLASSIFICATION DATA
+# ====================================================================
+
+# Planet Class Definitions (Star Trek Standard)
+PLANET_CLASSES = {
+    'D': {
+        'name': 'Class D Planet',
+        'description': 'Rocky, barren world with thin atmosphere. Surface is inhospitable to most life forms.',
+        'images': ['classDplanet.png', 'classDplanet1.png']
+    },
+    'H': {
+        'name': 'Class H Planet',
+        'description': 'Desert planet with arid climate. Capable of supporting hardy life forms.',
+        'images': ['classHplanet.png', 'classHplanet2.png', 'classHplanet3.png']
+    },
+    'J': {
+        'name': 'Class J Planet',
+        'description': 'Gas giant with turbulent atmospheric conditions. Rich in hydrogen and helium.',
+        'images': ['classJplanet.png', 'classJplanet2.png']
+    },
+    'K': {
+        'name': 'Class K Planet',
+        'description': 'Rocky planet with thin atmosphere. Borderline habitable with proper terraforming.',
+        'images': ['classKplanet.png', 'classKplanet1.png', 'classKplanet2.png']
+    },
+    'L': {
+        'name': 'Class L Planet',
+        'description': 'Rocky world with minimal atmosphere. Requires environmental suits for surface activity.',
+        'images': ['classLplanet.png', 'classLplanet2.png']
+    },
+    'M': {
+        'name': 'Class M Planet',
+        'description': 'Earth-like world with oxygen-nitrogen atmosphere. Ideal for humanoid life.',
+        'images': ['classMplanet.png']
+    },
+    'N': {
+        'name': 'Class N Planet',
+        'description': 'Sulfuric world with high surface temperatures and toxic atmosphere.',
+        'images': ['classNplanet.png']
+    },
+    'R': {
+        'name': 'Class R Planet',
+        'description': 'Rogue planet with volcanic activity. Extremely dangerous surface conditions.',
+        'images': ['classRplanet.jpg', 'classRplanet.webp']
+    },
+    'T': {
+        'name': 'Class T Planet',
+        'description': 'Ultra-giant gas world with extreme gravitational fields and radiation.',
+        'images': ['classTplanet.jpg', 'classTplanet.webp', 'classTplanet1.jpg', 'classTplanet1.webp']
+    },
+    'Y': {
+        'name': 'Class Y Planet',
+        'description': 'Demon-class planet with corrosive atmosphere and extreme temperatures.',
+        'images': ['classYplanet.jpg', 'classYplanet.webp', 'classYplanet1.jpg', 'classYplanet1.webp']
+    }
+}
+
+# Star Classification (Main Sequence and Stellar Remnants)
+STAR_CLASSES = {
+    'YELLOW_DWARF': {
+        'name': 'Yellow Dwarf Star',
+        'description': 'Main sequence star similar to Earth\'s sun. Stable hydrogen fusion, ideal for planetary systems.',
+        'images': ['yellowDwarf.png']
+    },
+    'RED_DWARF': {
+        'name': 'Red Dwarf Star',
+        'description': 'Small, cool star with extended lifespan. Most common type in the galaxy.',
+        'images': ['redDwarf.png']
+    },
+    'RED_GIANT': {
+        'name': 'Red Giant Star',
+        'description': 'Evolved star in late stages of life. Massive size with cooler surface temperature.',
+        'images': ['redGiant.png']
+    },
+    'WHITE_DWARF': {
+        'name': 'White Dwarf Star',
+        'description': 'Dense stellar remnant. Extremely hot but small, gradually cooling over billions of years.',
+        'images': ['whiteDwarf.png']
+    },
+    'BLUE_GIANT': {
+        'name': 'Blue Giant Star',
+        'description': 'Massive, extremely hot star burning through fuel rapidly. Short but spectacular lifespan.',
+        'images': ['blueGiant.png']
+    },
+    'ORANGE_GIANT': {
+        'name': 'Orange Giant Star',
+        'description': 'Evolved star larger than main sequence. Cooler than sun-type stars but more luminous.',
+        'images': ['orangeGiant.png']
+    },
+    'BROWN_DWARF': {
+        'name': 'Brown Dwarf Star',
+        'description': 'Failed star lacking sufficient mass for hydrogen fusion. Dim and cool.',
+        'images': ['brownDwarf.png']
+    },
+    'NEUTRON_STAR': {
+        'name': 'Neutron Star',
+        'description': 'Ultra-dense stellar remnant composed entirely of neutrons. Intense gravitational field.',
+        'images': ['neutronStar.png']
+    },
+    'PULSAR': {
+        'name': 'Pulsar',
+        'description': 'Rapidly rotating neutron star emitting beams of radiation. Precise timing beacon.',
+        'images': ['pulsar.png']
+    },
+    'HYPERGIANT': {
+        'name': 'Hypergiant Star',
+        'description': 'Extremely massive and luminous star. Among the most powerful objects in the galaxy.',
+        'images': ['hyperGiant.png']
+    }
+}
