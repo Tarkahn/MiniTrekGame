@@ -24,7 +24,11 @@ from ui.hex_utils import get_star_hexes, get_planet_hexes
 # Note: is_hex_blocked is defined locally as it uses module-level planet_anim_state
 from ui.drawing_utils import get_star_color, get_planet_color
 from ui.text_utils import wrap_text
-from ui.dialogs import show_game_over_screen, show_orbit_dialog
+from ui.dialogs import show_game_over_screen
+# show_orbit_dialog is now used via event_handler module
+from ui.event_handler import (EventContext, EventResult, handle_button_click,
+                               handle_toggle_click, handle_sector_map_click,
+                               handle_system_map_click, handle_right_click)
 from galaxy_generation.map_object import MapObject
 from ui.sound_manager import get_sound_manager
 from ui.ship_status_display import create_ship_status_display
@@ -782,6 +786,39 @@ sound_manager.play_background_music()
 # Add initial welcome message
 add_event_log("Welcome to Star Trek Tactical Game")
 add_event_log("Click to navigate, scan for objects")
+
+# Create event context for the event handler
+# Note: Some values (map_rect, button_rects, toggle_btn_rect) are set inside the game loop
+event_ctx = EventContext()
+event_ctx.game_state = game_state
+event_ctx.player_ship = player_ship
+event_ctx.systems = systems
+event_ctx.current_system = current_system
+event_ctx.hex_grid = hex_grid
+event_ctx.screen = screen
+event_ctx.font = font
+event_ctx.button_rects = None  # Set inside game loop
+event_ctx.toggle_btn_rect = None  # Set inside game loop
+event_ctx.button_labels = button_labels
+event_ctx.map_rect = None  # Set inside game loop
+event_ctx.ship_status_display = ship_status_display
+event_ctx.enemy_scan_panel = enemy_scan_panel
+event_ctx.sound_manager = sound_manager
+event_ctx.star_coords = star_coords
+event_ctx.lazy_object_coords = lazy_object_coords
+event_ctx.planet_orbits = planet_orbits
+event_ctx.planet_anim_state = planet_anim_state
+event_ctx.ship_q = ship_q
+event_ctx.ship_r = ship_r
+event_ctx.phaser_range = phaser_range
+event_ctx.add_event_log = add_event_log
+event_ctx.create_enemy_popup = create_enemy_popup
+event_ctx.perform_enemy_scan = perform_enemy_scan
+event_ctx.perform_planet_scan = perform_planet_scan
+event_ctx.perform_star_scan = perform_star_scan
+event_ctx.get_enemy_id = get_enemy_id
+event_ctx.get_enemy_current_position = get_enemy_current_position
+event_ctx.is_hex_blocked = is_hex_blocked
 
 try:
     running = True
@@ -1639,6 +1676,17 @@ try:
         )
         # Toggle button is available
 
+        # Update event context with current state each frame
+        event_ctx.current_system = current_system
+        event_ctx.ship_q = ship_q
+        event_ctx.ship_r = ship_r
+        event_ctx.system_ship_anim_x = system_ship_anim_x
+        event_ctx.system_ship_anim_y = system_ship_anim_y
+        event_ctx.system_ship_moving = system_ship_moving
+        event_ctx.map_rect = map_rect
+        event_ctx.button_rects = button_rects
+        event_ctx.toggle_btn_rect = toggle_btn_rect
+
         # Event handling
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -1656,313 +1704,12 @@ try:
                 if clicked_index is not None:
                     label = button_labels[clicked_index] if clicked_index < len(button_labels) else str(clicked_index)
                     print(f"[DEBUG] Button {clicked_index} clicked: {label}")
-                    # --- Use label-based action selection ---
-                    if label == "Move":
-                        add_event_log("Move mode: Click on a hex to navigate")
-                    elif label == "Torpedo":
-                        print(f"[DEBUG] Entered Torpedo button handler: map_mode={game_state.map_mode}, selected_enemy={game_state.combat.selected_enemy}")
-                        
-                        # Check if ship is capable of firing weapons
-                        if not player_ship.is_alive():
-                            add_event_log("Ship is destroyed - weapons offline!")
-                            sound_manager.play_sound('error')
-                            continue
-                        
-                        if hasattr(player_ship, 'ship_state') and player_ship.ship_state != "operational":
-                            add_event_log("Ship systems critical - weapons disabled!")
-                            sound_manager.play_sound('error')
-                            continue
-                        
-                        # Check if weapon systems are functional
-                        phaser_integrity = player_ship.system_integrity.get('phasers', 100)
-                        if phaser_integrity <= 0:
-                            add_event_log("Weapon systems offline - cannot fire!")
-                            sound_manager.play_sound('error')
-                            continue
-                        
-                        # Check torpedo availability first
-                        if not player_ship.has_torpedoes():
-                            add_event_log("*** NO TORPEDOES REMAINING ***")
-                            add_event_log("Dock at a starbase to replenish torpedo supplies!")
-                            sound_manager.play_sound('error')  # Play error sound
-                            continue  # Skip the rest of the torpedo logic
-                        
-                        # Check if torpedoes are on cooldown
-                        if player_ship.torpedo_system.is_on_cooldown():
-                            cooldown_time = (player_ship.torpedo_system._last_fired_time + player_ship.torpedo_system.cooldown_seconds) - time.time()
-                            add_event_log(f"Torpedoes reloading - {cooldown_time:.1f}s remaining")
-                            sound_manager.play_sound('error')  # Play error sound if available
-                            continue  # Skip the rest of the torpedo logic
-                        
-                        # Fire torpedoes at selected enemy (only works in system mode)
-                        if game_state.map_mode == 'system':
-                            print("[DEBUG] In system mode")
-                            if game_state.combat.selected_enemy is not None:
-                                print(f"[DEBUG] game_state.combat.selected_enemy is not None: {game_state.combat.selected_enemy}")
-                                player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
-                                print(f"[DEBUG] player_obj found: {player_obj}")
-                                
-                                if player_obj is not None and hasattr(player_obj, 'system_q') and hasattr(game_state.combat.selected_enemy, 'system_q'):
-                                    dx = game_state.combat.selected_enemy.system_q - player_obj.system_q
-                                    dy = game_state.combat.selected_enemy.system_r - player_obj.system_r
-                                    distance = math.hypot(dx, dy)
-                                    
-                                    # Get start and target positions for animation
-                                    # Use animated position (orbital or movement) if available, otherwise use static position
-                                    if system_ship_anim_x is not None and system_ship_anim_y is not None:
-                                        start_pos = (system_ship_anim_x, system_ship_anim_y)
-                                    else:
-                                        start_pos = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
-                                    target_pos = get_enemy_current_position(game_state.combat.selected_enemy, hex_grid)
-                                    
-                                    # Fire torpedo using weapon animation manager
-                                    target_hex_pos = (game_state.combat.selected_enemy.system_q, game_state.combat.selected_enemy.system_r)
-                                    result = game_state.weapon_animation_manager.fire_torpedo(
-                                        game_state.combat.selected_enemy, distance, start_pos, target_pos, target_hex_pos
-                                    )
-                                    
-                                    if result['success']:
-                                        add_event_log("Torpedo launched!")
-                                        # Check for low torpedo warning
-                                        if player_ship.torpedo_count <= 3 and player_ship.torpedo_count > 0:
-                                            add_event_log(f"*** LOW TORPEDO SUPPLY: {player_ship.torpedo_count} remaining ***")
-                                        elif player_ship.torpedo_count == 0:
-                                            add_event_log("*** LAST TORPEDO EXPENDED ***")
-                                    else:
-                                        add_event_log(f"Torpedo launch failed: {result.get('reason', 'Unknown error')}")
-                                else:
-                                    add_event_log("Cannot determine target position")
-                            else:
-                                add_event_log("No enemy target selected. Right-click an enemy to target it first.")
-                        else:
-                            add_event_log("Torpedoes can only be fired in system view")
-                    elif label == "Scan":
-                        print("Scan initiated!")
-                        # Play scanner sound effect
-                        sound_manager.play_sound('scanner')
-                        if game_state.map_mode == 'sector':
-                            game_state.scan.sector_scan_active = True
-                            add_event_log("Long-range sensors activated. All systems revealed.")
-                            print("Sector scan active. All systems revealed.")
-                        elif game_state.map_mode == 'system':
-                            # Check if we have targeted enemies to scan
-                            if game_state.combat.targeted_enemies:
-                                print(f"[DEBUG] Scanning {len(game_state.combat.targeted_enemies)} targeted enemies")
-                                # Create/show popups for all targeted enemies
-                                new_popups = 0
-                                for enemy_id, enemy_obj in game_state.combat.targeted_enemies.items():
-                                    print(f"[DEBUG] Processing enemy {enemy_id}")
-                                    if enemy_id not in game_state.scan.enemy_popups:
-                                        # Create new popup for this enemy
-                                        popup_info = create_enemy_popup(enemy_id, enemy_obj)
-                                        game_state.scan.enemy_popups[enemy_id] = popup_info
-                                        new_popups += 1
-                                        print(f"[DEBUG] Created popup for enemy {enemy_id}")
-                                    # Show the popup
-                                    game_state.scan.enemy_popups[enemy_id]['visible'] = True
-                                    print(f"[DEBUG] Popup {enemy_id} visible: {game_state.scan.enemy_popups[enemy_id]['visible']}")
-                                
-                                if new_popups > 0:
-                                    add_event_log(f"Scanning {new_popups} targeted enemies - detailed sensor data displayed")
-                                else:
-                                    add_event_log(f"Updating sensor data for {len(game_state.combat.targeted_enemies)} targeted enemies")
-                            else:
-                                # No targeted enemies, perform system scan as before
-                                if current_system not in game_state.scan.scanned_systems:
-                                    game_state.scan.scanned_systems.add(current_system)
-                                    add_event_log("System scan complete. No enemies targeted - right-click enemies to target them for detailed scans.")
-                                    
-                                    # Only generate/modify system objects if not already scanned
-                                    # Diagnostic logging for scan
-                                    logging.info(f"[SCAN] current_system: {current_system}")
-                                    for obj_type, coords_set in lazy_object_coords.items():
-                                        logging.info(f"[SCAN] {obj_type}: current_system in set? {current_system in coords_set}")
-                                        logging.info(f"[SCAN] {obj_type} set: {coords_set}")
-                                    
-                                    # Store all objects (including star) for this system for persistence (as dicts)
-                                    system_objs = generate_system_objects(
-                                        current_system[0],
-                                        current_system[1],
-                                        lazy_object_coords,
-                                        star_coords=star_coords,
-                                        planet_orbits=planet_orbits,
-                                        grid_size=hex_grid.cols
-                                    )
-                                    
-                                    # Preserve existing player ship position if it exists
-                                    existing_player = None
-                                    if current_system in systems:
-                                        existing_player = next((obj for obj in systems[current_system] if obj.type == 'player'), None)
-                                    
-                                    # Assign random system positions to non-player objects
-                                    for obj in system_objs:
-                                        if obj.type == 'player' and existing_player:
-                                            # Preserve existing player position
-                                            obj.system_q = existing_player.system_q
-                                            obj.system_r = existing_player.system_r
-                                        else:
-                                            # Assign random position to other objects
-                                            obj.system_q = random.randint(0, hex_grid.cols - 1)
-                                            obj.system_r = random.randint(0, hex_grid.rows - 1)
-                                    
-                                    # Fix planet visibility: ensure planets in this hex are added to planet_orbits
-                                    # Note: planets are now stored in planet_orbits, not lazy_object_coords
-                                    planets_in_hex = [orbit['planet'] for orbit in planet_orbits if orbit['star'] == current_system]
-                                    for planet_coord in planets_in_hex:
-                                        # Check if this planet is already in planet_orbits (it should be)
-                                        existing_orbit = next((orbit for orbit in planet_orbits if orbit['planet'] == planet_coord), None)
-                                        if not existing_orbit:
-                                            # This should not happen with the new system, but keep as fallback
-                                            new_orbit = {
-                                                'star': current_system,
-                                                'planet': planet_coord,
-                                                'hex_radius': random.randint(8, 15),  # Minimum 4 hex from star outer bounds
-                                                'angle': random.uniform(0, 2 * math.pi),
-                                                'speed': random.uniform(0.02, 0.1)  # Speed in radians per second
-                                            }
-                                            planet_orbits.append(new_orbit)
-                                            # Add to animation state
-                                            planet_anim_state[(current_system, planet_coord)] = new_orbit['angle']
-                                            logging.info(f"[SCAN] Added missing planet {planet_coord} to orbit around star {current_system}")
-                                    
-                                    # Only update systems if this is a first-time scan
-                                    systems[current_system] = system_objs
-                                    game_state.system_object_states[current_system] = [
-                                        {
-                                            'type': obj.type,
-                                            'q': obj.q,
-                                            'r': obj.r,
-                                            'system_q': obj.system_q,
-                                            'system_r': obj.system_r,
-                                            'props': obj.props
-                                        } for obj in system_objs
-                                    ]
-                                    
-                                    # --- Ensure player object exists and is placed at a random, unoccupied hex (after scan) ---
-                                    # Only for first-time scans
-                                    player_obj = next((obj for obj in systems[current_system] if obj.type == 'player'), None)
-                                    if player_obj is None:
-                                        occupied = set((getattr(obj, 'system_q', None), getattr(obj, 'system_r', None))
-                                                       for obj in systems[current_system] if hasattr(obj, 'system_q') and hasattr(obj, 'system_r'))
-                                        max_attempts = 100
-                                        for _ in range(max_attempts):
-                                            rand_q = random.randint(0, hex_grid.cols - 1)
-                                            rand_r = random.randint(0, hex_grid.rows - 1)
-                                            # Check both occupied set and blocked hexes
-                                            blocked, _ = is_hex_blocked(rand_q, rand_r, current_system, systems, planet_orbits, hex_grid)
-                                            if (rand_q, rand_r) not in occupied and not blocked:
-                                                player_obj = MapObject('player', current_system[0], current_system[1])
-                                                player_obj.system_q = rand_q
-                                                player_obj.system_r = rand_r
-                                                systems[current_system].append(player_obj)
-                                                break
-                                        else:
-                                            # Find any unblocked hex as fallback
-                                            for attempt_q in range(hex_grid.cols):
-                                                for attempt_r in range(hex_grid.rows):
-                                                    blocked, _ = is_hex_blocked(attempt_q, attempt_r, current_system, systems, planet_orbits, hex_grid)
-                                                    if not blocked:
-                                                        player_obj = MapObject('player', current_system[0], current_system[1])
-                                                        player_obj.system_q = attempt_q
-                                                        player_obj.system_r = attempt_r
-                                                        systems[current_system].append(player_obj)
-                                                        break
-                                                if player_obj:
-                                                    break
-                                else:
-                                    # System already scanned, just inform user
-                                    add_event_log("System already scanned. Right-click enemies to target them for detailed scans.")
-                    elif label == "Fire":
-                        print(f"[DEBUG] Entered Fire button handler: map_mode={game_state.map_mode}, selected_enemy={game_state.combat.selected_enemy}")
-                        
-                        # Check if ship is capable of firing weapons
-                        if not player_ship.is_alive():
-                            add_event_log("Ship is destroyed - weapons offline!")
-                            sound_manager.play_sound('error')
-                            continue
-                        
-                        if hasattr(player_ship, 'ship_state') and player_ship.ship_state != "operational":
-                            add_event_log("Ship systems critical - weapons disabled!")
-                            sound_manager.play_sound('error')
-                            continue
-                        
-                        # Check if weapon systems are functional
-                        phaser_integrity = player_ship.system_integrity.get('phasers', 100)
-                        if phaser_integrity <= 0:
-                            add_event_log("Weapon systems offline - cannot fire!")
-                            sound_manager.play_sound('error')
-                            continue
-                        
-                        # Check if phasers are on cooldown first
-                        if player_ship.phaser_system.is_on_cooldown():
-                            cooldown_time = (player_ship.phaser_system._last_fired_time + player_ship.phaser_system.cooldown_seconds) - time.time()
-                            add_event_log(f"Phasers recharging - {cooldown_time:.1f}s remaining")
-                            sound_manager.play_sound('error')  # Play error sound if available
-                            continue  # Skip the rest of the fire logic
-                        
-                        # Fire phasers at selected enemy (only works in system mode)
-                        if game_state.map_mode == 'system':
-                            print("[DEBUG] In system mode")
-                            if game_state.combat.selected_enemy is not None:
-                                print(f"[DEBUG] game_state.combat.selected_enemy is not None: {game_state.combat.selected_enemy}")
-                                player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
-                                print(f"[DEBUG] player_obj found: {player_obj}")
-                                if player_obj is None:
-                                    print("[DEBUG] No player object found in current system! Adding player object.")
-                                    occupied = set((getattr(obj, 'system_q', None), getattr(obj, 'system_r', None))
-                                                   for obj in systems[current_system] if hasattr(obj, 'system_q') and hasattr(obj, 'system_r'))
-                                    # Try random positions until an unoccupied one is found
-                                    max_attempts = 100
-                                    for _ in range(max_attempts):
-                                        rand_q = random.randint(0, hex_grid.cols - 1)
-                                        rand_r = random.randint(0, hex_grid.rows - 1)
-                                        if (rand_q, rand_r) not in occupied:
-                                            player_obj = MapObject('player', current_system[0], current_system[1])
-                                            player_obj.system_q = rand_q
-                                            player_obj.system_r = rand_r
-                                            systems[current_system].append(player_obj)
-                                            print(f"[DEBUG] Player object added at ({rand_q}, {rand_r})")
-                                            break
-                                    else:
-                                        # Fallback: place at (0, 0)
-                                        player_obj = MapObject('player', current_system[0], current_system[1])
-                                        player_obj.system_q = 0
-                                        player_obj.system_r = 0
-                                        systems[current_system].append(player_obj)
-                                        print("[DEBUG] Player object added at fallback (0, 0)")
-                                # Continue with phaser logic as before
-                                if player_obj is not None and hasattr(player_obj, 'system_q') and hasattr(game_state.combat.selected_enemy, 'system_q'):
-                                    dx = game_state.combat.selected_enemy.system_q - player_obj.system_q
-                                    dy = game_state.combat.selected_enemy.system_r - player_obj.system_r
-                                    distance = math.hypot(dx, dy)
-                                    if distance <= phaser_range:
-                                        # Fire phaser using weapon animation manager
-                                        result = game_state.weapon_animation_manager.fire_phaser(
-                                            game_state.combat.selected_enemy, distance
-                                        )
-                                        
-                                        if result['success']:
-                                            # Play phaser sequence: shot followed by explosion
-                                            sound_manager.play_phaser_sequence()
-                                            add_event_log("Phaser fired!")
-                                        else:
-                                            add_event_log(f"Phaser fire failed: {result.get('reason', 'Unknown error')}")
-                                    else:
-                                        add_event_log(f"Target out of range! Max range: {phaser_range} hexes")
-                                else:
-                                    add_event_log("No target selected! Right-click an enemy ship.")
-                            else:
-                                add_event_log("No target selected! Right-click an enemy ship.")
-                        else:
-                            add_event_log("Weapons offline in sector view. Enter a system first.")
+                    # Use event handler module for button clicks
+                    handle_button_click(label, event_ctx)
 
                 if toggle_clicked:
                     print("Toggle button clicked")
-                    # Play keypress sound effect
-                    sound_manager.play_sound('keypress')
-                    new_mode = 'system' if game_state.map_mode == 'sector' else 'sector'
-                    add_event_log(f"Switched to {new_mode} view")
-                    game_state.map_mode = new_mode
+                    handle_toggle_click(event_ctx)
 
             # Handle ship status display clicks first
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1975,358 +1722,45 @@ try:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
                 if map_rect.collidepoint(mx, my) and game_state.map_mode == 'sector':
-                    q, r = hex_grid.pixel_to_hex(mx, my)
-                    if q is not None and r is not None:
-                        # Determine starting position for trajectory calculation
-                        if game_state.animation.ship_moving:
-                            # Ship is mid-flight - use current animated position as starting point
-                            start_hex_q, start_hex_r = hex_grid.pixel_to_hex(game_state.animation.ship_anim_x, game_state.animation.ship_anim_y)
-                            if start_hex_q is None or start_hex_r is None:
-                                # Fallback to current ship position if conversion fails
-                                start_hex_q, start_hex_r = ship_q, ship_r
-                            log_debug(f"[REDIRECT] Ship redirecting mid-flight from animated position ({start_hex_q}, {start_hex_r}) to ({q}, {r})")
-                        else:
-                            # Ship is stationary - use actual ship position
-                            start_hex_q, start_hex_r = ship_q, ship_r
-                        
-                        # Calculate distance for warp travel from current position
-                        dx = abs(q - start_hex_q)
-                        dy = abs(r - start_hex_r)
-                        distance = max(dx, dy)  # Hex distance approximation
-                        
-                        # Calculate energy cost: 20 for initiation + 10 per sector
-                        # Note: For mid-flight changes, we don't charge initiation cost again
-                        if game_state.animation.ship_moving:
-                            energy_cost = distance * constants.WARP_ENERGY_COST  # No initiation cost for redirects
-                            action_msg = "Changing course"
-                        else:
-                            energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
-                            action_msg = "Setting course"
-                        
-                        # Check if ship is capable of movement
-                        if not player_ship.is_alive():
-                            add_event_log("Ship is destroyed - movement impossible!")
-                            continue
-                        
-                        if hasattr(player_ship, 'ship_state') and player_ship.ship_state != "operational":
-                            add_event_log("Ship systems critical - movement disabled!")
-                            continue
-                        
-                        # Check if engines are functional
-                        engine_integrity = player_ship.system_integrity.get('engines', 100)
-                        if engine_integrity <= 0:
-                            add_event_log("Engine systems offline - movement impossible!")
-                            continue
-                        
-                        # Check if engines have power allocated
-                        engine_power = player_ship.power_allocation.get('engines', 5)
-                        if engine_power <= 0:
-                            add_event_log("Engine power offline - allocate power to engines for movement!")
-                            continue
-                        
-                        # Calculate dynamic energy cost based on engine power
-                        dynamic_energy_cost = player_ship.get_movement_energy_cost(energy_cost)
-                        
-                        # Check if player has enough energy
-                        if player_ship.warp_core_energy >= dynamic_energy_cost:
-                            # Calculate dynamic movement duration based on engine power
-                            base_duration = 2000  # 2 seconds base warp time
-                            movement_duration = player_ship.get_movement_duration(base_duration)
-                            
-                            game_state.animation.dest_q, game_state.animation.dest_r = q, r
-                            game_state.animation.ship_moving = True
-                            game_state.animation.move_start_time = pygame.time.get_ticks()
-                            game_state.animation.move_duration_ms = movement_duration  # Set dynamic duration
-                            
-                            # Set trajectory start position (current animated position for mid-flight changes)
-                            trajectory_start_x, trajectory_start_y = game_state.animation.ship_anim_x, game_state.animation.ship_anim_y
-                            end_x, end_y = hex_grid.get_hex_center(game_state.animation.dest_q, game_state.animation.dest_r)
-                            
-                            # Play warp sound for dynamic duration
-                            sound_manager.play_movement_sound('warp', movement_duration)
-                            
-                            # Update energy cost in event log
-                            engine_power = player_ship.power_allocation.get('engines', 5)
-                            efficiency = player_ship.get_engine_efficiency()
-                            add_event_log(f"{action_msg} for sector ({q}, {r}) - Engine Power: {engine_power} - Duration: {movement_duration/1000:.1f}s")
-                            add_event_log(f"Energy cost: {dynamic_energy_cost} - Engine efficiency: {efficiency:.1f}x")
-                            print(f"Ship moving to hex ({q}, {r}) - Duration: {movement_duration}ms - Energy cost: {dynamic_energy_cost}")
-                        else:
-                            add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
-                            sound_manager.play_sound('error')  # Play error sound if available
+                    # Use event handler for sector map navigation
+                    event_result = EventResult()
+                    if handle_sector_map_click(mx, my, event_ctx, event_result):
+                        # Apply any trajectory state changes
+                        if event_result.trajectory_start_x is not None:
+                            trajectory_start_x = event_result.trajectory_start_x
+                            trajectory_start_y = event_result.trajectory_start_y
                 elif map_rect.collidepoint(mx, my) and game_state.map_mode == 'system' and current_system in game_state.scan.scanned_systems:
-                    # System map navigation
-                    # Find player object in current system
-                    player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
-                    if player_obj is not None:
-                        q, r = hex_grid.pixel_to_hex(mx, my)
-                        if q is not None and r is not None:
-                            # Check if destination is blocked
-                            blocked, block_type = is_hex_blocked(q, r, current_system, systems, planet_orbits, hex_grid)
-                            if blocked:
-                                if block_type == 'planet':
-                                    # Show orbital dialog for planets
-                                    wants_orbit = show_orbit_dialog(screen, font)
-                                    if wants_orbit:
-                                        # Find the planet at this location
-                                        planet_found = False
-                                        planets_in_system = [orbit for orbit in planet_orbits if orbit['star'] == current_system]
-                                        for orbit in planets_in_system:
-                                            # Get star position to calculate planet position
-                                            star_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'star'), None)
-                                            if star_obj and hasattr(star_obj, 'system_q') and hasattr(star_obj, 'system_r'):
-                                                star_px, star_py = hex_grid.get_hex_center(star_obj.system_q, star_obj.system_r)
-                                                hex_size = hex_grid.hex_size if hasattr(hex_grid, 'hex_size') else 20
-                                                orbit_radius_px = orbit['hex_radius'] * hex_size
-                                                key = (orbit['star'], orbit['planet'])
-                                                angle = planet_anim_state.get(key, orbit['angle'])
-                                                planet_px = star_px + orbit_radius_px * math.cos(angle)
-                                                planet_py = star_py + orbit_radius_px * math.sin(angle)
-                                                
-                                                # Check if this planet is at the clicked location
-                                                planet_q, planet_r = hex_grid.pixel_to_hex(planet_px, planet_py)
-                                                if planet_q is not None and planet_r is not None:
-                                                    planet_hexes = get_planet_hexes(planet_q, planet_r)
-                                                    if (q, r) in planet_hexes:
-                                                        # Check if we're already at this location
-                                                        current_player_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'player'), None)
-                                                        if current_player_obj and current_player_obj.system_q == q and current_player_obj.system_r == r:
-                                                            # Already at planet location - start orbiting immediately
-                                                            # Calculate initial orbital angle based on ship's current position
-                                                            if system_ship_anim_x is not None and system_ship_anim_y is not None:
-                                                                # Ship has animated position - calculate angle from planet center
-                                                                dx = system_ship_anim_x - planet_px
-                                                                dy = system_ship_anim_y - planet_py
-                                                                initial_angle = math.atan2(dy, dx)
-                                                            else:
-                                                                # Use hex position to calculate angle
-                                                                ship_px, ship_py = hex_grid.get_hex_center(current_player_obj.system_q, current_player_obj.system_r)
-                                                                dx = ship_px - planet_px
-                                                                dy = ship_py - planet_py
-                                                                initial_angle = math.atan2(dy, dx)
+                    # Use event handler for system map navigation
+                    event_result = EventResult()
+                    if handle_system_map_click(mx, my, event_ctx, event_result):
+                        # Apply any state changes from the result
+                        if event_result.player_orbit_key is not None:
+                            player_orbit_key = event_result.player_orbit_key
+                        if event_result.pending_orbit_center is not None:
+                            pending_orbit_center = event_result.pending_orbit_center
+                            pending_orbit_key = event_result.pending_orbit_key
+                        if event_result.system_ship_moving is not None:
+                            system_ship_moving = event_result.system_ship_moving
+                        if event_result.system_dest_q is not None:
+                            system_dest_q = event_result.system_dest_q
+                            system_dest_r = event_result.system_dest_r
+                        if event_result.system_move_start_time is not None:
+                            system_move_start_time = event_result.system_move_start_time
+                        if event_result.system_move_duration_ms is not None:
+                            system_move_duration_ms = event_result.system_move_duration_ms
+                        if event_result.system_trajectory_start_x is not None:
+                            system_trajectory_start_x = event_result.system_trajectory_start_x
+                            system_trajectory_start_y = event_result.system_trajectory_start_y
+                        if event_result.system_ship_anim_x is not None:
+                            system_ship_anim_x = event_result.system_ship_anim_x
+                            system_ship_anim_y = event_result.system_ship_anim_y
 
-                                                            game_state.orbital.player_orbiting_planet = True
-                                                            game_state.orbital.player_orbit_center = (planet_px, planet_py)
-                                                            player_orbit_key = key
-                                                            game_state.orbital.orbital_angle = initial_angle
-                                                            add_event_log(f"Entering orbit around planet at ({q}, {r})")
-                                                        else:
-                                                            # Need to move to planet first, then orbit
-                                                            # Calculate movement cost and check energy
-                                                            if current_player_obj:
-                                                                dx = abs(q - current_player_obj.system_q)
-                                                                dy = abs(r - current_player_obj.system_r)
-                                                                distance = max(dx, dy)
-                                                                energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
-                                                                
-                                                                if player_ship.warp_core_energy >= energy_cost:
-                                                                    # Store pending orbit info
-                                                                    pending_orbit_center = (planet_px, planet_py)
-                                                                    pending_orbit_key = key
-                                                                    
-                                                                    # Start movement to planet
-                                                                    system_dest_q, system_dest_r = q, r
-                                                                    system_ship_moving = True
-                                                                    system_move_start_time = pygame.time.get_ticks()
-                                                                    
-                                                                    # Set movement trajectory
-                                                                    if system_ship_anim_x is not None and system_ship_anim_y is not None:
-                                                                        system_trajectory_start_x, system_trajectory_start_y = system_ship_anim_x, system_ship_anim_y
-                                                                    else:
-                                                                        start_pos_x, start_pos_y = hex_grid.get_hex_center(current_player_obj.system_q, current_player_obj.system_r)
-                                                                        system_ship_anim_x, system_ship_anim_y = start_pos_x, start_pos_y
-                                                                        system_trajectory_start_x, system_trajectory_start_y = start_pos_x, start_pos_y
-                                                                    
-                                                                    # Stop any current orbit
-                                                                    game_state.orbital.player_orbiting_planet = False
-                                                                    game_state.orbital.player_orbit_center = None
-                                                                    
-                                                                    add_event_log(f"Moving to planet at ({q}, {r}) to enter orbit")
-                                                                else:
-                                                                    add_event_log(f"Insufficient energy to reach planet at ({q}, {r}). Need {energy_cost}, have {player_ship.warp_core_energy}")
-                                                            else:
-                                                                add_event_log("Cannot find player position for orbital movement")
-                                                        
-                                                        planet_found = True
-                                                        break
-                                        
-                                        if not planet_found:
-                                            add_event_log(f"Cannot find planet at ({q}, {r})")
-                                    else:
-                                        add_event_log(f"Cannot move to ({q}, {r}) - blocked by {block_type}!")
-                                else:
-                                    add_event_log(f"Cannot move to ({q}, {r}) - blocked by {block_type}!")
-                            else:
-                                # Exit orbit mode if player was orbiting a planet
-                                if game_state.orbital.player_orbiting_planet:
-                                    game_state.orbital.player_orbiting_planet = False
-                                    game_state.orbital.player_orbit_center = None
-                                    player_orbit_key = None
-                                    add_event_log("Breaking orbit")
-                                
-                                # Determine starting position for trajectory calculation
-                                if system_ship_moving:
-                                    # Ship is mid-flight - use current animated position as starting point
-                                    start_hex_q, start_hex_r = hex_grid.pixel_to_hex(system_ship_anim_x, system_ship_anim_y)
-                                    if start_hex_q is None or start_hex_r is None:
-                                        # Fallback to player object position if conversion fails
-                                        start_hex_q, start_hex_r = player_obj.system_q, player_obj.system_r
-                                    log_debug(f"[SYSTEM_REDIRECT] Ship redirecting mid-flight from animated position ({start_hex_q}, {start_hex_r}) to ({q}, {r})")
-                                    action_msg = "Changing course"
-                                else:
-                                    # Ship is stationary - use actual player object position
-                                    start_hex_q, start_hex_r = player_obj.system_q, player_obj.system_r
-                                    action_msg = "Setting course"
-                                
-                                # Calculate distance for impulse movement from current position
-                                dx = abs(q - start_hex_q)
-                                dy = abs(r - start_hex_r)
-                                distance = max(dx, dy)  # Hex distance approximation
-                                
-                                # Calculate energy cost: 5 per hex for impulse
-                                base_energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
-                                
-                                # Check if ship is capable of movement
-                                if not player_ship.is_alive():
-                                    add_event_log("Ship is destroyed - movement impossible!")
-                                    continue
-                                
-                                if hasattr(player_ship, 'ship_state') and player_ship.ship_state != "operational":
-                                    add_event_log("Ship systems critical - movement disabled!")
-                                    continue
-                                
-                                # Check if engines are functional
-                                engine_integrity = player_ship.system_integrity.get('engines', 100)
-                                if engine_integrity <= 0:
-                                    add_event_log("Engine systems offline - movement impossible!")
-                                    continue
-                                
-                                # Check if engines have power allocated
-                                engine_power = player_ship.power_allocation.get('engines', 5)
-                                if engine_power <= 0:
-                                    add_event_log("Engine power offline - allocate power to engines for movement!")
-                                    continue
-                                
-                                # Calculate dynamic energy cost based on engine power
-                                energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
-                                
-                                # Check if player has enough energy
-                                if player_ship.warp_core_energy >= energy_cost:
-                                    # Calculate dynamic movement duration based on engine power
-                                    base_duration = 1000  # 1 second base impulse time
-                                    movement_duration = player_ship.get_movement_duration(base_duration)
-                                    
-                                    system_dest_q, system_dest_r = q, r
-                                    system_ship_moving = True
-                                    system_move_start_time = pygame.time.get_ticks()
-                                    system_move_duration_ms = movement_duration  # Set dynamic duration
-                                    
-                                    # Set system trajectory start position (current animated position for mid-flight changes)
-                                    if system_ship_anim_x is not None and system_ship_anim_y is not None:
-                                        # Use current animated position as starting point
-                                        system_trajectory_start_x, system_trajectory_start_y = system_ship_anim_x, system_ship_anim_y
-                                    else:
-                                        # Initialize animated position and trajectory from player object position
-                                        start_pos_x, start_pos_y = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
-                                        system_ship_anim_x, system_ship_anim_y = start_pos_x, start_pos_y
-                                        system_trajectory_start_x, system_trajectory_start_y = start_pos_x, start_pos_y
-                                    # Play impulse sound for dynamic duration
-                                    sound_manager.play_movement_sound('impulse', movement_duration)
-                                    
-                                    # Update event log with engine power info
-                                    engine_power = player_ship.power_allocation.get('engines', 5)
-                                    efficiency = player_ship.get_engine_efficiency()
-                                    add_event_log(f"{action_msg} for system hex ({q}, {r}) - Engine Power: {engine_power} - Duration: {movement_duration/1000:.1f}s")
-                                    add_event_log(f"Energy cost: {energy_cost} - Engine efficiency: {efficiency:.1f}x")
-                                    print(f"System ship moving to hex ({q}, {r}) - Duration: {movement_duration}ms - Energy cost: {energy_cost}")
-                                else:
-                                    add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
-                                    sound_manager.play_sound('error')  # Play error sound if available
-            
             # Right-click: target enemy in system mode
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:  # Right mouse button
                 mx, my = event.pos
-                if map_rect.collidepoint(mx, my) and game_state.map_mode == 'system':
-                    q, r = hex_grid.pixel_to_hex(mx, my)
-                    print(f"[DEBUG] Right-click at pixel=({mx},{my}), hex=({q},{r})")
-                    if q is not None and r is not None:
-                        # First, check if we right-clicked on a planet or star for scanning
-                        scanned_celestial_object = False
-                        
-                        # Check for planets at clicked location
-                        planets_in_system = [orbit for orbit in planet_orbits if orbit['star'] == current_system]
-                        for orbit in planets_in_system:
-                            star_obj = next((obj for obj in systems.get(current_system, []) if obj.type == 'star'), None)
-                            if star_obj and hasattr(star_obj, 'system_q') and hasattr(star_obj, 'system_r'):
-                                star_px, star_py = hex_grid.get_hex_center(star_obj.system_q, star_obj.system_r)
-                                hex_size = hex_grid.hex_size if hasattr(hex_grid, 'hex_size') else 20
-                                orbit_radius_px = orbit['hex_radius'] * hex_size
-                                key = (orbit['star'], orbit['planet'])
-                                angle = planet_anim_state.get(key, orbit['angle'])
-                                planet_px = star_px + orbit_radius_px * math.cos(angle)
-                                planet_py = star_py + orbit_radius_px * math.sin(angle)
-                                
-                                planet_q, planet_r = hex_grid.pixel_to_hex(planet_px, planet_py)
-                                if planet_q is not None and planet_r is not None:
-                                    planet_hexes = get_planet_hexes(planet_q, planet_r)
-                                    if (q, r) in planet_hexes:
-                                        # Perform planet scan
-                                        perform_planet_scan(q, r)
-                                        scanned_celestial_object = True
-                                        break
-                        
-                        # Check for stars at clicked location
-                        if not scanned_celestial_object:
-                            for obj in systems.get(current_system, []):
-                                if obj.type == 'star' and hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
-                                    star_hexes = get_star_hexes(obj.system_q, obj.system_r)
-                                    if (q, r) in star_hexes:
-                                        # Perform star scan
-                                        perform_star_scan(obj.system_q, obj.system_r)
-                                        scanned_celestial_object = True
-                                        break
-                        
-                        # If we scanned a celestial object, skip enemy targeting
-                        if scanned_celestial_object:
-                            continue
-                        
-                        print("[DEBUG] Enemy objects in current system:")
-                        for obj in systems.get(current_system, []):
-                            if obj.type == 'enemy' and hasattr(obj, 'system_q'):
-                                print(f"  Enemy at ({obj.system_q}, {obj.system_r})")
-                        
-                        # Find enemy at this hex
-                        found_enemy = None
-                        for obj in systems.get(current_system, []):
-                            if obj.type == 'enemy' and hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
-                                if obj.system_q == q and obj.system_r == r:
-                                    found_enemy = obj
-                                    break
-                        
-                        if found_enemy is not None:
-                            # Get or assign enemy ID
-                            enemy_id = get_enemy_id(found_enemy)
-                            
-                            # Always update selected_enemy to allow target switching
-                            game_state.combat.selected_enemy = found_enemy
-                            
-                            # Check if this enemy is already in targeted_enemies
-                            if enemy_id in game_state.combat.targeted_enemies:
-                                add_event_log(f"Switching target to {enemy_id}")
-                                print(f"[DEBUG] Switched target to existing enemy {enemy_id}")
-                            else:
-                                # Add to targeted enemies for the first time
-                                game_state.combat.targeted_enemies[enemy_id] = found_enemy
-                                add_event_log(f"Target {enemy_id} acquired at ({q}, {r})")
-                                print(f"[DEBUG] New enemy {enemy_id} targeted at ({found_enemy.system_q}, {found_enemy.system_r})")
-                            
-                            # Perform enemy scan and add to scan panel
-                            perform_enemy_scan(found_enemy, enemy_id)
-                            
-                            print(f"[DEBUG] Active target is now enemy {enemy_id}")
-                            print(f"[DEBUG] targeted_enemies contains {len(game_state.combat.targeted_enemies)} total enemies")
-                        else:
-                            add_event_log(f"No enemy at ({q}, {r})")
+                if map_rect.collidepoint(mx, my):
+                    # Use event handler for right-click targeting/scanning
+                    handle_right_click(mx, my, event_ctx)
 
         # Update ship position (delta time based)
         if game_state.animation.ship_moving and game_state.animation.dest_q is not None and game_state.animation.dest_r is not None:
