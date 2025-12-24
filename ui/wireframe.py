@@ -6,13 +6,12 @@ import traceback
 import logging
 import random
 import time
-import glob
 
 # Adjust the path to ensure imports work correctly
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import debug logger
-from debug_logger import log_debug, get_log_path
+from debug_logger import log_debug
 
 # No constants are currently used from data.constants, so removing the import
 
@@ -21,6 +20,11 @@ from ui.hex_map import create_hex_grid_for_map
 from ui.button_panel import draw_button_panel, handle_button_events
 from ui.stardate import Stardate
 from ui.background_loader import BackgroundAndStarLoader
+from ui.hex_utils import get_star_hexes, get_planet_hexes
+# Note: is_hex_blocked is defined locally as it uses module-level planet_anim_state
+from ui.drawing_utils import get_star_color, get_planet_color
+from ui.text_utils import wrap_text
+from ui.dialogs import show_game_over_screen, show_orbit_dialog
 from galaxy_generation.map_object import MapObject
 from ui.sound_manager import get_sound_manager
 from ui.ship_status_display import create_ship_status_display
@@ -268,38 +272,8 @@ planet_colors = {}
 # Planet image storage
 planet_images_assigned = {}  # Dictionary: (star, planet) -> (image, scaled_image, size_multiplier)
 
-# Color generation functions
-def get_star_color():
-    """Generate realistic star colors based on stellar classification."""
-    star_colors = [
-        (255, 255, 255),  # White (white dwarf, hot stars)
-        (255, 254, 250),  # Blue-white
-        (255, 255, 224),  # Yellow-white 
-        (255, 255, 0),    # Yellow (like our Sun)
-        (255, 204, 0),    # Yellow-orange
-        (255, 178, 0),    # Orange
-        (255, 128, 0),    # Deep orange
-        (255, 64, 0),     # Red-orange
-        (255, 0, 0),      # Red (red giant/dwarf)
-        (200, 0, 0),      # Deep red
-    ]
-    return random.choice(star_colors)
-
-def get_planet_color():
-    """Generate realistic planet colors."""
-    planet_colors = [
-        (139, 90, 43),    # Brown (rocky/desert)
-        (160, 82, 45),    # Sienna brown
-        (34, 139, 34),    # Forest green (vegetated)
-        (0, 100, 0),      # Dark green
-        (30, 144, 255),   # Dodger blue (water world)
-        (0, 191, 255),    # Deep sky blue
-        (70, 130, 180),   # Steel blue (ice world)
-        (178, 34, 34),    # Rust red (Mars-like)
-        (205, 92, 92),    # Indian red
-        (188, 143, 143),  # Rosy brown
-    ]
-    return random.choice(planet_colors)
+# Color generation functions imported from ui.drawing_utils:
+# get_star_color, get_planet_color
 
 def create_enemy_popup(enemy_id, enemy_obj):
     """Create a popup window for enemy ship stats."""
@@ -478,56 +452,7 @@ def get_enemy_id(enemy_obj):
     game_state.add_targeted_enemy(enemy_id, enemy_obj)
     return enemy_id
 
-def show_game_over_screen(screen, ship_name):
-    """Show game over screen when player ship is destroyed."""
-    pygame.init()
-    font = pygame.font.Font(None, 36)
-    title_font = pygame.font.Font(None, 48)
-    
-    screen_width, screen_height = screen.get_size()
-    
-    # Colors
-    text_color = (255, 0, 0)  # Red
-    subtitle_color = (255, 255, 255)  # White
-    
-    clock = pygame.time.Clock()
-    start_time = pygame.time.get_ticks()
-    
-    while True:
-        current_time = pygame.time.get_ticks()
-        elapsed = current_time - start_time
-        
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                exit()
-            elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
-                if elapsed > 3000:  # Only allow exit after 3 seconds
-                    pygame.quit()
-                    exit()
-        
-        # Draw semi-transparent overlay
-        overlay = pygame.Surface((screen_width, screen_height))
-        overlay.set_alpha(180)
-        overlay.fill((0, 0, 0))
-        screen.blit(overlay, (0, 0))
-        
-        # Draw game over text
-        title_text = title_font.render("*** GAME OVER ***", True, text_color)
-        title_rect = title_text.get_rect(center=(screen_width // 2, screen_height // 2 - 50))
-        screen.blit(title_text, title_rect)
-        
-        ship_text = font.render(f"{ship_name} has been destroyed", True, subtitle_color)
-        ship_rect = ship_text.get_rect(center=(screen_width // 2, screen_height // 2))
-        screen.blit(ship_text, ship_rect)
-        
-        if elapsed > 3000:
-            exit_text = font.render("Press any key to exit", True, subtitle_color)
-            exit_rect = exit_text.get_rect(center=(screen_width // 2, screen_height // 2 + 50))
-            screen.blit(exit_text, exit_rect)
-        
-        pygame.display.flip()
-        clock.tick(60)
+# show_game_over_screen imported from ui.dialogs
 
 def perform_enemy_scan(enemy_obj, enemy_id):
     """Perform a detailed scan of an enemy and add results to scan panel."""
@@ -679,43 +604,10 @@ def update_enemy_scan_positions():
                             scan_data['bearing'] = bearing
                 break
 
-# Helper functions for multi-hex objects
-def get_hex_neighbors(q, r):
-    """Get all 6 neighboring hexes for a given hex coordinate."""
-    # For flat-topped hexes with offset coordinates
-    if q % 2 == 0:  # Even column
-        neighbors = [
-            (q-1, r-1), (q-1, r),    # Left neighbors
-            (q, r-1), (q, r+1),      # Top and bottom
-            (q+1, r-1), (q+1, r)     # Right neighbors
-        ]
-    else:  # Odd column
-        neighbors = [
-            (q-1, r), (q-1, r+1),    # Left neighbors
-            (q, r-1), (q, r+1),      # Top and bottom
-            (q+1, r), (q+1, r+1)     # Right neighbors
-        ]
-    return neighbors
+# Hex utility functions imported from ui.hex_utils:
+# get_hex_neighbors, get_star_hexes, get_planet_hexes
 
-def get_star_hexes(q, r):
-    """Get all hexes occupied by a star (4 hexes total)."""
-    # Star occupies center hex plus 3 adjacent hexes
-    star_hexes = [(q, r)]  # Center
-    neighbors = get_hex_neighbors(q, r)
-    # Take first 3 neighbors for a compact cluster
-    star_hexes.extend(neighbors[:3])
-    return star_hexes
-
-def get_planet_hexes(q, r):
-    """Get all hexes occupied by a planet (2 hexes total)."""
-    # Planet occupies center hex plus 1 adjacent hex
-    planet_hexes = [(q, r)]  # Center
-    neighbors = get_hex_neighbors(q, r)
-    # Take first neighbor
-    if neighbors:
-        planet_hexes.append(neighbors[0])
-    return planet_hexes
-
+# is_hex_blocked defined locally because it uses module-level planet_anim_state
 def is_hex_blocked(q, r, current_system, systems, planet_orbits, hex_grid):
     """Check if a hex is blocked by a star or planet."""
     # Check stars
@@ -747,90 +639,7 @@ def is_hex_blocked(q, r, current_system, systems, planet_orbits, hex_grid):
     
     return False, None
 
-def show_orbit_dialog(screen, font):
-    """Show a popup dialog asking if player wants to orbit the planet."""
-    # Dialog dimensions
-    dialog_width = 400
-    dialog_height = 150
-    screen_width, screen_height = screen.get_size()
-    dialog_x = (screen_width - dialog_width) // 2
-    dialog_y = (screen_height - dialog_height) // 2
-    
-    # Colors
-    dialog_bg = (50, 50, 50)
-    dialog_border = (200, 200, 200)
-    button_bg = (100, 100, 100)
-    button_hover = (150, 150, 150)
-    text_color = (255, 255, 255)
-    
-    # Button dimensions
-    button_width = 80
-    button_height = 40
-    yes_button_x = dialog_x + 80
-    no_button_x = dialog_x + 240
-    button_y = dialog_y + 90
-    
-    clock = pygame.time.Clock()
-    
-    while True:
-        mouse_pos = pygame.mouse.get_pos()
-        
-        # Check button hover states
-        yes_hover = (yes_button_x <= mouse_pos[0] <= yes_button_x + button_width and
-                    button_y <= mouse_pos[1] <= button_y + button_height)
-        no_hover = (no_button_x <= mouse_pos[0] <= no_button_x + button_width and
-                   button_y <= mouse_pos[1] <= button_y + button_height)
-        
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left click
-                    if yes_hover:
-                        return True
-                    elif no_hover:
-                        return False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_y:
-                    return True
-                elif event.key == pygame.K_n or event.key == pygame.K_ESCAPE:
-                    return False
-        
-        # Draw dialog background
-        pygame.draw.rect(screen, dialog_bg, (dialog_x, dialog_y, dialog_width, dialog_height))
-        pygame.draw.rect(screen, dialog_border, (dialog_x, dialog_y, dialog_width, dialog_height), 2)
-        
-        # Draw text
-        title_text = font.render("Planet Detected", True, text_color)
-        title_rect = title_text.get_rect(center=(dialog_x + dialog_width // 2, dialog_y + 30))
-        screen.blit(title_text, title_rect)
-        
-        message_text = font.render("Maintain orbit around this planet?", True, text_color)
-        message_rect = message_text.get_rect(center=(dialog_x + dialog_width // 2, dialog_y + 60))
-        screen.blit(message_text, message_rect)
-        
-        # Draw buttons
-        yes_color = button_hover if yes_hover else button_bg
-        no_color = button_hover if no_hover else button_bg
-        
-        pygame.draw.rect(screen, yes_color, (yes_button_x, button_y, button_width, button_height))
-        pygame.draw.rect(screen, dialog_border, (yes_button_x, button_y, button_width, button_height), 1)
-        
-        pygame.draw.rect(screen, no_color, (no_button_x, button_y, button_width, button_height))
-        pygame.draw.rect(screen, dialog_border, (no_button_x, button_y, button_width, button_height), 1)
-        
-        # Button text
-        yes_text = font.render("Yes (Y)", True, text_color)
-        yes_text_rect = yes_text.get_rect(center=(yes_button_x + button_width // 2, button_y + button_height // 2))
-        screen.blit(yes_text, yes_text_rect)
-        
-        no_text = font.render("No (N)", True, text_color)
-        no_text_rect = no_text.get_rect(center=(no_button_x + button_width // 2, button_y + button_height // 2))
-        screen.blit(no_text, no_text_rect)
-        
-        pygame.display.flip()
-        clock.tick(60)
+# show_orbit_dialog imported from ui.dialogs
 
 # --- System map movement state ---
 system_ship_anim_x = None
@@ -856,36 +665,11 @@ system_trajectory_start_x, system_trajectory_start_y = None, None
 phaser_anim_duration = 500  # ms
 phaser_pulse_count = 5
 # Use constants for phaser damage
-from data.constants import (PLAYER_PHASER_POWER, PLAYER_PHASER_RANGE, 
-                            PHASER_CLOSE_RANGE, PHASER_MEDIUM_RANGE,
-                            PHASER_CLOSE_MULTIPLIER, PHASER_MEDIUM_MULTIPLIER, PHASER_LONG_MULTIPLIER,
-                            PLAYER_SHIELD_CAPACITY, ENEMY_SHIELD_CAPACITY, ENEMY_HULL_STRENGTH)
+from data.constants import (PLAYER_PHASER_RANGE, PLAYER_SHIELD_CAPACITY,
+                            ENEMY_SHIELD_CAPACITY, ENEMY_HULL_STRENGTH)
 phaser_range = PLAYER_PHASER_RANGE
 
-def wrap_text(text, max_width, font):
-    """Wrap text to fit within max_width pixels"""
-    words = text.split()
-    lines = []
-    current_line = ""
-    
-    for word in words:
-        test_line = current_line + (" " if current_line else "") + word
-        text_width = font.size(test_line)[0]
-        
-        if text_width <= max_width:
-            current_line = test_line
-        else:
-            if current_line:
-                lines.append(current_line)
-                current_line = word
-            else:
-                # Single word is too long, just add it anyway
-                lines.append(word)
-    
-    if current_line:
-        lines.append(current_line)
-    
-    return lines
+# wrap_text imported from ui.text_utils
 
 def perform_planet_scan(planet_q, planet_r):
     """Perform a detailed scan of a planet and display results."""

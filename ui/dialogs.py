@@ -1,5 +1,59 @@
+"""
+Dialog windows for the Star Trek Tactical Game.
+"""
 import pygame
 import sys
+
+
+def show_game_over_screen(screen, ship_name):
+    """Show game over screen when player ship is destroyed."""
+    font = pygame.font.Font(None, 36)
+    title_font = pygame.font.Font(None, 48)
+
+    screen_width, screen_height = screen.get_size()
+
+    # Colors
+    text_color = (255, 0, 0)  # Red
+    subtitle_color = (255, 255, 255)  # White
+
+    clock = pygame.time.Clock()
+    start_time = pygame.time.get_ticks()
+
+    while True:
+        current_time = pygame.time.get_ticks()
+        elapsed = current_time - start_time
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                if elapsed > 3000:  # Only allow exit after 3 seconds
+                    pygame.quit()
+                    sys.exit()
+
+        # Draw semi-transparent overlay
+        overlay = pygame.Surface((screen_width, screen_height))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        screen.blit(overlay, (0, 0))
+
+        # Draw game over text
+        title_text = title_font.render("*** GAME OVER ***", True, text_color)
+        title_rect = title_text.get_rect(center=(screen_width // 2, screen_height // 2 - 50))
+        screen.blit(title_text, title_rect)
+
+        ship_text = font.render(f"{ship_name} has been destroyed", True, subtitle_color)
+        ship_rect = ship_text.get_rect(center=(screen_width // 2, screen_height // 2))
+        screen.blit(ship_text, ship_rect)
+
+        if elapsed > 3000:
+            exit_text = font.render("Press any key to exit", True, subtitle_color)
+            exit_rect = exit_text.get_rect(center=(screen_width // 2, screen_height // 2 + 50))
+            screen.blit(exit_text, exit_rect)
+
+        pygame.display.flip()
+        clock.tick(60)
 
 
 def show_orbit_dialog(screen, font):
