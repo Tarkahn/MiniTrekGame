@@ -279,8 +279,8 @@ class ShipStatusDisplay:
             if system == 'hull':
                 # Hull uses actual hull strength
                 integrity_ratio = ship.hull_strength / ship.max_hull_strength
-                integrity_value = ship.hull_strength
-                max_value = ship.max_hull_strength
+                integrity_value = int(ship.hull_strength)
+                max_value = int(ship.max_hull_strength)
             else:
                 # Other systems use 0-100 scale
                 integrity_ratio = integrity / 100.0

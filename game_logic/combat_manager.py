@@ -22,33 +22,36 @@ class CombatManager:
     def calculate_phaser_damage(self, attacker, target, distance):
         """
         Calculate phaser damage based on range, power allocation, and target defenses.
-        
+
         Args:
             attacker: Ship firing phasers
             target: Target enemy object (with health, shields, etc.)
             distance: Distance to target in hexes
-            
+
         Returns:
             Dict with combat result including damage amounts and success status
         """
         # Calculate base damage using power allocation
         phaser_power = attacker.power_allocation.get('phasers', 5)
         base_damage = phaser_power * constants.PHASER_DAMAGE_PER_POWER_LEVEL
-        
+
         # Apply phaser system damage modifier
         damage_modifier = 1.0
         if hasattr(attacker, 'get_phaser_damage_multiplier'):
             damage_modifier = attacker.get_phaser_damage_multiplier()
             base_damage = int(base_damage * damage_modifier)
-        
+
         # Apply range penalty
         if distance > constants.PHASER_RANGE:
+            print(f"[PHASER] Target out of range: distance={distance}, max_range={constants.PHASER_RANGE}")
             return {'success': False, 'message': 'Target out of phaser range', 'damage': 0}
-        
-        # Range penalty: -3 damage per hex
+
+        # Range penalty: damage per hex distance
         range_penalty = distance * constants.PHASER_RANGE_PENALTY
         final_damage = max(0, base_damage - range_penalty)
-        
+
+        print(f"[PHASER] Damage calc: power={phaser_power}, base={base_damage}, distance={distance}, range_penalty={range_penalty}, final={final_damage}")
+
         return {
             'success': True,
             'damage': final_damage,
@@ -61,26 +64,28 @@ class CombatManager:
     def calculate_torpedo_damage(self, attacker, target, distance):
         """
         Calculate torpedo damage. Torpedoes have fixed damage but limited quantity.
-        
+
         Args:
             attacker: Ship firing torpedoes
             target: Target enemy object
             distance: Distance to target in hexes
-            
+
         Returns:
             Dict with combat result including damage and success status
         """
         # Check if player has torpedoes
         if attacker.torpedo_count <= 0:
             return {'success': False, 'message': 'No torpedoes remaining', 'damage': 0}
-        
+
         # Torpedoes have much longer range than phasers
         if distance > constants.TORPEDO_RANGE:
             return {'success': False, 'message': 'Target out of torpedo range', 'damage': 0}
-        
+
         # Torpedoes do fixed damage
         torpedo_damage = constants.TORPEDO_DAMAGE
-        
+
+        print(f"[TORPEDO] Damage calc: distance={distance}, damage={torpedo_damage}")
+
         return {
             'success': True,
             'damage': torpedo_damage,
@@ -91,38 +96,93 @@ class CombatManager:
 
     def apply_damage_to_enemy(self, target_enemy, combat_result):
         """
-        Apply calculated damage to an enemy, updating their health and shields.
-        
+        Apply calculated damage to an enemy using the same damage system as the player.
+        Uses BaseShip.apply_damage for shield absorption, critical hits, cascading damage, etc.
+
         Args:
-            target_enemy: Enemy object to damage
+            target_enemy: Enemy object to damage (EnemyShip instance)
             combat_result: Result from calculate_*_damage function
-            
+
         Returns:
             Updated combat result with final enemy status
         """
         damage = combat_result.get('damage', 0)
-        
-        # Apply damage to shields first, then hull (even if damage is 0)
-        initial_shields = target_enemy.shields
-        shield_damage = min(damage, target_enemy.shields) if damage > 0 else 0
-        hull_damage = damage - shield_damage if damage > 0 else 0
-        
-        # Only apply actual damage if damage > 0
-        if damage > 0:
-            target_enemy.shields -= shield_damage
-            target_enemy.health -= hull_damage
-            target_enemy.health = max(0, target_enemy.health)  # Don't go below 0
-        
+
+        # Debug: Print incoming damage
+        target_name = getattr(target_enemy, 'name', 'Unknown')
+        print(f"[COMBAT] apply_damage_to_enemy called for {target_name} with damage={damage}")
+
+        # Track shield and hull before damage for reporting
+        initial_shields = 0
+        initial_hull = 0
+
+        if hasattr(target_enemy, 'shield_system'):
+            # Get shield capacity based on power level and integrity
+            shield_power = target_enemy.shield_system.current_power_level
+            shield_integrity = target_enemy.shield_system.current_integrity
+            initial_shields = int((shield_power * target_enemy.shield_system.absorption_per_level) * (shield_integrity / 100.0))
+            print(f"[COMBAT] Shield system found: power={shield_power}, integrity={shield_integrity}, effective_shields={initial_shields}")
+        elif hasattr(target_enemy, 'shields'):
+            initial_shields = target_enemy.shields
+            print(f"[COMBAT] Using shields property: {initial_shields}")
+
+        if hasattr(target_enemy, 'hull_strength'):
+            initial_hull = target_enemy.hull_strength
+        elif hasattr(target_enemy, 'health'):
+            initial_hull = target_enemy.health
+
+        # Use the proper apply_damage method from BaseShip if available
+        # This handles shield absorption, critical hits, cascading damage, etc.
+        if damage > 0 and hasattr(target_enemy, 'apply_damage'):
+            # Use the full damage system (same as player ship)
+            target_enemy.apply_damage(damage)
+        elif damage > 0:
+            # Fallback for objects without apply_damage (legacy MapObjects)
+            shield_damage_legacy = min(damage, target_enemy.shields) if hasattr(target_enemy, 'shields') else 0
+            hull_damage_legacy = damage - shield_damage_legacy
+
+            if hasattr(target_enemy, 'shields'):
+                target_enemy.shields -= shield_damage_legacy
+            if hasattr(target_enemy, 'health'):
+                target_enemy.health -= hull_damage_legacy
+                target_enemy.health = max(0, target_enemy.health)
+
+        # Get final values after damage
+        final_shields = 0
+        final_hull = 0
+
+        if hasattr(target_enemy, 'shield_system'):
+            shield_power = target_enemy.shield_system.current_power_level
+            shield_integrity = target_enemy.shield_system.current_integrity
+            final_shields = int((shield_power * target_enemy.shield_system.absorption_per_level) * (shield_integrity / 100.0))
+        elif hasattr(target_enemy, 'shields'):
+            final_shields = target_enemy.shields
+
+        if hasattr(target_enemy, 'hull_strength'):
+            final_hull = target_enemy.hull_strength
+        elif hasattr(target_enemy, 'health'):
+            final_hull = target_enemy.health
+
+        # Calculate actual damage dealt for reporting
+        shield_damage = max(0, initial_shields - final_shields)
+        hull_damage = max(0, initial_hull - final_hull)
+
+        # Sync the compatibility properties (shields/health) with actual ship state
+        if hasattr(target_enemy, '_shields') and hasattr(target_enemy, 'shield_system'):
+            target_enemy._shields = final_shields
+        if hasattr(target_enemy, '_health') and hasattr(target_enemy, 'hull_strength'):
+            target_enemy._health = target_enemy.hull_strength
+
         # Always update the combat result with damage fields (even when 0)
         updated_result = combat_result.copy()
         updated_result['shield_damage'] = shield_damage
         updated_result['hull_damage'] = hull_damage
-        updated_result['target_shields'] = target_enemy.shields
-        updated_result['target_health'] = target_enemy.health
-        updated_result['target_max_health'] = target_enemy.max_hull_strength
-        updated_result['target_max_shields'] = target_enemy.max_shields
-        updated_result['target_destroyed'] = target_enemy.health <= 0
-        
+        updated_result['target_shields'] = final_shields
+        updated_result['target_health'] = final_hull
+        updated_result['target_max_health'] = target_enemy.max_hull_strength if hasattr(target_enemy, 'max_hull_strength') else 100
+        updated_result['target_max_shields'] = target_enemy.max_shields if hasattr(target_enemy, 'max_shields') else 100
+        updated_result['target_destroyed'] = final_hull <= 0
+
         return updated_result
 
     def get_or_create_enemy_ship(self, enemy_obj, player_ship):

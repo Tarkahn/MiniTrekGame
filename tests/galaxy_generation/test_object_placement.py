@@ -4,6 +4,8 @@ from data.constants import (
     MIN_STAR_PLANET_DISTANCE
 )
 from galaxy_generation.object_placement import place_objects, place_objects_by_system
+from utils.geometry import hex_distance
+
 
 def test_object_placement():
     map_objects, objects_by_type = place_objects()
@@ -21,11 +23,6 @@ def test_object_placement():
     # Now planets only need to maintain distance from their host star, not all stars
     stars = [o for o in map_objects if o.type == 'star']
     planets = [o for o in map_objects if o.type == 'planet']
-    def hex_distance(a, b):
-        dq = abs(a[0] - b[0])
-        dr = abs(a[1] - b[1])
-        ds = abs((-a[0] - a[1]) - (-b[0] - b[1]))
-        return max(dq, dr, ds)
     # Just verify no planet overlaps with any star
     for planet in planets:
         for star in stars:

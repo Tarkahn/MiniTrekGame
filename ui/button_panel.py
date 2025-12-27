@@ -6,7 +6,7 @@ BUTTON_MARGIN = 16
 PANEL_X = 1040  # Right side of 1280px window
 PANEL_Y = 40
 
-BUTTON_LABELS = ["Move", "Fire", "Torpedo", "Scan"]
+BUTTON_LABELS = ["Move", "Fire", "Torpedo", "Scan", "Repairs"]
 
 # Draws all control panel buttons and the map mode toggle button at the bottom
 # Returns: (button_rects, toggle_btn_rect)
@@ -31,14 +31,17 @@ def draw_button_panel(
     """
     button_rects = []
     # Regular buttons with proper spacing from Control Panel label
+    # Using 40px offset to fit 5 buttons in the control panel area
     for i, label in enumerate(BUTTON_LABELS):
         bx = event_log_width + 40
-        by = bottom_pane_y + 60 + i * (button_h + button_gap)  # Use 60px spacing
+        by = bottom_pane_y + 40 + i * (button_h + button_gap)  # Use 40px spacing from top
         btn_rect = pygame.Rect(bx, by, button_w, button_h)
         button_rects.append(btn_rect)
-        pygame.draw.rect(surface, color, btn_rect, border_radius=8)
+        pygame.draw.rect(surface, color, btn_rect, border_radius=6)
         btn_label = font.render(label, True, color_text)
-        surface.blit(btn_label, (bx + 18, by + 8))
+        # Center text vertically in smaller button
+        text_y = by + (button_h - btn_label.get_height()) // 2
+        surface.blit(btn_label, (bx + 18, text_y))
     # Toggle map mode button - place it to the right of the main buttons
     toggle_btn_x = event_log_width + 40 + button_w + 20  # Next to the regular buttons
     # Use the passed-in y position

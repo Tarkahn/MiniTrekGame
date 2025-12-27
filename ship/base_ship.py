@@ -54,10 +54,11 @@ class BaseShip:
         import random
         
         # Debug output for testing
-        print(f"[DAMAGE DEBUG] Player ship taking {raw_damage} damage")
+        print(f"[DAMAGE DEBUG] {self.name} taking {raw_damage} damage")
         print(f"[DAMAGE DEBUG] Hull before: {self.hull_strength}/{self.max_hull_strength}")
         shield_level = getattr(self.shield_system, 'current_power_level', 0)
-        print(f"[DAMAGE DEBUG] Shield level before: {shield_level}")
+        shield_integrity = getattr(self.shield_system, 'current_integrity', 0)
+        print(f"[DAMAGE DEBUG] Shield level: {shield_level}, integrity: {shield_integrity}%")
         
         # Check if shields are operational and powered
         shields_active = (hasattr(self.shield_system, 'current_power_level') and 
@@ -84,6 +85,9 @@ class BaseShip:
             old_hull = self.hull_strength
             self.hull_strength -= remaining_damage
             self.hull_strength = max(0, self.hull_strength)  # Ensure hull doesn't go below 0
+
+            # Sync system_integrity['hull'] with hull_strength for repair system
+            self.system_integrity['hull'] = self.hull_strength
             
             # Check for hull breach (hull reaches zero)
             if old_hull > 0 and self.hull_strength <= 0:
@@ -113,13 +117,16 @@ class BaseShip:
             self.system_integrity[damaged_system] = 0  # PRD: Disabled until repaired
             print(f"Critical hit damaged {damaged_system} system!")
 
-    def _apply_cascading_system_damage(self, hull_damage: int):
+    def _apply_cascading_system_damage(self, hull_damage: float):
         """
         Hull damage causes cascading damage to ship systems.
         Larger hull damage has higher chance of damaging multiple systems.
         """
         import random
-        
+
+        # Ensure hull_damage is an integer for range() calculations
+        hull_damage = int(hull_damage)
+
         # Base chance of system damage per hull damage point
         base_damage_chance = 0.15  # 15% chance per damage point
         max_systems_damaged = min(3, hull_damage // 10)  # Up to 3 systems, more likely with heavy damage
@@ -147,7 +154,7 @@ class BaseShip:
             
             print(f"Hull breach damaged {system}: {old_integrity:.0f} -> {self.system_integrity[system]:.0f}")
 
-    def _calculate_hull_penetration_damage(self, incoming_damage: int) -> int:
+    def _calculate_hull_penetration_damage(self, incoming_damage: float) -> int:
         """
         Calculate damage that penetrates through weakened hull to damage systems directly.
         Similar to how damaged shields become less effective, damaged hull provides less protection.
@@ -185,16 +192,19 @@ class BaseShip:
         
         return penetration_damage
 
-    def _apply_hull_penetration_damage(self, penetration_damage: int):
+    def _apply_hull_penetration_damage(self, penetration_damage: float):
         """
         Apply damage that has penetrated through weakened hull directly to ship systems.
         This represents how a damaged hull fails to protect internal systems.
-        
+
         Args:
             penetration_damage: Amount of damage penetrating to systems
         """
         import random
-        
+
+        # Ensure penetration_damage is an integer for calculations
+        penetration_damage = int(penetration_damage)
+
         # Determine how many systems get hit (1-3 systems based on damage amount)
         max_systems_hit = min(3, max(1, penetration_damage // 15))  # 1 system per 15 damage
         systems_hit = random.randint(1, max_systems_hit)

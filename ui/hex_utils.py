@@ -1,24 +1,18 @@
 """
 Hex grid utilities for the Star Trek Tactical Game
 """
+from utils.geometry import hex_distance, hex_neighbors
+
+# Re-export hex_distance for convenience
+__all__ = ['hex_distance', 'get_hex_neighbors', 'get_star_hexes', 'get_planet_hexes', 'is_hex_blocked']
 
 
 def get_hex_neighbors(q, r):
-    """Get all 6 neighboring hexes for a given hex coordinate."""
-    # For flat-topped hexes with offset coordinates
-    if q % 2 == 0:  # Even column
-        neighbors = [
-            (q-1, r-1), (q-1, r),    # Left neighbors
-            (q, r-1), (q, r+1),      # Top and bottom
-            (q+1, r-1), (q+1, r)     # Right neighbors
-        ]
-    else:  # Odd column
-        neighbors = [
-            (q-1, r), (q-1, r+1),    # Left neighbors
-            (q, r-1), (q, r+1),      # Top and bottom
-            (q+1, r), (q+1, r+1)     # Right neighbors
-        ]
-    return neighbors
+    """Get all 6 neighboring hexes for a given hex coordinate.
+
+    This is a wrapper around utils.geometry.hex_neighbors for backwards compatibility.
+    """
+    return hex_neighbors(q, r)
 
 
 def get_star_hexes(q, r):

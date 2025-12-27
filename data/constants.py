@@ -17,10 +17,10 @@ WARP_INITIATION_COST = 5  # Warp initiation cost (reduced for gameplay balance)
 
 # Player Ship Systems (PRD Compliant)
 PLAYER_PHASER_POWER = 5   # Base damage before distance modifiers (balanced for shield combat)
-PHASER_DAMAGE_PER_POWER_LEVEL = 3  # Damage multiplier per power allocation level
+PHASER_DAMAGE_PER_POWER_LEVEL = 5  # Damage multiplier per power allocation level (increased for effective combat)
 PLAYER_PHASER_RANGE = 18  # Extended range for tactical positioning
 PHASER_RANGE = 18  # General phaser range (same as player)
-PHASER_RANGE_PENALTY = 3  # Damage reduction per hex distance
+PHASER_RANGE_PENALTY = 1  # Damage reduction per hex distance (reduced for more effective long-range combat)
 
 # Torpedo System
 STARTING_TORPEDO_COUNT = 10    # Number of torpedoes ship starts with
@@ -63,11 +63,12 @@ PLAYER_TORPEDO_SPEED = 12  # Player torpedo speed
 PLAYER_TORPEDO_ACCURACY = 0.85  # Player torpedo accuracy (85%)
 
 # Torpedo Proximity Explosion System
-TORPEDO_EXPLOSION_RADIUS = 3  # Maximum hex distance for explosion damage
-TORPEDO_DIRECT_HIT_MULTIPLIER = 2.0  # Full damage multiplier for direct hit (hex 0)
-TORPEDO_PROXIMITY_DAMAGE_FALLOFF = 0.6  # Damage falloff per hex distance
-TORPEDO_EXPLOSION_ANIMATION_WAVES = 6  # Number of expanding visual waves
-TORPEDO_EXPLOSION_WAVE_DELAY = 80  # Milliseconds between wave expansions
+TORPEDO_EXPLOSION_RADIUS = 8  # Maximum hex distance for explosion damage
+TORPEDO_DIRECT_HIT_MULTIPLIER = 1.25  # Reduced from 2.0 - direct hit is powerful but not instant-kill
+TORPEDO_PROXIMITY_DAMAGE_FALLOFF = 0.6  # Damage falloff per hex distance (linear)
+TORPEDO_EXPLOSION_ANIMATION_WAVES = 10  # Number of expanding visual waves for larger effect
+TORPEDO_EXPLOSION_WAVE_DELAY = 50  # Milliseconds between wave expansions
+TORPEDO_EXPLOSION_MAX_VISUAL_RADIUS = 160  # Maximum visual radius in pixels (covers ~5-6 hexes)
 
 # Sensor Systems (PRD Compliant)
 SHORT_RANGE_SCAN_COST = 5   # PRD: 5 energy units

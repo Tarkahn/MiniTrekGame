@@ -5,7 +5,6 @@ import os
 import traceback
 import logging
 import random
-import time
 
 # Adjust the path to ensure imports work correctly
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -23,12 +22,23 @@ from ui.background_loader import BackgroundAndStarLoader
 from ui.hex_utils import get_star_hexes, get_planet_hexes
 # Note: is_hex_blocked is defined locally as it uses module-level planet_anim_state
 from ui.drawing_utils import get_star_color, get_planet_color
-from ui.text_utils import wrap_text
 from ui.dialogs import show_game_over_screen
 # show_orbit_dialog is now used via event_handler module
 from ui.event_handler import (EventContext, EventResult, handle_button_click,
                                handle_toggle_click, handle_sector_map_click,
                                handle_system_map_click, handle_right_click)
+from ui.renderer import (RenderContext, draw_status_bar,
+                          draw_event_log_panel, draw_popup_dock, draw_image_display_panel,
+                          draw_control_panel)
+from ui.enemy_popups import (create_enemy_popup as _create_enemy_popup,
+                              draw_enemy_popup, update_enemy_popups as _update_enemy_popups,
+                              get_enemy_id as _get_enemy_id)
+from ui.scan_functions import (perform_planet_scan as _perform_planet_scan,
+                                perform_star_scan as _perform_star_scan,
+                                perform_enemy_scan as _perform_enemy_scan,
+                                get_enemy_current_position as _get_enemy_current_position,
+                                update_enemy_scan_positions as _update_enemy_scan_positions,
+                                update_enemy_scan_stats as _update_enemy_scan_stats)
 from galaxy_generation.map_object import MapObject
 from ui.sound_manager import get_sound_manager
 from ui.ship_status_display import create_ship_status_display
@@ -36,7 +46,6 @@ from ui.enemy_scan_panel import create_enemy_scan_panel
 from ship.player_ship import PlayerShip
 from game.game_state import GameState
 from data import constants
-from data.constants import PLANET_CLASSES, STAR_CLASSES
 from data.constants import STARTING_ENERGY, PLAYER_SHIELD_CAPACITY
 
 # Calculate compact window dimensions based on layout needs
@@ -192,6 +201,9 @@ game_state.current_system = (ship_q, ship_r)
 current_system = game_state.current_system
 game_state.set_ship_position(ship_q, ship_r, hex_grid)
 
+# Mark starting system as scanned so navigation works immediately
+game_state.scan.scanned_systems.add(current_system)
+
 # Track currently scanned celestial object
 current_scanned_object = None
 current_scanned_image = None
@@ -217,14 +229,14 @@ else:
 
 print(f"[INIT] ship_q: {ship_q}, ship_r: {ship_r}, current_system: {current_system}")
 
-# Button panel parameters
-BUTTON_W, BUTTON_H = 110, 35
-BUTTON_GAP = 15
-TOGGLE_BTN_W, TOGGLE_BTN_H = 130, 35
+# Button panel parameters - sized to fit 5 buttons in control panel
+BUTTON_W, BUTTON_H = 110, 28
+BUTTON_GAP = 8
+TOGGLE_BTN_W, TOGGLE_BTN_H = 130, 28
 # Calculate TOGGLE_BTN_Y to fit within the window
-# We have 3 buttons (removed End Turn), each 35px tall with 15px gaps
-# Add significant spacer (50px) between Control Panel label and buttons
-CONTROL_PANEL_LABEL_SPACER = 50
+# We have 5 buttons, each 28px tall with 8px gaps = 36px per button
+# Add spacer (40px) between Control Panel label and buttons
+CONTROL_PANEL_LABEL_SPACER = 40
 TOGGLE_BTN_Y = bottom_pane_y + CONTROL_PANEL_LABEL_SPACER
 BUTTON_COLOR = (100, 100, 180)
 
@@ -232,8 +244,8 @@ BUTTON_COLOR = (100, 100, 180)
 button_rects, toggle_btn_rect = [], None
 
 # --- Print button labels and indices at startup ---
-# Button labels (removed End Turn button)
-button_labels = ["Move", "Fire", "Torpedo", "Scan"]
+# Button labels matching button_panel.py
+button_labels = ["Move", "Fire", "Torpedo", "Scan", "Repairs"]
 # Button labels ready: ["Move", "Fire", "Torpedo", "Scan"]
 
 # Trajectory start position for mid-flight destination changes (kept as local variables)
@@ -279,334 +291,42 @@ planet_images_assigned = {}  # Dictionary: (star, planet) -> (image, scaled_imag
 # Color generation functions imported from ui.drawing_utils:
 # get_star_color, get_planet_color
 
+# Wrapper functions for enemy popup module
 def create_enemy_popup(enemy_id, enemy_obj):
     """Create a popup window for enemy ship stats."""
-    # Calculate popup window dimensions and position
-    popup_width = 280
-    popup_height = 350
-    # Position popups in the dedicated dock area
-    popup_dock_x = map_size + RIGHT_EVENT_LOG_WIDTH  # Start of popup dock area
-    popup_x = popup_dock_x + 10  # 10px padding from dock edge
-    popup_y = STATUS_HEIGHT + 50 + (len(game_state.scan.enemy_popups) * (popup_height + 10))  # Stack vertically below "Scan Results" label
-    
-    # Initialize enemy stats if not present (using consistent values with player ship)
-    if not hasattr(enemy_obj, 'health'):
-        enemy_obj.health = 100  # Same as player ship hull strength
-    if not hasattr(enemy_obj, 'max_health'):
-        enemy_obj.max_health = 100
-    if not hasattr(enemy_obj, 'energy'):
-        enemy_obj.energy = 1000  # Same as player ship starting energy
-    if not hasattr(enemy_obj, 'max_energy'):
-        enemy_obj.max_energy = 1000
-    if not hasattr(enemy_obj, 'shields'):
-        enemy_obj.shields = ENEMY_SHIELD_CAPACITY  # Substantial shield capacity for tactical combat
-    if not hasattr(enemy_obj, 'max_shields'):
-        enemy_obj.max_shields = ENEMY_SHIELD_CAPACITY
-    if not hasattr(enemy_obj, 'ship_name'):
-        enemy_obj.ship_name = f"Enemy Vessel {enemy_id}"
-    if not hasattr(enemy_obj, 'ship_class'):
-        ship_classes = ["Klingon Bird of Prey", "Romulan Warbird", "Gorn Destroyer", "Tholian Web Spinner"]
-        enemy_obj.ship_class = random.choice(ship_classes)
-    
-    # Create popup window info
-    popup_info = {
-        'window': None,  # Will be created when needed
-        'surface': None,
-        'rect': pygame.Rect(popup_x, popup_y, popup_width, popup_height),
-        'font': font,  # Use loaded custom font
-        'small_font': small_font,  # Use loaded custom small font
-        'title_font': title_font,  # Use loaded custom title font
-        'enemy_obj': enemy_obj,
-        'enemy_id': enemy_id,
-        'visible': False
-    }
-    
-    return popup_info
-
-def draw_enemy_popup(popup_info):
-    """Draw the enemy ship stats popup window."""
-    if not popup_info['visible']:
-        return
-    
-    enemy = popup_info['enemy_obj']
-    rect = popup_info['rect']
-    font = popup_info['font']
-    small_font = popup_info['small_font']
-    title_font = popup_info['title_font']
-    
-    # Create a separate surface for the popup (if we want to move it outside main window later)
-    popup_surface = pygame.Surface((rect.width, rect.height))
-    popup_surface.fill((40, 40, 60))
-    
-    # Draw border
-    pygame.draw.rect(popup_surface, (100, 100, 150), popup_surface.get_rect(), 3)
-    
-    y_offset = 10
-    
-    # Ship name and class
-    name_text = title_font.render(enemy.ship_name, True, (255, 255, 255))
-    popup_surface.blit(name_text, (10, y_offset))
-    y_offset += 35
-    
-    class_text = small_font.render(f"Class: {enemy.ship_class}", True, (200, 200, 200))
-    popup_surface.blit(class_text, (10, y_offset))
-    y_offset += 30
-    
-    # Position
-    pos_text = small_font.render(f"Position: ({enemy.system_q}, {enemy.system_r})", True, (200, 200, 200))
-    popup_surface.blit(pos_text, (10, y_offset))
-    y_offset += 30
-    
-    # Hull integrity
-    hull_text = font.render("Hull Integrity:", True, (255, 255, 255))
-    popup_surface.blit(hull_text, (10, y_offset))
-    y_offset += 25
-    
-    hull_percent = (enemy.health / enemy.max_health) * 100
-    hull_color = (0, 255, 0) if hull_percent > 60 else (255, 255, 0) if hull_percent > 30 else (255, 0, 0)
-    hull_value_text = font.render(f"{enemy.health}/{enemy.max_health} ({hull_percent:.0f}%)", True, hull_color)
-    popup_surface.blit(hull_value_text, (20, y_offset))
-    y_offset += 35
-    
-    # Shields
-    shield_text = font.render("Shields:", True, (255, 255, 255))
-    popup_surface.blit(shield_text, (10, y_offset))
-    y_offset += 25
-    
-    shield_percent = (enemy.shields / enemy.max_shields) * 100
-    shield_color = (0, 150, 255)
-    shield_value_text = font.render(f"{enemy.shields}/{enemy.max_shields} ({shield_percent:.0f}%)", True, shield_color)
-    popup_surface.blit(shield_value_text, (20, y_offset))
-    y_offset += 35
-    
-    # Energy
-    energy_text = font.render("Energy:", True, (255, 255, 255))
-    popup_surface.blit(energy_text, (10, y_offset))
-    y_offset += 25
-    
-    energy_percent = (enemy.energy / enemy.max_energy) * 100
-    energy_color = (255, 255, 0)
-    energy_value_text = font.render(f"{enemy.energy}/{enemy.max_energy} ({energy_percent:.0f}%)", True, energy_color)
-    popup_surface.blit(energy_value_text, (20, y_offset))
-    y_offset += 35
-    
-    # Weapons status
-    weapons_text = font.render("Weapons:", True, (255, 255, 255))
-    popup_surface.blit(weapons_text, (10, y_offset))
-    y_offset += 25
-    
-    phaser_status = small_font.render("• Phasers: Online", True, (0, 255, 0))
-    popup_surface.blit(phaser_status, (20, y_offset))
-    y_offset += 20
-    
-    torpedo_status = small_font.render("• Torpedoes: Online", True, (0, 255, 0))
-    popup_surface.blit(torpedo_status, (20, y_offset))
-    y_offset += 30
-    
-    # Threat assessment
-    threat_text = font.render("Threat Level:", True, (255, 255, 255))
-    popup_surface.blit(threat_text, (10, y_offset))
-    y_offset += 25
-    
-    if hull_percent > 80:
-        threat_level = "HIGH"
-        threat_color = (255, 0, 0)
-    elif hull_percent > 50:
-        threat_level = "MODERATE"
-        threat_color = (255, 255, 0)
-    else:
-        threat_level = "LOW"
-        threat_color = (0, 255, 0)
-    
-    threat_level_text = font.render(threat_level, True, threat_color)
-    popup_surface.blit(threat_level_text, (20, y_offset))
-    
-    # Blit popup to main screen in the designated dock area
-    screen.blit(popup_surface, rect.topleft)
+    return _create_enemy_popup(enemy_id, enemy_obj, game_state, map_size,
+                               RIGHT_EVENT_LOG_WIDTH, STATUS_HEIGHT,
+                               font, small_font, title_font)
 
 def update_enemy_popups():
     """Update and clean up enemy popups for destroyed ships."""
-    destroyed_enemies = []
-    for enemy_id, popup_info in game_state.scan.enemy_popups.items():
-        enemy = popup_info['enemy_obj']
-        # Check if enemy is destroyed
-        if not hasattr(enemy, 'health') or enemy.health <= 0:
-            destroyed_enemies.append(enemy_id)
-        # Check if enemy is still in current system
-        elif enemy not in systems.get(game_state.current_system, []):
-            destroyed_enemies.append(enemy_id)
-    
-    # Remove destroyed enemies from tracking
-    for enemy_id in destroyed_enemies:
-        game_state.remove_enemy_popup(enemy_id)
-        game_state.remove_targeted_enemy(enemy_id)
-        game_state.add_event_log(f"Target {enemy_id} lost - popup closed")
-        # Remove from enemy scan panel
-        enemy_scan_panel.remove_scan_result(enemy_id)
+    _update_enemy_popups(game_state, systems, enemy_scan_panel, add_event_log)
 
 def get_enemy_id(enemy_obj):
     """Get or assign a unique ID to an enemy object."""
-    # Check if this enemy already has an ID
-    for enemy_id, tracked_enemy in game_state.combat.targeted_enemies.items():
-        if tracked_enemy is enemy_obj:
-            return enemy_id
-    
-    # Assign new ID and track the enemy
-    enemy_id = game_state.get_next_enemy_id()
-    game_state.add_targeted_enemy(enemy_id, enemy_obj)
-    return enemy_id
+    return _get_enemy_id(enemy_obj, game_state)
 
 # show_game_over_screen imported from ui.dialogs
 
+# Wrapper functions for scan module
 def perform_enemy_scan(enemy_obj, enemy_id):
     """Perform a detailed scan of an enemy and add results to scan panel."""
-    import random
-    import math
-    
-    # Calculate distance from player
-    player_obj = next((obj for obj in systems.get(game_state.current_system, []) if obj.type == 'player'), None)
-    if player_obj and hasattr(player_obj, 'system_q') and hasattr(player_obj, 'system_r'):
-        dx = enemy_obj.system_q - player_obj.system_q
-        dy = enemy_obj.system_r - player_obj.system_r
-        distance = math.sqrt(dx * dx + dy * dy)
-        
-        # Calculate bearing (0-360 degrees)
-        bearing = math.degrees(math.atan2(dy, dx))
-        if bearing < 0:
-            bearing += 360
-    else:
-        distance = 0
-        bearing = 0
-    
-    # Generate realistic enemy data (simulate scan results)
-    enemy_types = [
-        "Klingon Bird of Prey",
-        "Klingon Warship", 
-        "Romulan Warbird",
-        "Gorn Destroyer",
-        "Orion Raider",
-        "Tholian Vessel"
-    ]
-    
-    # Generate scan data based on enemy position (deterministic for consistency)
-    seed = enemy_obj.system_q * 1000 + enemy_obj.system_r
-    random.seed(seed)
-    
-    enemy_name = random.choice(enemy_types)
-    
-    # Use balanced maximum values for tactical combat
-    max_hull = ENEMY_HULL_STRENGTH  # Hull integrity
-    max_shields = ENEMY_SHIELD_CAPACITY  # Substantial shields that require multiple hits
-    max_energy = 1000  # Energy systems
-    
-    # Enemies start at full strength but may have some minor battle damage
-    current_hull = random.randint(int(max_hull * 0.85), max_hull)  # 85-100% hull
-    current_shields = random.randint(int(max_shields * 0.8), max_shields)  # 80-100% shields  
-    current_energy = random.randint(int(max_energy * 0.8), max_energy)  # 80-100% energy
-    
-    # Determine threat level based on stats and distance
-    hull_ratio = current_hull / max_hull
-    shield_ratio = current_shields / max_shields if max_shields > 0 else 0
-    energy_ratio = current_energy / max_energy
-    
-    overall_strength = (hull_ratio + shield_ratio + energy_ratio) / 3
-    
-    if distance < 2 and overall_strength > 0.7:
-        threat_level = "Critical"
-    elif distance < 4 and overall_strength > 0.5:
-        threat_level = "High"
-    elif overall_strength > 0.3:
-        threat_level = "Medium"
-    else:
-        threat_level = "Low"
-    
-    # Generate weapon list
-    weapons = []
-    if random.random() > 0.2:  # 80% have phasers
-        weapons.append("Disruptor Arrays")
-    if random.random() > 0.4:  # 60% have torpedoes
-        weapons.append("Photon Torpedoes")
-    if random.random() > 0.8:  # 20% have special weapons
-        weapons.append("Plasma Cannons")
-    
-    # Reset random seed
-    random.seed()
-    
-    # Create scan data
-    scan_data = {
-        'name': enemy_name,
-        'position': (enemy_obj.system_q, enemy_obj.system_r),
-        'hull': current_hull,
-        'max_hull': max_hull,
-        'shields': current_shields,
-        'max_shields': max_shields,
-        'energy': current_energy,
-        'max_energy': max_energy,
-        'weapons': weapons,
-        'distance': distance,
-        'bearing': bearing,
-        'threat_level': threat_level
-    }
-    
-    # Add to enemy scan panel
-    enemy_scan_panel.add_scan_result(enemy_id, scan_data)
-    
-    # Log the scan
-    add_event_log(f"Scanning {enemy_name} - Range: {distance:.1f}km, Threat: {threat_level}")
-    
-    # Play scan sound
-    sound_manager.play_sound('scanner')
+    _perform_enemy_scan(enemy_obj, enemy_id, systems, game_state,
+                        enemy_scan_panel, add_event_log, sound_manager, player_ship)
 
 def get_enemy_current_position(enemy_obj, hex_grid):
-    """Get the current position of an enemy (animated if moving, otherwise static)"""
-    # First check if there's a dynamic EnemyShip instance for this MapObject
-    enemy_ship_id = id(enemy_obj)
-    
-    if hasattr(player_ship, 'combat_manager') and enemy_ship_id in player_ship.combat_manager.enemy_ships:
-        enemy_ship = player_ship.combat_manager.enemy_ships[enemy_ship_id]
-        # Get the dynamic position from the EnemyShip AI
-        dynamic_position = enemy_ship.get_render_position()
-        # Convert hex coordinates to pixel coordinates
-        return hex_grid.get_hex_center(dynamic_position[0], dynamic_position[1])
-    
-    # Fallback to legacy animation positions
-    if hasattr(enemy_obj, 'anim_px') and hasattr(enemy_obj, 'anim_py'):
-        # Enemy has animated pixel position - return it directly
-        return (enemy_obj.anim_px, enemy_obj.anim_py)
-    elif hasattr(enemy_obj, 'system_q') and hasattr(enemy_obj, 'system_r'):
-        # Enemy has static hex position - convert to pixels
-        return hex_grid.get_hex_center(enemy_obj.system_q, enemy_obj.system_r)
-    else:
-        # Fallback to origin
-        return hex_grid.get_hex_center(0, 0)
+    """Get the current position of an enemy (animated if moving, otherwise static)."""
+    return _get_enemy_current_position(enemy_obj, hex_grid, player_ship)
 
 def update_enemy_scan_positions():
-    """Update scan panel positions for all scanned enemies that are moving"""
-    for enemy_id, scan_data in enemy_scan_panel.scanned_enemies.items():
-        # Find the actual enemy object by ID in current system
-        for obj in systems.get(game_state.current_system, []):
-            if obj.type == 'enemy' and get_enemy_id(obj) == enemy_id:
-                # Update scan data position if enemy has moved
-                # Use the enemy ship's actual hex position instead of trying to convert pixels
-                enemy_ship_id = id(obj)
-                if enemy_ship_id in player_ship.combat_manager.enemy_ships:
-                    enemy_ship = player_ship.combat_manager.enemy_ships[enemy_ship_id]
-                    current_hex_pos = enemy_ship.position  # This is the actual hex coordinate
-                    
-                    if current_hex_pos != scan_data['position']:
-                        scan_data['position'] = current_hex_pos
-                        
-                        # Recalculate distance and bearing from player
-                        player_obj = next((o for o in systems.get(game_state.current_system, []) if o.type == 'player'), None)
-                        if player_obj and hasattr(player_obj, 'system_q') and hasattr(player_obj, 'system_r'):
-                            dx = current_hex_pos[0] - player_obj.system_q  
-                            dy = current_hex_pos[1] - player_obj.system_r
-                            scan_data['distance'] = math.sqrt(dx * dx + dy * dy)
-                            bearing = math.degrees(math.atan2(dy, dx))
-                            if bearing < 0:
-                                bearing += 360
-                            scan_data['bearing'] = bearing
-                break
+    """Update scan panel positions for all scanned enemies that are moving."""
+    _update_enemy_scan_positions(enemy_scan_panel, systems, game_state,
+                                 player_ship, get_enemy_id)
+
+def update_enemy_scan_stats():
+    """Update scan panel stats (hull, shields, energy) for all scanned enemies."""
+    _update_enemy_scan_stats(enemy_scan_panel, systems, game_state,
+                             player_ship, get_enemy_id)
 
 # Hex utility functions imported from ui.hex_utils:
 # get_hex_neighbors, get_star_hexes, get_planet_hexes
@@ -620,7 +340,7 @@ def is_hex_blocked(q, r, current_system, systems, planet_orbits, hex_grid):
             star_hexes = get_star_hexes(obj.system_q, obj.system_r)
             if (q, r) in star_hexes:
                 return True, 'star'
-    
+
     # Check planets
     planets_in_system = [orbit for orbit in planet_orbits if orbit['star'] == current_system]
     for orbit in planets_in_system:
@@ -640,7 +360,7 @@ def is_hex_blocked(q, r, current_system, systems, planet_orbits, hex_grid):
                 planet_hexes = get_planet_hexes(planet_q, planet_r)
                 if (q, r) in planet_hexes:
                     return True, 'planet'
-    
+
     return False, None
 
 # show_orbit_dialog imported from ui.dialogs
@@ -669,8 +389,7 @@ system_trajectory_start_x, system_trajectory_start_y = None, None
 phaser_anim_duration = 500  # ms
 phaser_pulse_count = 5
 # Use constants for phaser damage
-from data.constants import (PLAYER_PHASER_RANGE, PLAYER_SHIELD_CAPACITY,
-                            ENEMY_SHIELD_CAPACITY, ENEMY_HULL_STRENGTH)
+from data.constants import PLAYER_PHASER_RANGE
 phaser_range = PLAYER_PHASER_RANGE
 
 # wrap_text imported from ui.text_utils
@@ -678,93 +397,19 @@ phaser_range = PLAYER_PHASER_RANGE
 def perform_planet_scan(planet_q, planet_r):
     """Perform a detailed scan of a planet and display results."""
     global current_scanned_object, current_scanned_image
-    
-    # Determine planet class randomly but consistently for this position
-    planet_classes = list(PLANET_CLASSES.keys())
-    # Use position as seed for consistent planet type
-    import hashlib
-    position_seed = f"{planet_q}_{planet_r}_{current_system}"
-    planet_type = planet_classes[hash(position_seed) % len(planet_classes)]
-    
-    planet_info = PLANET_CLASSES[planet_type]
-    
-    # Select random image for this planet type
-    available_images = planet_info['images']
-    image_filename = available_images[hash(position_seed + "_image") % len(available_images)]
-    
-    # Load the planet image
-    try:
-        image_path = os.path.join('assets', 'planets', image_filename)
-        planet_image = pygame.image.load(image_path)
-        current_scanned_image = planet_image
-    except pygame.error as e:
-        print(f"Failed to load planet image {image_filename}: {e}")
-        current_scanned_image = None
-    
-    # Create scan data
-    scan_data = {
-        'type': 'planet',
-        'class': planet_type,
-        'name': planet_info['name'],
-        'description': planet_info['description'],
-        'position': (planet_q, planet_r),
-        'image': image_filename
-    }
-    
+    scan_data, planet_image = _perform_planet_scan(planet_q, planet_r, current_system,
+                                                    add_event_log, sound_manager)
     current_scanned_object = scan_data
-    
-    # Log the scan
-    add_event_log(f"Scanning {planet_info['name']} at ({planet_q}, {planet_r})")
-    add_event_log(f"Class {planet_type}: {planet_info['description']}")
-    
-    # Play scan sound
-    sound_manager.play_sound('scanner')
+    current_scanned_image = planet_image
 
 
 def perform_star_scan(star_q, star_r):
     """Perform a detailed scan of a star and display results."""
     global current_scanned_object, current_scanned_image
-    
-    # Determine star class randomly but consistently for this position
-    star_classes = list(STAR_CLASSES.keys())
-    # Use position as seed for consistent star type
-    import hashlib
-    position_seed = f"{star_q}_{star_r}_{current_system}"
-    star_type = star_classes[hash(position_seed) % len(star_classes)]
-    
-    star_info = STAR_CLASSES[star_type]
-    
-    # Select image for this star type (most star types have only one image)
-    available_images = star_info['images']
-    image_filename = available_images[hash(position_seed + "_image") % len(available_images)]
-    
-    # Load the star image
-    try:
-        image_path = os.path.join('assets', 'stars', image_filename)
-        star_image = pygame.image.load(image_path)
-        current_scanned_image = star_image
-    except pygame.error as e:
-        print(f"Failed to load star image {image_filename}: {e}")
-        current_scanned_image = None
-    
-    # Create scan data
-    scan_data = {
-        'type': 'star',
-        'class': star_type,
-        'name': star_info['name'],
-        'description': star_info['description'],
-        'position': (star_q, star_r),
-        'image': image_filename
-    }
-    
+    scan_data, star_image = _perform_star_scan(star_q, star_r, current_system,
+                                                add_event_log, sound_manager)
     current_scanned_object = scan_data
-    
-    # Log the scan
-    add_event_log(f"Scanning {star_info['name']} at ({star_q}, {star_r})")
-    add_event_log(f"{star_type.replace('_', ' ').title()}: {star_info['description']}")
-    
-    # Play scan sound
-    sound_manager.play_sound('scanner')
+    current_scanned_image = star_image
 
 
 def add_event_log(message):
@@ -820,6 +465,54 @@ event_ctx.get_enemy_id = get_enemy_id
 event_ctx.get_enemy_current_position = get_enemy_current_position
 event_ctx.is_hex_blocked = is_hex_blocked
 
+# Create render context for the renderer module
+render_ctx = RenderContext()
+render_ctx.screen = screen
+render_ctx.font = font
+render_ctx.label_font = label_font
+render_ctx.title_font = title_font
+render_ctx.small_font = small_font
+render_ctx.width = WIDTH
+render_ctx.height = HEIGHT
+render_ctx.map_x = map_x
+render_ctx.map_y = map_y
+render_ctx.map_size = map_size
+render_ctx.status_height = STATUS_HEIGHT
+render_ctx.event_log_x = event_log_x
+render_ctx.event_log_y = event_log_y
+render_ctx.event_log_width = event_log_width
+render_ctx.event_log_height = event_log_height
+render_ctx.bottom_pane_y = bottom_pane_y
+render_ctx.bottom_pane_height = bottom_pane_height
+render_ctx.image_display_width = image_display_width
+render_ctx.control_panel_width = control_panel_width
+render_ctx.popup_dock_x = event_log_x + event_log_width
+render_ctx.enemy_scan_width = ENEMY_SCAN_WIDTH
+render_ctx.color_status = COLOR_STATUS
+render_ctx.color_map = COLOR_MAP
+render_ctx.color_event_log = COLOR_EVENT_LOG
+render_ctx.color_event_log_border = COLOR_EVENT_LOG_BORDER
+render_ctx.color_image_display = COLOR_IMAGE_DISPLAY
+render_ctx.color_control_panel = COLOR_CONTROL_PANEL
+render_ctx.color_button_area_border = COLOR_BUTTON_AREA_BORDER
+render_ctx.color_text = COLOR_TEXT
+render_ctx.hex_outline = HEX_OUTLINE
+render_ctx.game_state = game_state
+render_ctx.player_ship = player_ship
+render_ctx.hex_grid = hex_grid
+render_ctx.background_loader = background_and_star_loader
+render_ctx.stardate_system = stardate_system
+render_ctx.systems = systems
+render_ctx.star_coords = star_coords
+render_ctx.planet_orbits = planet_orbits
+render_ctx.lazy_object_coords = lazy_object_coords
+render_ctx.current_system = current_system
+render_ctx.planet_anim_state = planet_anim_state
+render_ctx.planet_images_assigned = planet_images_assigned
+render_ctx.planet_colors = planet_colors
+render_ctx.event_log_max_lines = EVENT_LOG_MAX_LINES
+render_ctx.control_panel_label_spacer = CONTROL_PANEL_LABEL_SPACER
+
 try:
     running = True
     while running:
@@ -838,7 +531,11 @@ try:
         # Update player ship shield system (energy consumption, regeneration)
         if hasattr(player_ship, 'shield_system'):
             player_ship.shield_system.update(delta_time)
-        
+
+        # Update player ship repair system (if repairs are active)
+        if hasattr(player_ship, 'update_repairs'):
+            player_ship.update_repairs(delta_time)
+
         # Update player ship critical state (hull breach, warp core breach countdown)
         if hasattr(player_ship, 'update_critical_state') and player_ship.ship_state != "operational":
             player_ship.update_critical_state(delta_time)
@@ -973,33 +670,26 @@ try:
                             del game_state.scan.enemy_popups[enemy_id]
                     if game_state.combat.selected_enemy is enemy:
                         game_state.combat.selected_enemy = None
-        # Status/Tooltip Panel (top)
-        status_rect = pygame.Rect(0, 0, WIDTH, STATUS_HEIGHT)
-        pygame.draw.rect(screen, COLOR_STATUS, status_rect)
-        status_label = label_font.render('Status/Tooltip Panel', True, COLOR_TEXT)
-        screen.blit(status_label, (10, 8))
-        # Weapon Cooldown Display (just left of stardate)
-        cooldown_y = 8
-        cooldown_x = WIDTH - 320
-        
-        # Phaser Cooldown
-        if hasattr(player_ship, 'phaser_system') and player_ship.phaser_system.is_on_cooldown():
-            cooldown_time = (player_ship.phaser_system._last_fired_time + player_ship.phaser_system.cooldown_seconds) - time.time()
-            if cooldown_time > 0:
-                cooldown_label = font.render(f"Phasers: {cooldown_time:.1f}s", True, (255, 255, 0))  # Yellow color
-                screen.blit(cooldown_label, (cooldown_x, cooldown_y))
-                cooldown_y += 20  # Move next cooldown down
-        
-        # Torpedo Cooldown
-        if hasattr(player_ship, 'torpedo_system') and player_ship.torpedo_system.is_on_cooldown():
-            cooldown_time = (player_ship.torpedo_system._last_fired_time + player_ship.torpedo_system.cooldown_seconds) - time.time()
-            if cooldown_time > 0:
-                cooldown_label = font.render(f"Torpedoes: {cooldown_time:.1f}s", True, (255, 100, 100))  # Reddish color
-                screen.blit(cooldown_label, (cooldown_x, cooldown_y))
-        
-        # Stardate Display
-        stardate_label = font.render(stardate_system.format_stardate(), True, COLOR_TEXT)
-        screen.blit(stardate_label, (WIDTH - 180, 8))
+
+        # Handle player caught in own torpedo blast
+        if weapon_events.get('torpedo_player_hit'):
+            player_hit = weapon_events['torpedo_player_hit']
+            damage = player_hit['damage']
+            distance_pixels = player_hit['distance_pixels']
+            ring_index = player_hit['ring_index']
+
+            ring_names = ["Core Blast", "Primary Wave", "Secondary Wave", "Tertiary Wave", "Pressure Wave", "Outer Shockwave"]
+            ring_name = ring_names[min(ring_index, len(ring_names)-1)]
+
+            add_event_log(f"*** WARNING: Own torpedo {ring_name} hit our ship! ***")
+            add_event_log(f"Distance from explosion: {distance_pixels:.0f}px - Damage taken: {damage}")
+
+            # Check if player ship was destroyed
+            if not player_ship.is_alive():
+                add_event_log("*** CRITICAL: Ship destroyed by own torpedo! ***")
+
+        # Status/Tooltip Panel (top) - using renderer module
+        draw_status_bar(render_ctx)
 
         # Main Map Area (perfect square, flush left)
         map_rect = pygame.Rect(map_x, map_y, map_size, map_size)
@@ -1566,97 +1256,15 @@ try:
             pass # No player drawing in system mode
 
 
-        # Right-side Event Log Panel
-        right_event_rect = pygame.Rect(event_log_x, event_log_y, event_log_width, event_log_height)
-        pygame.draw.rect(screen, COLOR_EVENT_LOG, right_event_rect)
-        # Add border to distinguish from screen edge
-        pygame.draw.rect(screen, COLOR_EVENT_LOG_BORDER, right_event_rect, 2)
-        event_label = label_font.render('Event Log', True, COLOR_TEXT)
-        screen.blit(event_label, (event_log_x + 20, event_log_y + 20))
-        
-        # Popup Dock Area (right of event log)
-        popup_dock_x = event_log_x + event_log_width
-        popup_dock_rect = pygame.Rect(popup_dock_x, STATUS_HEIGHT, ENEMY_SCAN_WIDTH, HEIGHT - STATUS_HEIGHT)
-        pygame.draw.rect(screen, (25, 25, 40), popup_dock_rect)  # Darker background for popup area
-        pygame.draw.rect(screen, COLOR_EVENT_LOG_BORDER, popup_dock_rect, 2)
-        dock_label = label_font.render('Scan Results', True, COLOR_TEXT)
-        screen.blit(dock_label, (popup_dock_x + 20, STATUS_HEIGHT + 20))
-        # Draw event log lines with text wrapping
-        log_font = small_font  # Use custom small font
-        log_area_width = event_log_width - 40  # Account for padding
-        y_offset = event_log_y + 50  # Account for Event Log label
-        line_height = 20  # Tighter line spacing
-        
-        # Process and render each log entry with wrapping
-        rendered_lines = 0
-        for line in game_state.ui.event_log[-EVENT_LOG_MAX_LINES:]:
-            if rendered_lines >= EVENT_LOG_MAX_LINES:
-                break
-                
-            wrapped_lines = wrap_text(line, log_area_width, log_font)
-            for wrapped_line in wrapped_lines:
-                if rendered_lines >= EVENT_LOG_MAX_LINES:
-                    break
-                text_surface = log_font.render(wrapped_line, True, COLOR_TEXT)
-                screen.blit(text_surface, (event_log_x + 20, y_offset + rendered_lines * line_height))
-                rendered_lines += 1
+        # Update render context with current scanned object state
+        render_ctx.current_scanned_object = current_scanned_object
+        render_ctx.current_scanned_image = current_scanned_image
 
-        # Image Display Panel (bottom left - formerly event log)
-        image_rect = pygame.Rect(0, bottom_pane_y, image_display_width, bottom_pane_height)
-        pygame.draw.rect(screen, COLOR_IMAGE_DISPLAY, image_rect)
-        image_label = label_font.render('Target Image Display', True, COLOR_TEXT)
-        screen.blit(image_label, (20, bottom_pane_y + 20))
-        
-        # Display scanned object image and info
-        if current_scanned_object and current_scanned_image:
-            # Calculate image display area (below the label)
-            image_display_y = bottom_pane_y + 50
-            image_display_height = bottom_pane_height - 80  # Leave room for label and info text
-            
-            # Scale and center the image
-            scaled_image = pygame.transform.scale(current_scanned_image, 
-                                                (min(image_display_width - 40, 150), 
-                                                 min(image_display_height - 60, 150)))
-            image_x = 20 + (image_display_width - 40 - scaled_image.get_width()) // 2
-            image_y = image_display_y + 10
-            screen.blit(scaled_image, (image_x, image_y))
-            
-            # Display object information below the image
-            info_y = image_y + scaled_image.get_height() + 15
-            
-            # Object name
-            name_text = font.render(current_scanned_object['name'], True, COLOR_TEXT)
-            screen.blit(name_text, (20, info_y))
-            info_y += 20
-            
-            # Object class
-            if current_scanned_object['type'] == 'planet':
-                class_text = font.render(f"Class {current_scanned_object['class']}", True, COLOR_TEXT)
-            else:  # star
-                class_text = font.render(current_scanned_object['class'].replace('_', ' ').title(), True, COLOR_TEXT)
-            screen.blit(class_text, (20, info_y))
-        elif current_scanned_object is None:
-            # Show instructions when no object is scanned
-            instruction_text = font.render('Right-click on a planet or star to scan', True, COLOR_TEXT)
-            text_y = bottom_pane_y + 60
-            screen.blit(instruction_text, (20, text_y))
-
-        # Control Panel (bottom right)
-        control_rect = pygame.Rect(image_display_width, bottom_pane_y, 
-                                    control_panel_width, bottom_pane_height)
-        pygame.draw.rect(screen, COLOR_CONTROL_PANEL, control_rect)
-        control_label = label_font.render('Control Panel', True, COLOR_TEXT)
-        screen.blit(control_label, (image_display_width + 20, 
-                                     bottom_pane_y + 20))
-
-        # Draw border around button area within control panel
-        button_area_padding = 10
-        button_area_x = image_display_width + 30
-        button_area_y = bottom_pane_y + CONTROL_PANEL_LABEL_SPACER - 10
-        button_area_width = control_panel_width - 40
-        button_area_height = bottom_pane_height - CONTROL_PANEL_LABEL_SPACER
-        button_area_rect = pygame.Rect(button_area_x, button_area_y, button_area_width, button_area_height)
-        pygame.draw.rect(screen, COLOR_BUTTON_AREA_BORDER, button_area_rect, 2)
+        # Side panels - using renderer module
+        draw_event_log_panel(render_ctx)
+        draw_popup_dock(render_ctx)
+        draw_image_display_panel(render_ctx)
+        draw_control_panel(render_ctx)
         
         # Draw button panel on top of control panel
         button_rects, toggle_btn_rect = draw_button_panel(
@@ -1917,6 +1525,11 @@ try:
                             player_obj.system_q = 0
                             player_obj.system_r = 0
                 
+                # Update weapon animation manager with current system objects immediately
+                # This ensures torpedo splash damage works even before manual scan
+                if game_state.weapon_animation_manager:
+                    game_state.weapon_animation_manager.system_objects = systems.get(current_system, [])
+
                 # Now run the automatic scan to show what's in the system
                 add_event_log(f"Auto-scanning system at ({ship_q}, {ship_r})...")
                 log_debug(f"[WIREFRAME] Auto-scanning system at ({ship_q}, {ship_r})")
@@ -2109,6 +1722,37 @@ try:
         if system_ship_moving and system_dest_q is not None and system_dest_r is not None and game_state.map_mode == 'system':
             dest_x, dest_y = hex_grid.get_hex_center(system_dest_q, system_dest_r)
             pygame.draw.circle(screen, (255, 0, 0), (int(dest_x), int(dest_y)), 8)
+
+        # Draw torpedo target hex indicator (orange/yellow pulsing crosshair)
+        if game_state.map_mode == 'system':
+            torpedo_target = game_state.get_torpedo_target_hex()
+            if torpedo_target is not None:
+                target_q, target_r = torpedo_target
+                target_x, target_y = hex_grid.get_hex_center(target_q, target_r)
+
+                # Pulsing effect based on time
+                pulse = abs(math.sin(current_time / 200.0))  # Oscillates 0 to 1
+                base_radius = 12
+                pulse_radius = int(base_radius + pulse * 4)
+
+                # Draw concentric circles (orange/yellow)
+                pygame.draw.circle(screen, (255, 165, 0), (int(target_x), int(target_y)), pulse_radius, 2)
+                pygame.draw.circle(screen, (255, 255, 0), (int(target_x), int(target_y)), 6, 2)
+
+                # Draw crosshair lines
+                line_len = pulse_radius + 4
+                pygame.draw.line(screen, (255, 165, 0),
+                                (int(target_x - line_len), int(target_y)),
+                                (int(target_x - 6), int(target_y)), 2)
+                pygame.draw.line(screen, (255, 165, 0),
+                                (int(target_x + 6), int(target_y)),
+                                (int(target_x + line_len), int(target_y)), 2)
+                pygame.draw.line(screen, (255, 165, 0),
+                                (int(target_x), int(target_y - line_len)),
+                                (int(target_x), int(target_y - 6)), 2)
+                pygame.draw.line(screen, (255, 165, 0),
+                                (int(target_x), int(target_y + 6)),
+                                (int(target_x), int(target_y + line_len)), 2)
 
         # --- Phaser animation drawing ---
         phaser_anim_data = game_state.weapon_animation_manager.get_phaser_animation_data(current_time)
@@ -2320,10 +1964,13 @@ try:
         # Update scan positions for moving enemies
         update_enemy_scan_positions()
 
+        # Update scan panel stats (hull, shields, energy) in real-time
+        update_enemy_scan_stats()
+
         # Update and draw enemy popups
         update_enemy_popups()
         for enemy_id, popup_info in game_state.scan.enemy_popups.items():
-            draw_enemy_popup(popup_info)
+            draw_enemy_popup(screen, popup_info)
 
         # Draw ship status display
         ship_status_display.draw(screen, player_ship)

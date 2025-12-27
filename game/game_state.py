@@ -30,6 +30,9 @@ class CombatState:
     phaser_anim_start: int = 0
     phaser_range: int = 18
     targeted_enemies: Dict[str, Any] = None
+    # Torpedo targeting - separate from enemy selection
+    torpedo_target_hex: Optional[Tuple[int, int]] = None  # (q, r) hex coordinates for torpedo target
+    torpedo_targeting_mode: bool = False  # True when player is selecting torpedo target
     # Torpedo animation
     torpedo_flying: bool = False
     torpedo_start_pos: Optional[Tuple[float, float]] = None
@@ -39,7 +42,7 @@ class CombatState:
     torpedo_target_enemy: Optional[Any] = None
     torpedo_target_distance: float = 0.0
     torpedo_combat_result: Optional[Dict] = None
-    
+
     def __post_init__(self):
         if self.targeted_enemies is None:
             self.targeted_enemies = {}
@@ -79,7 +82,7 @@ class UIState:
     
     def __post_init__(self):
         if self.button_pressed is None:
-            self.button_pressed = [False, False, False, False]  # Move, Fire, Torpedo, Scan
+            self.button_pressed = [False, False, False, False, False]  # Move, Fire, Torpedo, Scan, Repairs
         if self.toggle_btn_pressed is None:
             self.toggle_btn_pressed = [False]
         if self.event_log is None:
@@ -184,12 +187,38 @@ class GameState:
         self.combat.torpedo_combat_result = None
     
     def select_enemy(self, enemy):
-        """Select an enemy for targeting"""
+        """Select an enemy for targeting (phasers)"""
         self.combat.selected_enemy = enemy
-    
+
     def clear_enemy_selection(self):
         """Clear enemy selection"""
         self.combat.selected_enemy = None
+
+    def set_torpedo_target_hex(self, q: int, r: int):
+        """Set torpedo target hex coordinates"""
+        self.combat.torpedo_target_hex = (q, r)
+        self.combat.torpedo_targeting_mode = False  # Exit targeting mode after selection
+
+    def clear_torpedo_target(self):
+        """Clear torpedo target hex"""
+        self.combat.torpedo_target_hex = None
+        self.combat.torpedo_targeting_mode = False
+
+    def enter_torpedo_targeting_mode(self):
+        """Enter torpedo targeting mode - player will select a hex"""
+        self.combat.torpedo_targeting_mode = True
+
+    def exit_torpedo_targeting_mode(self):
+        """Exit torpedo targeting mode without selecting"""
+        self.combat.torpedo_targeting_mode = False
+
+    def is_torpedo_targeting(self) -> bool:
+        """Check if player is in torpedo targeting mode"""
+        return self.combat.torpedo_targeting_mode
+
+    def get_torpedo_target_hex(self) -> Optional[Tuple[int, int]]:
+        """Get current torpedo target hex coordinates"""
+        return self.combat.torpedo_target_hex
     
     def add_targeted_enemy(self, enemy_id: str, enemy_obj):
         """Add an enemy to the targeting system"""

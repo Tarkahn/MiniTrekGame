@@ -13,14 +13,7 @@ from .map_object import MapObject
 import logging
 import math
 from debug_logger import log_debug
-
-
-def hex_distance(a, b):
-    # a, b: (q, r) tuples
-    dq = abs(a[0] - b[0])
-    dr = abs(a[1] - b[1])
-    ds = abs((-a[0] - a[1]) - (-b[0] - b[1]))
-    return max(dq, dr, ds)
+from utils.geometry import hex_distance
 
 
 def all_hexes():

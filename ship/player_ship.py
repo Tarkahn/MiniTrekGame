@@ -5,6 +5,7 @@ from game_logic.combat_manager import CombatManager
 from ship.ship_systems.phaser import Phaser
 from ship.ship_systems.torpedo import Torpedo
 from ship.ship_systems.shield import Shield
+from ship.ship_systems.repair_system import RepairSystem
 
 
 class PlayerShip(BaseShip):
@@ -19,6 +20,7 @@ class PlayerShip(BaseShip):
         self.phaser_system = Phaser(power=constants.PLAYER_PHASER_POWER, range=constants.PLAYER_PHASER_RANGE, ship=self)
         self.torpedo_system = Torpedo(power=constants.PLAYER_TORPEDO_POWER, speed=constants.PLAYER_TORPEDO_SPEED, accuracy=constants.PLAYER_TORPEDO_ACCURACY, ship=self)
         self.combat_manager = CombatManager()
+        self.repair_system = RepairSystem(self)
 
     def move_ship(self, hex_count: int, shield_power: int = 0) -> bool:
         """
@@ -117,12 +119,41 @@ class PlayerShip(BaseShip):
     def apply_damage_to_enemy(self, target_enemy, combat_result):
         """
         Apply calculated damage to an enemy.
-        
+
         Args:
             target_enemy: Enemy map object to damage
             combat_result: Result from calculate_phaser_damage_at_target or calculate_torpedo_damage_at_target
-            
+
         Returns:
             dict: Updated combat result with actual enemy status after damage
         """
-        return self.combat_manager.apply_damage_to_enemy(target_enemy, combat_result) 
+        return self.combat_manager.apply_damage_to_enemy(target_enemy, combat_result)
+
+    def toggle_repairs(self) -> bool:
+        """
+        Toggle the ship's repair system on/off.
+
+        Returns:
+            True if repairs are now active, False if stopped or couldn't start
+        """
+        return self.repair_system.toggle_repairs()
+
+    def update_repairs(self, delta_time_seconds: float) -> dict:
+        """
+        Update repair progress. Should be called each frame.
+
+        Args:
+            delta_time_seconds: Time elapsed since last update
+
+        Returns:
+            Dictionary of systems that were repaired
+        """
+        return self.repair_system.update(delta_time_seconds)
+
+    def is_repairing(self) -> bool:
+        """Check if repairs are currently in progress."""
+        return self.repair_system.is_repairing
+
+    def get_repair_status(self) -> dict:
+        """Get current repair status for UI display."""
+        return self.repair_system.get_repair_status() 

@@ -132,11 +132,14 @@ def handle_button_click(label: str, ctx: EventContext) -> bool:
     elif label == "Scan":
         return _handle_scan_button(ctx)
 
+    elif label == "Repairs":
+        return _handle_repairs_button(ctx)
+
     return False
 
 
 def _handle_torpedo_button(ctx: EventContext) -> bool:
-    """Handle torpedo button click."""
+    """Handle torpedo button click - fires at torpedo target hex if set."""
     player_ship = ctx.player_ship
     game_state = ctx.game_state
     sound_manager = ctx.sound_manager
@@ -175,48 +178,85 @@ def _handle_torpedo_button(ctx: EventContext) -> bool:
         sound_manager.play_sound('error')
         return True
 
-    # Fire torpedoes at selected enemy (only works in system mode)
-    if game_state.map_mode == 'system':
-        if game_state.combat.selected_enemy is not None:
-            player_obj = next((obj for obj in ctx.systems.get(ctx.current_system, [])
-                              if obj.type == 'player'), None)
-
-            if (player_obj is not None and
-                hasattr(player_obj, 'system_q') and
-                hasattr(game_state.combat.selected_enemy, 'system_q')):
-
-                dx = game_state.combat.selected_enemy.system_q - player_obj.system_q
-                dy = game_state.combat.selected_enemy.system_r - player_obj.system_r
-                distance = math.hypot(dx, dy)
-
-                # Get start and target positions for animation
-                if ctx.system_ship_anim_x is not None and ctx.system_ship_anim_y is not None:
-                    start_pos = (ctx.system_ship_anim_x, ctx.system_ship_anim_y)
-                else:
-                    start_pos = ctx.hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
-                target_pos = ctx.get_enemy_current_position(game_state.combat.selected_enemy, ctx.hex_grid)
-
-                # Fire torpedo using weapon animation manager
-                target_hex_pos = (game_state.combat.selected_enemy.system_q,
-                                 game_state.combat.selected_enemy.system_r)
-                result = game_state.weapon_animation_manager.fire_torpedo(
-                    game_state.combat.selected_enemy, distance, start_pos, target_pos, target_hex_pos
-                )
-
-                if result['success']:
-                    add_event_log("Torpedo launched!")
-                    if player_ship.torpedo_count <= 3 and player_ship.torpedo_count > 0:
-                        add_event_log(f"*** LOW TORPEDO SUPPLY: {player_ship.torpedo_count} remaining ***")
-                    elif player_ship.torpedo_count == 0:
-                        add_event_log("*** LAST TORPEDO EXPENDED ***")
-                else:
-                    add_event_log(f"Torpedo launch failed: {result.get('reason', 'Unknown error')}")
-            else:
-                add_event_log("Cannot determine target position")
-        else:
-            add_event_log("No enemy target selected. Right-click an enemy to target it first.")
-    else:
+    # Only works in system mode
+    if game_state.map_mode != 'system':
         add_event_log("Torpedoes can only be fired in system view")
+        return True
+
+    # Fire at torpedo target hex if set
+    torpedo_target = game_state.get_torpedo_target_hex()
+    if torpedo_target is not None:
+        return _fire_torpedo_at_hex(ctx, torpedo_target[0], torpedo_target[1])
+
+    # No target set - inform player
+    add_event_log("No torpedo target! Right-click any hex to set target.")
+    sound_manager.play_sound('error')
+    return True
+
+
+def _fire_torpedo_at_hex(ctx: EventContext, target_q: int, target_r: int) -> bool:
+    """Fire a torpedo at a specific hex location."""
+    player_ship = ctx.player_ship
+    game_state = ctx.game_state
+    sound_manager = ctx.sound_manager
+    add_event_log = ctx.add_event_log
+
+    player_obj = next((obj for obj in ctx.systems.get(ctx.current_system, [])
+                      if obj.type == 'player'), None)
+
+    if player_obj is None:
+        add_event_log("Cannot determine player position")
+        return True
+
+    # Calculate distance to target hex
+    dx = target_q - player_obj.system_q
+    dy = target_r - player_obj.system_r
+    distance = math.hypot(dx, dy)
+
+    # Check range
+    from data import constants
+    if distance > constants.TORPEDO_RANGE:
+        add_event_log(f"Target out of torpedo range ({distance:.1f} > {constants.TORPEDO_RANGE})")
+        sound_manager.play_sound('error')
+        return True
+
+    # Get start position for animation
+    if ctx.system_ship_anim_x is not None and ctx.system_ship_anim_y is not None:
+        start_pos = (ctx.system_ship_anim_x, ctx.system_ship_anim_y)
+    else:
+        start_pos = ctx.hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+
+    # Get target position (center of target hex)
+    target_pos = ctx.hex_grid.get_hex_center(target_q, target_r)
+
+    # Check if there's an enemy at the target hex for direct hit tracking
+    target_enemy = None
+    for obj in ctx.systems.get(ctx.current_system, []):
+        if obj.type == 'enemy' and obj.system_q == target_q and obj.system_r == target_r:
+            target_enemy = obj
+            break
+
+    # Fire torpedo using weapon animation manager
+    # Note: target_enemy can be None - torpedo will still explode at target location
+    result = game_state.weapon_animation_manager.fire_torpedo(
+        target_enemy, distance, start_pos, target_pos, (target_q, target_r)
+    )
+
+    if result['success']:
+        if target_enemy:
+            add_event_log(f"Torpedo launched at enemy position ({target_q}, {target_r})!")
+        else:
+            add_event_log(f"Torpedo launched at hex ({target_q}, {target_r})!")
+
+        if player_ship.torpedo_count <= 3 and player_ship.torpedo_count > 0:
+            add_event_log(f"*** LOW TORPEDO SUPPLY: {player_ship.torpedo_count} remaining ***")
+        elif player_ship.torpedo_count == 0:
+            add_event_log("*** LAST TORPEDO EXPENDED ***")
+
+        # Clear the torpedo target after firing
+        game_state.clear_torpedo_target()
+    else:
+        add_event_log(f"Torpedo launch failed: {result.get('reason', 'Unknown error')}")
 
     return True
 
@@ -358,6 +398,60 @@ def _handle_scan_button(ctx: EventContext) -> bool:
                 _perform_system_scan(ctx)
             else:
                 add_event_log("System already scanned. Right-click enemies to target them for detailed scans.")
+
+    return True
+
+
+def _handle_repairs_button(ctx: EventContext) -> bool:
+    """Handle repairs button click - toggle ship repairs on/off."""
+    player_ship = ctx.player_ship
+    sound_manager = ctx.sound_manager
+    add_event_log = ctx.add_event_log
+
+    # Check if ship is alive
+    if not player_ship.is_alive():
+        add_event_log("Ship is destroyed - cannot initiate repairs!")
+        sound_manager.play_sound('error')
+        return True
+
+    # Check for critical ship state
+    if hasattr(player_ship, 'ship_state') and player_ship.ship_state == "hull_breach":
+        add_event_log("CRITICAL: Hull breach in progress! Repairs impossible!")
+        add_event_log("Evacuate or seal breaches before repairs can begin.")
+        sound_manager.play_sound('error')
+        return True
+
+    # Toggle repairs
+    was_repairing = player_ship.is_repairing()
+    repairs_active = player_ship.toggle_repairs()
+
+    if repairs_active:
+        # Repairs started
+        repair_status = player_ship.get_repair_status()
+        systems = repair_status.get('systems_needing_repair', [])
+        time_estimate = player_ship.repair_system.get_repair_time_estimate()
+
+        add_event_log("*** REPAIR CREWS ACTIVATED ***")
+        add_event_log(f"Repairing: {', '.join(s.upper() for s in systems)}")
+        if time_estimate > 0:
+            minutes = int(time_estimate // 60)
+            seconds = int(time_estimate % 60)
+            if minutes > 0:
+                add_event_log(f"Estimated repair time: {minutes}m {seconds}s")
+            else:
+                add_event_log(f"Estimated repair time: {seconds}s")
+        sound_manager.play_sound('scanner')  # Use scanner sound for now
+    else:
+        if was_repairing:
+            # Repairs stopped
+            add_event_log("Repair operations halted.")
+            sound_manager.play_sound('scanner')
+        else:
+            # No repairs needed or couldn't start
+            repair_status = player_ship.get_repair_status()
+            if not repair_status.get('needs_repair', False):
+                add_event_log("All systems operational - no repairs needed.")
+            sound_manager.play_sound('error')
 
     return True
 
@@ -864,6 +958,10 @@ def handle_right_click(mx: int, my: int, ctx: EventContext) -> bool:
     if scanned_celestial:
         return True
 
+    # Always set torpedo target hex for any right-clicked location
+    # Torpedoes can be fired at any hex, even empty space
+    game_state.set_torpedo_target_hex(q, r)
+
     # Find enemy at this hex
     found_enemy = None
     for obj in systems.get(current_system, []):
@@ -873,6 +971,7 @@ def handle_right_click(mx: int, my: int, ctx: EventContext) -> bool:
                 break
 
     if found_enemy is not None:
+        # Enemy found - set phaser target (tracks enemy) AND torpedo target (fixed hex)
         enemy_id = ctx.get_enemy_id(found_enemy)
         game_state.combat.selected_enemy = found_enemy
 
@@ -882,9 +981,12 @@ def handle_right_click(mx: int, my: int, ctx: EventContext) -> bool:
             game_state.combat.targeted_enemies[enemy_id] = found_enemy
             add_event_log(f"Target {enemy_id} acquired at ({q}, {r})")
 
+        add_event_log(f"Torpedo target locked at ({q}, {r})")
         ctx.perform_enemy_scan(found_enemy, enemy_id)
         sound_manager.play_sound('scanner')
     else:
-        add_event_log(f"No enemy at ({q}, {r})")
+        # No enemy - set torpedo target only (phasers need an enemy)
+        add_event_log(f"Torpedo target set at ({q}, {r}) - no enemy for phasers")
+        sound_manager.play_sound('scanner')
 
     return True
