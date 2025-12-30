@@ -1,7 +1,7 @@
 """
-Enemy Ship class for Klingon warships.
+Enemy Ship class for enemy warships (Klingon, Romulan, etc.).
 
-This module contains the EnemyShip class which represents a Klingon warship
+This module contains the EnemyShip class which represents an enemy warship
 with dynamic AI behavior controlled by the EnemyAI class.
 """
 
@@ -16,13 +16,16 @@ from game_logic.enemy_ai import EnemyAI, EnemyPersonality
 
 
 class EnemyShip(BaseShip):
-    """Dynamic Klingon warship with intelligent AI and randomized personality."""
+    """Dynamic enemy warship with intelligent AI and randomized faction-based personality."""
 
     def __init__(self, name, max_shield_strength, hull_strength, energy, max_energy,
-                 weapons=None, position=None):
+                 weapons=None, position=None, faction='klingon'):
         enemy_shield = Shield(max_shield_strength, self)
         super().__init__(name, enemy_shield, hull_strength, energy, max_energy,
                          weapons, position)
+
+        # Store faction
+        self.faction = faction.lower() if faction else 'klingon'
 
         # Position and movement state
         self.position = position if position else (0, 0)
@@ -47,8 +50,8 @@ class EnemyShip(BaseShip):
         self.max_torpedo_capacity = constants.MAX_TORPEDO_CAPACITY
         self.pending_weapon_animations = []
 
-        # Initialize AI controller with personality
-        self._personality = EnemyPersonality()
+        # Initialize AI controller with faction-based personality
+        self._personality = EnemyPersonality(faction=self.faction)
         self.ai = EnemyAI(self, self._personality)
 
         # Initialize repair system (same as player ship)
@@ -57,7 +60,9 @@ class EnemyShip(BaseShip):
         # Track last update time for delta calculations
         self._last_system_update_time = time.time()
 
-        print(f"[KLINGON] {name} warship created with personality: "
+        # Faction-specific log prefix
+        faction_label = self.faction.upper()
+        print(f"[{faction_label}] {name} warship created with personality: "
               f"Aggression={self._personality.aggression:.2f}, "
               f"Courage={self._personality.courage:.2f}, "
               f"Speed={self._personality.movement_speed:.2f}")

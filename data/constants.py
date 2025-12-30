@@ -104,7 +104,8 @@ GRID_COLS = 20
 NUM_STARS = 30  # Reduced from 100 to allow more room for planets
 NUM_PLANETS = 35  # Increased to ensure at least 1 planet per star (30) plus extras
 NUM_STARBases = 3
-NUM_ENEMY_SHIPS = 30
+NUM_KLINGON_SHIPS = 30
+NUM_ROMULAN_SHIPS = 30
 NUM_ANOMALIES = 6  # Rare but enough for variety (black holes, wormholes, etc.)
 
 # Placement rules
@@ -239,6 +240,109 @@ KLINGON_PURSUIT_PERSISTENCE_MAX = 0.9 # Relentlessly pursues player
 
 KLINGON_LEARNING_RATE_MIN = 0.0     # Never adapts to player tactics
 KLINGON_LEARNING_RATE_MAX = 0.5     # Adapts quickly to player tactics
+
+# ====================================================================
+# ROMULAN AI BEHAVIOR PARAMETERS - Tactical, Sneaky, Patient
+# ====================================================================
+# Romulans are tactical and calculating, preferring ambush and flanking
+# over direct confrontation. They are more patient, evasive, and willing
+# to retreat to fight another day.
+
+# Movement Behavior Parameters
+# ----------------------------
+ROMULAN_MOVEMENT_SPEED_MIN = 0.7    # Slightly slower base speed
+ROMULAN_MOVEMENT_SPEED_MAX = 1.3    # Can be fast when needed
+
+ROMULAN_MOVE_DISTANCE_MIN = 1       # Minimum hexes per move
+ROMULAN_MOVE_DISTANCE_MAX = 3       # Shorter moves - more cautious
+
+ROMULAN_MOVE_VARIABILITY_MIN = 0.4  # More varied movement patterns
+ROMULAN_MOVE_VARIABILITY_MAX = 0.9  # Very unpredictable movement
+
+# Combat Aggression Parameters
+# ----------------------------
+ROMULAN_AGGRESSION_MIN = 0.4        # Tactical, not aggressive (40% baseline)
+ROMULAN_AGGRESSION_MAX = 0.7        # Maximum 70% - always calculating
+
+ROMULAN_ATTACK_RANGE_MIN = 6        # Prefers ranged combat
+ROMULAN_ATTACK_RANGE_MAX = 14       # Stays at distance
+
+ROMULAN_CLOSING_TENDENCY_MIN = 0.3  # Weak tendency to close in
+ROMULAN_CLOSING_TENDENCY_MAX = 0.6  # Prefers to maintain distance
+
+# Weapon System Parameters
+# ------------------------
+ROMULAN_WEAPON_POWER_MIN = 5        # Moderate weapon power
+ROMULAN_WEAPON_POWER_MAX = 8        # Can hit hard when they choose
+
+ROMULAN_FIRING_FREQUENCY_MIN = 0.5  # Calculated firing (50% chance)
+ROMULAN_FIRING_FREQUENCY_MAX = 0.8  # Waits for good shots (80% max)
+
+ROMULAN_WEAPON_ACCURACY_MIN = 0.7   # High accuracy - patient aiming
+ROMULAN_WEAPON_ACCURACY_MAX = 0.95  # Expert marksmanship
+
+ROMULAN_TORPEDO_PREFERENCE_MIN = 0.4  # Prefer heavy weapons (40%)
+ROMULAN_TORPEDO_PREFERENCE_MAX = 0.7  # Frequently uses torpedoes (70%)
+
+ROMULAN_TORPEDO_COOLDOWN = 4.0        # Faster torpedo reload
+
+# Tactical Intelligence Parameters
+# ---------------------------------
+ROMULAN_FLANKING_TENDENCY_MIN = 0.5 # Frequently attempts flanking
+ROMULAN_FLANKING_TENDENCY_MAX = 0.9 # Highly tactical flanking behavior
+
+ROMULAN_EVASION_SKILL_MIN = 0.6     # Good evasion patterns
+ROMULAN_EVASION_SKILL_MAX = 0.9     # Excellent evasion - very elusive
+
+ROMULAN_TACTICAL_PATIENCE_MIN = 0.3 # Will wait for good opportunities
+ROMULAN_TACTICAL_PATIENCE_MAX = 0.7 # Very patient - waits for openings
+
+# Defensive Behavior Parameters
+# -----------------------------
+ROMULAN_RETREAT_THRESHOLD_MIN = 0.3 # Retreats at 30% health
+ROMULAN_RETREAT_THRESHOLD_MAX = 0.5 # Strategic retreat at 50% health
+
+ROMULAN_SHIELD_PRIORITY_MIN = 0.6   # High shield management priority
+ROMULAN_SHIELD_PRIORITY_MAX = 0.9   # Excellent shield management
+
+ROMULAN_DAMAGE_AVOIDANCE_MIN = 0.5  # Cautious, avoids damage
+ROMULAN_DAMAGE_AVOIDANCE_MAX = 0.9  # Very cautious - survives longer
+
+# Personality Trait Parameters
+# ----------------------------
+ROMULAN_COURAGE_MIN = 0.3           # Strategic cowardice (retreat to win)
+ROMULAN_COURAGE_MAX = 0.6           # Moderate courage - values survival
+
+ROMULAN_UNPREDICTABILITY_MIN = 0.5  # Deceptive behavior patterns
+ROMULAN_UNPREDICTABILITY_MAX = 0.9  # Highly unpredictable - deceptive
+
+ROMULAN_HONOR_CODE_MIN = 0.1        # Pragmatic - any tactics allowed
+ROMULAN_HONOR_CODE_MAX = 0.5        # Low honor - will use deception
+
+ROMULAN_VENGEANCE_FACTOR_MIN = 0.3  # Calculates revenge strategically
+ROMULAN_VENGEANCE_FACTOR_MAX = 0.7  # Remembers but waits for opportunity
+
+# Advanced Combat Parameters
+# --------------------------
+ROMULAN_POWER_MANAGEMENT_MIN = 0.6  # Good power allocation skills
+ROMULAN_POWER_MANAGEMENT_MAX = 0.95 # Excellent power management
+
+ROMULAN_MULTI_TARGET_MIN = 0.1      # Focuses primarily on main target
+ROMULAN_MULTI_TARGET_MAX = 0.4      # Occasionally engages multiple targets
+
+ROMULAN_AMBUSH_PREFERENCE_MIN = 0.5 # Frequently uses ambush tactics
+ROMULAN_AMBUSH_PREFERENCE_MAX = 0.9 # Highly prefers ambush tactics
+
+# Temporal Behavior Parameters
+# ----------------------------
+ROMULAN_REACTION_TIME_MIN = 0.6     # Slightly slower - thinks before acting
+ROMULAN_REACTION_TIME_MAX = 0.9     # Still quick when needed
+
+ROMULAN_PURSUIT_PERSISTENCE_MIN = 0.3 # May give up pursuit
+ROMULAN_PURSUIT_PERSISTENCE_MAX = 0.6 # Moderately persistent
+
+ROMULAN_LEARNING_RATE_MIN = 0.3     # Adapts to player tactics
+ROMULAN_LEARNING_RATE_MAX = 0.8     # Quick learner - adapts fast
 
 # ====================================================================
 # PLANET AND STAR CLASSIFICATION DATA

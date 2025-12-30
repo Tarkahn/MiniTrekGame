@@ -129,16 +129,31 @@ class BackgroundAndStarLoader:
         else:
             logging.warning(f"[SHIP] Player ship image not found: {player_ship_path}")
         
-        # Load enemy ship image
+        # Load enemy ship images (Klingon and Romulan)
+        # Klingon ship (legacy enemyShip.png)
         enemy_ship_path = os.path.join(assets_dir, 'enemyShip.png')
         if os.path.exists(enemy_ship_path):
             try:
                 self.enemy_ship_image = pygame.image.load(enemy_ship_path)
-                logging.debug(f"[SHIP] Loaded enemy ship image: enemyShip.png")
+                self.klingon_ship_image = self.enemy_ship_image  # Alias for clarity
+                logging.debug(f"[SHIP] Loaded Klingon ship image: enemyShip.png")
             except Exception as e:
-                logging.error(f"[SHIP] Failed to load enemy ship image: {e}")
+                logging.error(f"[SHIP] Failed to load Klingon ship image: {e}")
         else:
-            logging.warning(f"[SHIP] Enemy ship image not found: {enemy_ship_path}")
+            logging.warning(f"[SHIP] Klingon ship image not found: {enemy_ship_path}")
+
+        # Romulan ship
+        romulan_ship_path = os.path.join(assets_dir, 'romulanShip.png')
+        if os.path.exists(romulan_ship_path):
+            try:
+                self.romulan_ship_image = pygame.image.load(romulan_ship_path)
+                logging.debug(f"[SHIP] Loaded Romulan ship image: romulanShip.png")
+            except Exception as e:
+                logging.error(f"[SHIP] Failed to load Romulan ship image: {e}")
+                self.romulan_ship_image = None
+        else:
+            logging.warning(f"[SHIP] Romulan ship image not found: {romulan_ship_path}")
+            self.romulan_ship_image = None
         
         # Load star images (supports .jpg, .jpeg, .png, .bmp, .gif)
         stars_dir = os.path.join(assets_dir, 'stars')
@@ -396,15 +411,48 @@ class BackgroundAndStarLoader:
         """Get the player ship image."""
         return self.player_ship_image
     
-    def get_enemy_ship_image(self):
-        """Get the enemy ship image."""
+    def get_enemy_ship_image(self, faction=None):
+        """Get the enemy ship image for the specified faction.
+
+        Args:
+            faction: 'klingon', 'romulan', or None (defaults to klingon)
+
+        Returns:
+            The appropriate ship image for the faction
+        """
+        if faction == 'romulan' and hasattr(self, 'romulan_ship_image') and self.romulan_ship_image:
+            return self.romulan_ship_image
+        # Default to Klingon (original enemy ship)
         return self.enemy_ship_image
-    
-    def scale_ship_image(self, image, radius):
-        """Scale ship image to appropriate size for game display."""
+
+    def get_klingon_ship_image(self):
+        """Get the Klingon ship image."""
+        return self.enemy_ship_image
+
+    def get_romulan_ship_image(self):
+        """Get the Romulan ship image."""
+        if hasattr(self, 'romulan_ship_image') and self.romulan_ship_image:
+            return self.romulan_ship_image
+        # Fallback to Klingon image if Romulan not available
+        return self.enemy_ship_image
+
+    def scale_ship_image(self, image, radius, faction=None):
+        """Scale ship image to appropriate size for game display.
+
+        Args:
+            image: The ship image to scale
+            radius: The hex grid radius
+            faction: 'klingon', 'romulan', or None - Romulans are 2x larger
+
+        Returns:
+            Scaled ship image
+        """
         if image:
-            # Scale ship images to be about 1.5x the hex radius for good visibility
-            target_size = int(radius * 1.5)
+            # Romulans are 2x larger (3.0x hex radius vs 1.5x for Klingons)
+            if faction == 'romulan':
+                target_size = int(radius * 3.0)
+            else:
+                target_size = int(radius * 1.5)
             return pygame.transform.scale(image, (target_size, target_size))
         return None
     

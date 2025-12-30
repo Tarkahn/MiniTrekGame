@@ -2,13 +2,14 @@ import random
 from collections import defaultdict
 from data.constants import (
     GRID_ROWS, GRID_COLS,
-    NUM_STARS, NUM_PLANETS, NUM_STARBases, NUM_ENEMY_SHIPS, NUM_ANOMALIES,
+    NUM_STARS, NUM_PLANETS, NUM_STARBases, NUM_KLINGON_SHIPS, NUM_ROMULAN_SHIPS, NUM_ANOMALIES,
     MAX_STARS_PER_SYSTEM,
     MAX_PLANETS_PER_SYSTEM,
     MAX_STARBases_PER_SYSTEM,
     MAX_ENEMIES_PER_SYSTEM,
     MIN_STAR_PLANET_DISTANCE
 )
+from data import constants
 from .map_object import MapObject
 import logging
 import math
@@ -304,98 +305,121 @@ def place_objects_by_system():
         attempts += 1
     log_debug(f"[PLACEMENT] Placed {len(anomaly_coords)} anomalies.")
 
-    # Enemies - Distribute evenly across galaxy with configurable max per system
-    enemy_coords = []
-    enemy_placed = 0
+    # Enemies - Distribute Klingons and Romulans across galaxy with NO OVERLAP
+    # CONSTRAINT: No Klingons and Romulans in the same sector
+    klingon_coords = []
+    romulan_coords = []
     player_coord = None  # Initialize player_coord before using it
-    
+
+    NUM_KLINGON_SHIPS = constants.NUM_KLINGON_SHIPS
+    NUM_ROMULAN_SHIPS = constants.NUM_ROMULAN_SHIPS
+    MAX_ENEMIES_PER_SYSTEM = constants.MAX_ENEMIES_PER_SYSTEM
+
     # For enemy placement, only consider as occupied: starbases, anomalies, player
     enemy_blocked = set()
     enemy_blocked.update(starbase_coords)
     enemy_blocked.update(anomaly_coords)
     if player_coord:
         enemy_blocked.add(player_coord)
-    
+
     # Get available coordinates separated by system type for better distribution
     available_coords = list(all_coords - enemy_blocked)
     star_systems_available = [coord for coord in available_coords if coord in star_coords]
     empty_systems_available = [coord for coord in available_coords if coord not in star_coords]
-    
-    # Strategy: Distribute enemies evenly across the galaxy for better exploration gameplay
-    # 1. Ensure 50% of star systems have enemies
-    # 2. Respect MAX_ENEMIES_PER_SYSTEM limit
-    # 3. Spread enemies across different regions of the galaxy
-    
-    # Calculate how many star systems should have enemies (50% of star systems)
-    star_systems_to_populate = min(
-        int(len(star_systems_available) * 0.5),  # 50% of star systems
-        NUM_ENEMY_SHIPS // MAX_ENEMIES_PER_SYSTEM + (1 if NUM_ENEMY_SHIPS % MAX_ENEMIES_PER_SYSTEM else 0)
+
+    # Shuffle and split available systems between factions
+    # First, shuffle all available systems
+    all_available = star_systems_available + empty_systems_available
+    random.shuffle(all_available)
+
+    # Split available sectors roughly 50/50 between Klingon and Romulan territory
+    # This ensures no overlap between factions
+    midpoint = len(all_available) // 2
+    klingon_territory = set(all_available[:midpoint])
+    romulan_territory = set(all_available[midpoint:])
+
+    log_debug(f"[PLACEMENT] Territory split: {len(klingon_territory)} Klingon sectors, {len(romulan_territory)} Romulan sectors")
+
+    # Helper function to place faction enemies
+    def place_faction_enemies(faction_name, territory, num_ships, coords_list):
+        faction_placed = 0
+        count_per_system = {}
+
+        # Separate star systems and empty space in this territory
+        faction_stars = [c for c in territory if c in star_coords]
+        faction_empty = [c for c in territory if c not in star_coords]
+
+        # Calculate how many star systems should have enemies (50% of faction's star systems)
+        stars_to_populate = min(
+            int(len(faction_stars) * 0.5),
+            num_ships // MAX_ENEMIES_PER_SYSTEM + (1 if num_ships % MAX_ENEMIES_PER_SYSTEM else 0)
+        )
+
+        random.shuffle(faction_stars)
+        selected_stars = faction_stars[:stars_to_populate]
+
+        # Place ~60% of enemies in star systems
+        enemies_in_stars = min(int(num_ships * 0.6), stars_to_populate * MAX_ENEMIES_PER_SYSTEM)
+
+        # Phase 1: Place in star systems
+        system_index = 0
+        while faction_placed < enemies_in_stars and selected_stars:
+            system_coord = selected_stars[system_index % len(selected_stars)]
+            current_count = count_per_system.get(system_coord, 0)
+
+            if current_count < MAX_ENEMIES_PER_SYSTEM:
+                coords_list.append(system_coord)
+                count_per_system[system_coord] = current_count + 1
+                faction_placed += 1
+
+            system_index += 1
+
+        # Phase 2: Fill remaining from empty space and remaining stars
+        remaining_stars = [s for s in faction_stars if s not in selected_stars]
+        all_remaining = faction_empty + remaining_stars
+        random.shuffle(all_remaining)
+
+        system_index = 0
+        attempts = 0
+        max_attempts = num_ships * 10
+
+        while faction_placed < num_ships and attempts < max_attempts and all_remaining:
+            if system_index >= len(all_remaining):
+                system_index = 0
+
+            system_coord = all_remaining[system_index]
+            current_count = count_per_system.get(system_coord, 0)
+
+            if current_count < MAX_ENEMIES_PER_SYSTEM:
+                coords_list.append(system_coord)
+                count_per_system[system_coord] = current_count + 1
+                faction_placed += 1
+
+            system_index += 1
+            attempts += 1
+
+        return faction_placed, count_per_system
+
+    # Place Klingon ships
+    klingon_placed, klingon_systems = place_faction_enemies(
+        "Klingon", klingon_territory, NUM_KLINGON_SHIPS, klingon_coords
     )
-    
-    # Track how many enemies are in each system
-    enemy_count_per_system = {}
-    
-    # Phase 1: Place enemies in exactly 50% of star systems
-    # But ensure we don't put ALL enemies in star systems - save some for empty space
-    random.shuffle(star_systems_available)
-    
-    # Select which star systems will have enemies
-    selected_star_systems = star_systems_available[:star_systems_to_populate]
-    
-    # Calculate how many enemies to place in star systems (aim for ~60% of total enemies)
-    enemies_to_place_in_stars = min(
-        int(NUM_ENEMY_SHIPS * 0.6),  # 60% of enemies in star systems
-        star_systems_to_populate * MAX_ENEMIES_PER_SYSTEM
+    log_debug(f"[PLACEMENT] Placed {klingon_placed} Klingons across {len(klingon_systems)} systems")
+
+    # Place Romulan ships
+    romulan_placed, romulan_systems = place_faction_enemies(
+        "Romulan", romulan_territory, NUM_ROMULAN_SHIPS, romulan_coords
     )
-    
-    # Place enemies in selected star systems (round-robin to distribute evenly)
-    system_index = 0
-    
-    while enemy_placed < enemies_to_place_in_stars and selected_star_systems:
-        system_coord = selected_star_systems[system_index % len(selected_star_systems)]
-        current_count = enemy_count_per_system.get(system_coord, 0)
-        
-        if current_count < MAX_ENEMIES_PER_SYSTEM:
-            enemy_coords.append(system_coord)
-            enemy_count_per_system[system_coord] = current_count + 1
-            enemy_placed += 1
-        
-        system_index += 1
-    
-    # Phase 2: Fill remaining slots from empty space and remaining star systems
-    # Prioritize empty space to ensure enemies aren't only in star systems
-    remaining_star_systems = [s for s in star_systems_available if s not in selected_star_systems]
-    all_remaining_systems = empty_systems_available + remaining_star_systems
-    random.shuffle(all_remaining_systems)
-    
-    system_index = 0
-    attempts = 0
-    max_attempts = NUM_ENEMY_SHIPS * 10  # Prevent infinite loops
-    
-    while enemy_placed < NUM_ENEMY_SHIPS and attempts < max_attempts:
-        if system_index >= len(all_remaining_systems):
-            system_index = 0  # Wrap around
-            
-        system_coord = all_remaining_systems[system_index]
-        current_count = enemy_count_per_system.get(system_coord, 0)
-        
-        if current_count < MAX_ENEMIES_PER_SYSTEM:
-            enemy_coords.append(system_coord)
-            enemy_count_per_system[system_coord] = current_count + 1
-            enemy_placed += 1
-        
-        system_index += 1
-        attempts += 1
-    
-    # Calculate distribution statistics
-    systems_with_enemies = len(enemy_count_per_system)
-    enemies_in_star_systems = sum(1 for coord in enemy_coords if coord in star_coords)
-    star_systems_with_enemies = len([coord for coord in enemy_count_per_system.keys() if coord in star_coords])
-    
-    log_debug(
-        f"[PLACEMENT] Placed {enemy_placed} enemies across {systems_with_enemies} systems "
-        f"({enemies_in_star_systems} in star systems, {star_systems_with_enemies} star systems with enemies)."
-    )
+    log_debug(f"[PLACEMENT] Placed {romulan_placed} Romulans across {len(romulan_systems)} systems")
+
+    # Verify no overlap
+    klingon_set = set(klingon_coords)
+    romulan_set = set(romulan_coords)
+    overlap = klingon_set & romulan_set
+    if overlap:
+        log_debug(f"[PLACEMENT] WARNING: Faction overlap detected at {len(overlap)} coordinates!")
+    else:
+        log_debug("[PLACEMENT] Verified: No Klingon/Romulan territory overlap")
 
     # Player
     attempts = 0
@@ -417,10 +441,11 @@ def place_objects_by_system():
 
     # Store the coordinates for lazy loading (only those actually placed)
     # Note: planets are handled separately in planet_orbits, not in lazy_object_coords
-    # Enemy coords is now a list to support multiple enemies per system
+    # Klingon and Romulan coords are separate lists to support faction-specific placement
     lazy_object_coords = {
         'starbase': starbase_coords,
-        'enemy': enemy_coords,  # This is now a list with duplicates for pairs
+        'klingon': klingon_coords,  # Klingon ships (list with duplicates for pairs)
+        'romulan': romulan_coords,  # Romulan ships (list with duplicates for pairs)
         'anomaly': anomaly_coords,
         'player': {player_coord} if player_coord else set()
     }
@@ -434,12 +459,14 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, planet_o
     
     # Debug logging
     log_debug(f"[GENERATE] Generating objects for system ({q}, {r})")
-    
+
     # CRITICAL DEBUG: Log to file
     log_debug(f"[GENERATE_SYSTEM_OBJECTS] Called for ({q}, {r})")
-    if lazy_object_coords and 'enemy' in lazy_object_coords:
-        enemy_count = lazy_object_coords['enemy'].count((q, r))
-        log_debug(f"[GENERATE_SYSTEM_OBJECTS] Enemy count for ({q}, {r}): {enemy_count}")
+    # Count enemies from both factions
+    klingon_count = lazy_object_coords.get('klingon', []).count((q, r)) if lazy_object_coords else 0
+    romulan_count = lazy_object_coords.get('romulan', []).count((q, r)) if lazy_object_coords else 0
+    if klingon_count > 0 or romulan_count > 0:
+        log_debug(f"[GENERATE_SYSTEM_OBJECTS] Enemies for ({q}, {r}): {klingon_count} Klingon, {romulan_count} Romulan")
     # Add up to MAX_STARS_PER_SYSTEM if present in this system
     if star_coords and (q, r) in star_coords:
         star_count = min(
@@ -474,31 +501,29 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, planet_o
     ]
 
     # Add all other objects (no per-system limit)
-    for obj_type in ['enemy', 'anomaly', 'player']:
+    # Handle Klingon and Romulan ships as separate factions
+    for obj_type in ['klingon', 'romulan', 'anomaly', 'player']:
         if obj_type in lazy_object_coords:
-            if obj_type == 'enemy':
-                # Enemy coords is a list, count occurrences
-                enemy_list = lazy_object_coords[obj_type]
-                log_debug(f"[GENERATE DEBUG] Enemy list type: {type(enemy_list)}")
-                log_debug(f"[GENERATE DEBUG] Enemy list length: {len(enemy_list) if enemy_list else 'None'}")
+            if obj_type in ['klingon', 'romulan']:
+                # Faction coords are lists, count occurrences
+                faction_list = lazy_object_coords[obj_type]
+                log_debug(f"[GENERATE DEBUG] {obj_type} list type: {type(faction_list)}")
+                log_debug(f"[GENERATE DEBUG] {obj_type} list length: {len(faction_list) if faction_list else 'None'}")
 
                 # Check if the coordinate matches
                 coord_to_check = (q, r)
                 count = 0
-                if enemy_list:
-                    for i, coord in enumerate(enemy_list):
+                if faction_list:
+                    for i, coord in enumerate(faction_list):
                         if coord == coord_to_check:
                             count += 1
-                            log_debug(f"[GENERATE DEBUG] Found match at index {i}: {coord} == {coord_to_check}")
+                            log_debug(f"[GENERATE DEBUG] Found {obj_type} match at index {i}: {coord} == {coord_to_check}")
 
                 if count > 0:
-                    log_debug(f"[GENERATE] System ({q}, {r}) should have {count} enemies")
+                    log_debug(f"[GENERATE] System ({q}, {r}) should have {count} {obj_type} ships")
                 else:
                     # Debug why no match
-                    log_debug(f"[GENERATE DEBUG] No enemies for ({q}, {r})")
-                    if enemy_list and len(enemy_list) > 0:
-                        log_debug(f"[GENERATE DEBUG] First enemy coord: {enemy_list[0]}, type: {type(enemy_list[0])}")
-                        log_debug(f"[GENERATE DEBUG] Checking coord: {coord_to_check}, type: {type(coord_to_check)}")
+                    log_debug(f"[GENERATE DEBUG] No {obj_type} ships for ({q}, {r})")
             else:
                 # Other types are sets
                 count = sum(1 for coord in lazy_object_coords[obj_type] if coord == (q, r))
@@ -511,6 +536,10 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, planet_o
                         anomaly_subtype = random.choice(anomaly_types)
                         objects_to_place.append((obj_type, {'anomaly_type': anomaly_subtype}))
                         log_debug(f"[GENERATE DEBUG] Added {obj_type} #{i+1} ({anomaly_subtype}) to objects_to_place")
+                    elif obj_type in ['klingon', 'romulan']:
+                        # Create enemy object with faction specified
+                        objects_to_place.append(('enemy', {'faction': obj_type}))
+                        log_debug(f"[GENERATE DEBUG] Added enemy ({obj_type}) #{i+1} to objects_to_place")
                     else:
                         objects_to_place.append((obj_type, {}))
                         log_debug(f"[GENERATE DEBUG] Added {obj_type} #{i+1} to objects_to_place")

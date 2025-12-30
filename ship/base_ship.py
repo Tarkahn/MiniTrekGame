@@ -89,9 +89,11 @@ class BaseShip:
             # Sync system_integrity['hull'] with hull_strength for repair system
             self.system_integrity['hull'] = self.hull_strength
             
-            # Check for hull breach (hull reaches zero)
-            if old_hull > 0 and self.hull_strength <= 0:
+            # Check for hull breach (hull reaches zero or near-zero)
+            # Use threshold of 1.0 to account for floating-point damage calculations
+            if old_hull >= 1 and self.hull_strength < 1:
                 print(f"CRITICAL: {self.name} hull breach detected! All systems failing!")
+                self.hull_strength = 0  # Ensure hull is set to exactly 0
                 self._handle_hull_breach()
             elif self.hull_strength > 0:
                 # Hull damage can now penetrate to systems based on hull integrity

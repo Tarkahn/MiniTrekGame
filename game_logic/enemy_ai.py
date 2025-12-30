@@ -1,5 +1,5 @@
 """
-Enemy AI System for Klingon warships.
+Enemy AI System for enemy warships (Klingon, Romulan, etc.).
 
 This module contains the AI behavior logic separated from the EnemyShip class,
 allowing for easier testing, modification, and potential reuse for different
@@ -15,117 +15,139 @@ from data import constants
 class EnemyPersonality:
     """Generates and stores randomized personality parameters for an enemy ship."""
 
-    def __init__(self):
-        """Generate randomized personality parameters for this Klingon warrior."""
+    # Supported factions
+    FACTION_KLINGON = 'klingon'
+    FACTION_ROMULAN = 'romulan'
+
+    def __init__(self, faction='klingon'):
+        """
+        Generate randomized personality parameters based on faction.
+
+        Args:
+            faction: 'klingon' or 'romulan' - determines personality constant ranges
+        """
+        self.faction = faction.lower() if faction else 'klingon'
+
+        # Get the appropriate constant prefix based on faction
+        prefix = self._get_faction_prefix()
+
         # Movement traits
         self.movement_speed = random.uniform(
-            constants.KLINGON_MOVEMENT_SPEED_MIN,
-            constants.KLINGON_MOVEMENT_SPEED_MAX
+            getattr(constants, f'{prefix}_MOVEMENT_SPEED_MIN'),
+            getattr(constants, f'{prefix}_MOVEMENT_SPEED_MAX')
         )
         self.move_distance = random.uniform(
-            constants.KLINGON_MOVE_DISTANCE_MIN,
-            constants.KLINGON_MOVE_DISTANCE_MAX
+            getattr(constants, f'{prefix}_MOVE_DISTANCE_MIN'),
+            getattr(constants, f'{prefix}_MOVE_DISTANCE_MAX')
         )
         self.move_variability = random.uniform(
-            constants.KLINGON_MOVE_VARIABILITY_MIN,
-            constants.KLINGON_MOVE_VARIABILITY_MAX
+            getattr(constants, f'{prefix}_MOVE_VARIABILITY_MIN'),
+            getattr(constants, f'{prefix}_MOVE_VARIABILITY_MAX')
         )
 
         # Combat traits
         self.aggression = random.uniform(
-            constants.KLINGON_AGGRESSION_MIN,
-            constants.KLINGON_AGGRESSION_MAX
+            getattr(constants, f'{prefix}_AGGRESSION_MIN'),
+            getattr(constants, f'{prefix}_AGGRESSION_MAX')
         )
         self.attack_range = random.uniform(
-            constants.KLINGON_ATTACK_RANGE_MIN,
-            constants.KLINGON_ATTACK_RANGE_MAX
+            getattr(constants, f'{prefix}_ATTACK_RANGE_MIN'),
+            getattr(constants, f'{prefix}_ATTACK_RANGE_MAX')
         )
         self.closing_tendency = random.uniform(
-            constants.KLINGON_CLOSING_TENDENCY_MIN,
-            constants.KLINGON_CLOSING_TENDENCY_MAX
+            getattr(constants, f'{prefix}_CLOSING_TENDENCY_MIN'),
+            getattr(constants, f'{prefix}_CLOSING_TENDENCY_MAX')
         )
 
         # Weapon traits
         self.weapon_power = random.uniform(
-            constants.KLINGON_WEAPON_POWER_MIN,
-            constants.KLINGON_WEAPON_POWER_MAX
+            getattr(constants, f'{prefix}_WEAPON_POWER_MIN'),
+            getattr(constants, f'{prefix}_WEAPON_POWER_MAX')
         )
         self.firing_frequency = random.uniform(
-            constants.KLINGON_FIRING_FREQUENCY_MIN,
-            constants.KLINGON_FIRING_FREQUENCY_MAX
+            getattr(constants, f'{prefix}_FIRING_FREQUENCY_MIN'),
+            getattr(constants, f'{prefix}_FIRING_FREQUENCY_MAX')
         )
         self.weapon_accuracy = random.uniform(
-            constants.KLINGON_WEAPON_ACCURACY_MIN,
-            constants.KLINGON_WEAPON_ACCURACY_MAX
+            getattr(constants, f'{prefix}_WEAPON_ACCURACY_MIN'),
+            getattr(constants, f'{prefix}_WEAPON_ACCURACY_MAX')
         )
         self.torpedo_preference = random.uniform(
-            constants.KLINGON_TORPEDO_PREFERENCE_MIN,
-            constants.KLINGON_TORPEDO_PREFERENCE_MAX
+            getattr(constants, f'{prefix}_TORPEDO_PREFERENCE_MIN'),
+            getattr(constants, f'{prefix}_TORPEDO_PREFERENCE_MAX')
         )
 
         # Tactical traits
         self.flanking_tendency = random.uniform(
-            constants.KLINGON_FLANKING_TENDENCY_MIN,
-            constants.KLINGON_FLANKING_TENDENCY_MAX
+            getattr(constants, f'{prefix}_FLANKING_TENDENCY_MIN'),
+            getattr(constants, f'{prefix}_FLANKING_TENDENCY_MAX')
         )
         self.evasion_skill = random.uniform(
-            constants.KLINGON_EVASION_SKILL_MIN,
-            constants.KLINGON_EVASION_SKILL_MAX
+            getattr(constants, f'{prefix}_EVASION_SKILL_MIN'),
+            getattr(constants, f'{prefix}_EVASION_SKILL_MAX')
         )
         self.tactical_patience = random.uniform(
-            constants.KLINGON_TACTICAL_PATIENCE_MIN,
-            constants.KLINGON_TACTICAL_PATIENCE_MAX
+            getattr(constants, f'{prefix}_TACTICAL_PATIENCE_MIN'),
+            getattr(constants, f'{prefix}_TACTICAL_PATIENCE_MAX')
         )
 
         # Defensive traits
         self.retreat_threshold = random.uniform(
-            constants.KLINGON_RETREAT_THRESHOLD_MIN,
-            constants.KLINGON_RETREAT_THRESHOLD_MAX
+            getattr(constants, f'{prefix}_RETREAT_THRESHOLD_MIN'),
+            getattr(constants, f'{prefix}_RETREAT_THRESHOLD_MAX')
         )
         self.shield_priority = random.uniform(
-            constants.KLINGON_SHIELD_PRIORITY_MIN,
-            constants.KLINGON_SHIELD_PRIORITY_MAX
+            getattr(constants, f'{prefix}_SHIELD_PRIORITY_MIN'),
+            getattr(constants, f'{prefix}_SHIELD_PRIORITY_MAX')
         )
         self.damage_avoidance = random.uniform(
-            constants.KLINGON_DAMAGE_AVOIDANCE_MIN,
-            constants.KLINGON_DAMAGE_AVOIDANCE_MAX
+            getattr(constants, f'{prefix}_DAMAGE_AVOIDANCE_MIN'),
+            getattr(constants, f'{prefix}_DAMAGE_AVOIDANCE_MAX')
         )
 
         # Personality traits
         self.courage = random.uniform(
-            constants.KLINGON_COURAGE_MIN,
-            constants.KLINGON_COURAGE_MAX
+            getattr(constants, f'{prefix}_COURAGE_MIN'),
+            getattr(constants, f'{prefix}_COURAGE_MAX')
         )
         self.unpredictability = random.uniform(
-            constants.KLINGON_UNPREDICTABILITY_MIN,
-            constants.KLINGON_UNPREDICTABILITY_MAX
+            getattr(constants, f'{prefix}_UNPREDICTABILITY_MIN'),
+            getattr(constants, f'{prefix}_UNPREDICTABILITY_MAX')
         )
         self.honor_code = random.uniform(
-            constants.KLINGON_HONOR_CODE_MIN,
-            constants.KLINGON_HONOR_CODE_MAX
+            getattr(constants, f'{prefix}_HONOR_CODE_MIN'),
+            getattr(constants, f'{prefix}_HONOR_CODE_MAX')
         )
         self.vengeance_factor = random.uniform(
-            constants.KLINGON_VENGEANCE_FACTOR_MIN,
-            constants.KLINGON_VENGEANCE_FACTOR_MAX
+            getattr(constants, f'{prefix}_VENGEANCE_FACTOR_MIN'),
+            getattr(constants, f'{prefix}_VENGEANCE_FACTOR_MAX')
         )
 
         # Advanced traits
         self.power_management = random.uniform(
-            constants.KLINGON_POWER_MANAGEMENT_MIN,
-            constants.KLINGON_POWER_MANAGEMENT_MAX
+            getattr(constants, f'{prefix}_POWER_MANAGEMENT_MIN'),
+            getattr(constants, f'{prefix}_POWER_MANAGEMENT_MAX')
         )
         self.reaction_time = random.uniform(
-            constants.KLINGON_REACTION_TIME_MIN,
-            constants.KLINGON_REACTION_TIME_MAX
+            getattr(constants, f'{prefix}_REACTION_TIME_MIN'),
+            getattr(constants, f'{prefix}_REACTION_TIME_MAX')
         )
         self.pursuit_persistence = random.uniform(
-            constants.KLINGON_PURSUIT_PERSISTENCE_MIN,
-            constants.KLINGON_PURSUIT_PERSISTENCE_MAX
+            getattr(constants, f'{prefix}_PURSUIT_PERSISTENCE_MIN'),
+            getattr(constants, f'{prefix}_PURSUIT_PERSISTENCE_MAX')
         )
+
+    def _get_faction_prefix(self):
+        """Get the constants prefix for this faction."""
+        if self.faction == 'romulan':
+            return 'ROMULAN'
+        else:
+            return 'KLINGON'  # Default to Klingon
 
     def to_dict(self):
         """Convert personality to dictionary format for backwards compatibility."""
         return {
+            'faction': self.faction,
             'movement_speed': self.movement_speed,
             'move_distance': self.move_distance,
             'move_variability': self.move_variability,

@@ -214,6 +214,9 @@ def perform_enemy_scan(enemy_obj, enemy_id, systems, game_state, enemy_scan_pane
         distance = 0
         bearing = 0
 
+    # Get faction from enemy object
+    enemy_faction = getattr(enemy_obj, 'faction', None) or 'klingon'
+
     # Get the actual EnemyShip instance from the combat manager
     enemy_ship = None
     if player_ship and hasattr(player_ship, 'combat_manager'):
@@ -230,16 +233,24 @@ def perform_enemy_scan(enemy_obj, enemy_id, systems, game_state, enemy_scan_pane
         current_energy = enemy_ship.warp_core_energy
         system_integrity = enemy_ship.system_integrity.copy()
         power_allocation = enemy_ship.power_allocation.copy()
+        enemy_faction = enemy_ship.faction  # Get faction from ship if available
     else:
         # Fallback to legacy random generation if no EnemyShip exists
-        enemy_types = [
-            "Klingon Bird of Prey",
-            "Klingon Warship",
-            "Romulan Warbird",
-            "Gorn Destroyer",
-            "Orion Raider",
-            "Tholian Vessel"
-        ]
+        # Use faction-appropriate ship types
+        if enemy_faction == 'romulan':
+            enemy_types = [
+                "Romulan Warbird",
+                "Romulan Scout",
+                "Romulan D'deridex",
+                "Romulan Valdore"
+            ]
+        else:
+            enemy_types = [
+                "Klingon Bird of Prey",
+                "Klingon Warship",
+                "Klingon D7 Cruiser",
+                "Klingon Vor'cha"
+            ]
         seed = enemy_obj.system_q * 1000 + enemy_obj.system_r
         random.seed(seed)
         enemy_name = random.choice(enemy_types)

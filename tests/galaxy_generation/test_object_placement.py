@@ -1,6 +1,6 @@
 from data.constants import (
     GRID_ROWS, GRID_COLS,
-    NUM_STARS, NUM_PLANETS, NUM_STARBases, NUM_ENEMY_SHIPS, NUM_ANOMALIES,
+    NUM_STARS, NUM_PLANETS, NUM_STARBases, NUM_KLINGON_SHIPS, NUM_ROMULAN_SHIPS, NUM_ANOMALIES,
     MIN_STAR_PLANET_DISTANCE
 )
 from galaxy_generation.object_placement import place_objects, place_objects_by_system
@@ -34,7 +34,10 @@ def test_object_placement():
     assert len(stars) == NUM_STARS, f"Expected {NUM_STARS} stars, got {len(stars)}"
     assert len(planets) == NUM_PLANETS, f"Expected {NUM_PLANETS} planets, got {len(planets)}"
     assert len(objects_by_type.get('starbase', [])) == NUM_STARBases
-    assert len(objects_by_type.get('enemy', [])) == NUM_ENEMY_SHIPS
+    # Enemies are now split between Klingons and Romulans
+    total_enemies = NUM_KLINGON_SHIPS + NUM_ROMULAN_SHIPS
+    actual_enemies = len(objects_by_type.get('klingon', [])) + len(objects_by_type.get('romulan', []))
+    assert actual_enemies == total_enemies, f"Expected {total_enemies} enemies, got {actual_enemies}"
     assert len(objects_by_type.get('anomaly', [])) == NUM_ANOMALIES
     # 5. Player ship is present and unique
     players = objects_by_type.get('player', [])

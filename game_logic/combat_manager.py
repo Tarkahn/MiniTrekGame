@@ -188,20 +188,30 @@ class CombatManager:
     def get_or_create_enemy_ship(self, enemy_obj, player_ship):
         """Get existing static enemy ship instance or create new one"""
         enemy_id = id(enemy_obj)
-        
+
         if enemy_id not in self.enemy_ships:
-            # Create new dynamic EnemyShip instance with randomized personality
+            # Create new dynamic EnemyShip instance with faction-based personality
             position = (enemy_obj.system_q, enemy_obj.system_r) if hasattr(enemy_obj, 'system_q') else (0, 0)
-            
+
+            # Get faction from enemy object (defaults to klingon for backwards compatibility)
+            faction = getattr(enemy_obj, 'faction', None) or 'klingon'
+
+            # Generate faction-appropriate name
+            if faction == 'romulan':
+                ship_name = f"Romulan Warbird R-{enemy_id % 1000}"
+            else:
+                ship_name = f"Klingon Warship K-{enemy_id % 1000}"
+
             self.enemy_ships[enemy_id] = EnemyShip(
-                name=f"Klingon Warship K-{enemy_id % 1000}",  # Give each ship a unique designation
+                name=ship_name,
                 max_shield_strength=constants.ENEMY_SHIELD_CAPACITY,
                 hull_strength=constants.ENEMY_HULL_STRENGTH,
                 energy=1000,
                 max_energy=1000,
-                position=position
+                position=position,
+                faction=faction
             )
-        
+
         return self.enemy_ships[enemy_id]
     
     def update_enemy_ai(self, delta_time, systems, current_system, hex_grid, player_ship):

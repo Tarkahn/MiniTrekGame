@@ -147,25 +147,33 @@ if planet_orbits:
     stars_with_planets = set(orbit['star'] for orbit in planet_orbits)
     log_debug(f"Stars with planets: {stars_with_planets}")
 
-# Debug enemy placement
-enemy_coords = lazy_object_coords.get('enemy', [])
-log_debug(f"Total enemies placed: {len(enemy_coords)}")
-star_systems_with_enemies = [coord for coord in set(enemy_coords) if coord in star_coords]
+# Debug enemy placement - now split by faction
+klingon_coords = lazy_object_coords.get('klingon', [])
+romulan_coords = lazy_object_coords.get('romulan', [])
+all_enemy_coords = klingon_coords + romulan_coords
+log_debug(f"Total enemies placed: {len(all_enemy_coords)} ({len(klingon_coords)} Klingon, {len(romulan_coords)} Romulan)")
+star_systems_with_enemies = [coord for coord in set(all_enemy_coords) if coord in star_coords]
 log_debug(f"Star systems with enemies: {len(star_systems_with_enemies)} out of {len(star_coords)}")
 log_debug(f"First 5 star systems with enemies: {star_systems_with_enemies[:5]}")
-log_debug(f"First 10 enemy coordinates: {enemy_coords[:10]}")
-log_debug(f"Type of lazy_object_coords['enemy']: {type(lazy_object_coords.get('enemy'))}")
+log_debug(f"First 10 Klingon coordinates: {klingon_coords[:10]}")
+log_debug(f"First 10 Romulan coordinates: {romulan_coords[:10]}")
 
 # Log which systems should have enemies
 log_debug("=== SYSTEMS WITH ENEMIES (from placement) ===")
 enemy_system_counts = {}
-for coord in enemy_coords:
-    enemy_system_counts[coord] = enemy_system_counts.get(coord, 0) + 1
-for coord, count in sorted(enemy_system_counts.items())[:10]:
+for coord in klingon_coords:
+    if coord not in enemy_system_counts:
+        enemy_system_counts[coord] = {'klingon': 0, 'romulan': 0}
+    enemy_system_counts[coord]['klingon'] += 1
+for coord in romulan_coords:
+    if coord not in enemy_system_counts:
+        enemy_system_counts[coord] = {'klingon': 0, 'romulan': 0}
+    enemy_system_counts[coord]['romulan'] += 1
+for coord, counts in sorted(enemy_system_counts.items())[:10]:
     is_star = coord in star_coords
     has_planets = any(orbit['star'] == coord for orbit in planet_orbits)
     system_type = "STAR+PLANET" if is_star and has_planets else "STAR" if is_star else "EMPTY"
-    log_debug(f"  {coord}: {count} enemies ({system_type})")
+    log_debug(f"  {coord}: {counts['klingon']} Klingon, {counts['romulan']} Romulan ({system_type})")
 
 # Set initial player position from lazy_object_coords['player'] - will be set after GameState creation
 player_hexes = list(lazy_object_coords['player'])
@@ -852,25 +860,27 @@ try:
             # Ensure we have objects for the current system (generate but don't show until scanned)
             if current_system not in systems:
                 # Debug check before generation
-                expected_enemies = lazy_object_coords.get('enemy', []).count(current_system)
+                expected_klingons = lazy_object_coords.get('klingon', []).count(current_system)
+                expected_romulans = lazy_object_coords.get('romulan', []).count(current_system)
+                expected_enemies = expected_klingons + expected_romulans
                 is_star = current_system in star_coords
                 has_planets = any(orbit['star'] == current_system for orbit in planet_orbits)
                 add_event_log(f"[RENDER GEN] Generating system {current_system}")
                 add_event_log(f"[RENDER GEN] Type: {'STAR+PLANET' if is_star and has_planets else 'STAR' if is_star else 'EMPTY'}")
-                add_event_log(f"[RENDER GEN] Expected enemies: {expected_enemies}")
-                
+                add_event_log(f"[RENDER GEN] Expected enemies: {expected_enemies} ({expected_klingons} Klingon, {expected_romulans} Romulan)")
+
                 # Debug: Check the exact data being passed
                 if expected_enemies > 0:
                     log_debug(f"[RENDER] System {current_system} should have {expected_enemies} enemies")
-                    add_event_log(f"[DEBUG] Checking lazy_object_coords['enemy'] type: {type(lazy_object_coords.get('enemy'))}")
-                    enemy_list = lazy_object_coords.get('enemy', [])
-                    if enemy_list:
-                        add_event_log(f"[DEBUG] Enemy list length: {len(enemy_list)}")
-                        add_event_log(f"[DEBUG] Count of {current_system} in list: {enemy_list.count(current_system)}")
-                        log_debug(f"[RENDER] Enemy list contains {current_system}: {enemy_list.count(current_system)} times")
+                    klingon_list = lazy_object_coords.get('klingon', [])
+                    romulan_list = lazy_object_coords.get('romulan', [])
+                    if klingon_list or romulan_list:
+                        add_event_log(f"[DEBUG] Klingon list length: {len(klingon_list)}, Romulan list length: {len(romulan_list)}")
+                        add_event_log(f"[DEBUG] Count of {current_system}: {klingon_list.count(current_system)} Klingon, {romulan_list.count(current_system)} Romulan")
+                        log_debug(f"[RENDER] Enemies at {current_system}: {klingon_list.count(current_system)} Klingon, {romulan_list.count(current_system)} Romulan")
                     else:
-                        add_event_log(f"[DEBUG] Enemy list is empty or None!")
-                        log_debug(f"[RENDER] ERROR: Enemy list is empty or None!")
+                        add_event_log(f"[DEBUG] Enemy lists are empty!")
+                        log_debug(f"[RENDER] ERROR: Enemy lists are empty!")
                 
                 # Generate objects for this system if they don't exist
                 log_debug(f"[RENDER] Calling generate_system_objects for {current_system}")
@@ -1070,11 +1080,14 @@ try:
                         elif obj.type == 'enemy':
                             # Get current position from dynamic EnemyShip AI or static position
                             render_px, render_py = get_enemy_current_position(obj, hex_grid)
-                            
-                            # Use enemy ship image if available, otherwise fallback to triangle
-                            enemy_img = background_and_star_loader.get_enemy_ship_image()
+
+                            # Get faction from enemy object (defaults to klingon)
+                            enemy_faction = getattr(obj, 'faction', None) or 'klingon'
+
+                            # Use faction-specific ship image if available, otherwise fallback to triangle
+                            enemy_img = background_and_star_loader.get_enemy_ship_image(faction=enemy_faction)
                             if enemy_img:
-                                scaled_enemy = background_and_star_loader.scale_ship_image(enemy_img, hex_grid.radius)
+                                scaled_enemy = background_and_star_loader.scale_ship_image(enemy_img, hex_grid.radius, faction=enemy_faction)
                                 if scaled_enemy:
                                     # Initialize rotation tracking if not exists
                                     if not hasattr(obj, 'current_rotation'):
@@ -1137,19 +1150,23 @@ try:
                                     screen.blit(rotated_enemy, img_rect)
                                 else:
                                     # Fallback to triangle if scaling fails
-                                    color = (255, 0, 0)
+                                    # Romulans are green, Klingons are red
+                                    color = (0, 200, 0) if enemy_faction == 'romulan' else (255, 0, 0)
+                                    size = 12 if enemy_faction == 'romulan' else 8  # Romulans larger
                                     pygame.draw.polygon(screen, color, [
-                                        (int(render_px), int(render_py)-8),
-                                        (int(render_px)-6, int(render_py)+4),
-                                        (int(render_px)+6, int(render_py)+4)
+                                        (int(render_px), int(render_py)-size),
+                                        (int(render_px)-int(size*0.75), int(render_py)+int(size*0.5)),
+                                        (int(render_px)+int(size*0.75), int(render_py)+int(size*0.5))
                                     ])
                             else:
                                 # Fallback to triangle if image not available
-                                color = (255, 0, 0)
+                                # Romulans are green, Klingons are red
+                                color = (0, 200, 0) if enemy_faction == 'romulan' else (255, 0, 0)
+                                size = 12 if enemy_faction == 'romulan' else 8  # Romulans larger
                                 pygame.draw.polygon(screen, color, [
-                                    (int(render_px), int(render_py)-8),
-                                    (int(render_px)-6, int(render_py)+4),
-                                    (int(render_px)+6, int(render_py)+4)
+                                    (int(render_px), int(render_py)-size),
+                                    (int(render_px)-int(size*0.75), int(render_py)+int(size*0.5)),
+                                    (int(render_px)+int(size*0.75), int(render_py)+int(size*0.5))
                                 ])
                         elif obj.type == 'anomaly':
                             # Get anomaly type from props, or use a random one
@@ -1520,9 +1537,12 @@ try:
                     system_ship_anim_y = None
                     add_event_log("Breaking orbit - entered new system")
                 
-                # Store the expected enemy count for later
-                enemy_count_expected = lazy_object_coords.get('enemy', []).count(current_system)
-                
+                # Store the expected enemy count for later (combine both factions)
+                enemy_count_expected = (
+                    lazy_object_coords.get('klingon', []).count(current_system) +
+                    lazy_object_coords.get('romulan', []).count(current_system)
+                )
+
                 # Generate or restore objects for this system
                 # Check if we need to regenerate due to missing enemies
                 need_regeneration = False
@@ -1536,13 +1556,15 @@ try:
                 
                 if current_system not in systems or need_regeneration:
                     # Debug: verify lazy_object_coords is intact
-                    enemy_check = lazy_object_coords.get('enemy', []).count(current_system)
-                    add_event_log(f"[DEBUG] Before generate: enemy count = {enemy_check}")
+                    klingon_check = lazy_object_coords.get('klingon', []).count(current_system)
+                    romulan_check = lazy_object_coords.get('romulan', []).count(current_system)
+                    enemy_check = klingon_check + romulan_check
+                    add_event_log(f"[DEBUG] Before generate: {klingon_check} Klingon, {romulan_check} Romulan")
                     add_event_log(f"[DEBUG] lazy_object_coords keys: {list(lazy_object_coords.keys())}")
-                    log_debug(f"[WIREFRAME] Before generate_system_objects: enemy count = {enemy_check}")
+                    log_debug(f"[WIREFRAME] Before generate_system_objects: {enemy_check} enemies")
                     log_debug(f"[WIREFRAME] lazy_object_coords keys: {list(lazy_object_coords.keys())}")
-                    log_debug(f"[WIREFRAME] lazy_object_coords['enemy'] type: {type(lazy_object_coords.get('enemy', []))}")
-                    log_debug(f"[WIREFRAME] lazy_object_coords['enemy'] length: {len(lazy_object_coords.get('enemy', []))}")
+                    log_debug(f"[WIREFRAME] Klingon list length: {len(lazy_object_coords.get('klingon', []))}")
+                    log_debug(f"[WIREFRAME] Romulan list length: {len(lazy_object_coords.get('romulan', []))}")
                     
                     system_objs = generate_system_objects(
                         current_system[0],
