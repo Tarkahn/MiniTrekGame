@@ -1084,6 +1084,19 @@ try:
                             # Get faction from enemy object (defaults to klingon)
                             enemy_faction = getattr(obj, 'faction', None) or 'klingon'
 
+                            # Check if this is a cloaked Romulan ship
+                            enemy_id = id(obj)
+                            is_cloaked = False
+                            is_flashing = False
+                            if hasattr(player_ship, 'combat_manager') and enemy_id in player_ship.combat_manager.enemy_ships:
+                                enemy_ship = player_ship.combat_manager.enemy_ships[enemy_id]
+                                is_cloaked = getattr(enemy_ship, 'is_cloaked', False)
+                                is_flashing = getattr(enemy_ship, '_is_flashing', False)
+                                # Check is_visible property for rendering decision
+                                if hasattr(enemy_ship, 'is_visible') and not enemy_ship.is_visible:
+                                    # Cloaked and not flashing - skip rendering entirely
+                                    continue
+
                             # Use faction-specific ship image if available, otherwise fallback to triangle
                             enemy_img = background_and_star_loader.get_enemy_ship_image(faction=enemy_faction)
                             if enemy_img:
@@ -1146,8 +1159,24 @@ try:
                                     
                                     # Apply rotation
                                     rotated_enemy = background_and_star_loader.rotate_ship_image(scaled_enemy, obj.current_rotation)
-                                    img_rect = rotated_enemy.get_rect(center=(int(render_px), int(render_py)))
-                                    screen.blit(rotated_enemy, img_rect)
+
+                                    # Apply flashing effect for cloaked ships hit by torpedo
+                                    if is_flashing and enemy_faction == 'romulan':
+                                        # Create a flashing effect by modulating alpha
+                                        flash_surface = rotated_enemy.copy()
+                                        # Flicker between visible and semi-transparent
+                                        import time as time_module
+                                        flicker_speed = 10  # Flickers per second
+                                        flicker = int(time_module.time() * flicker_speed) % 2
+                                        if flicker == 0:
+                                            flash_surface.set_alpha(255)  # Fully visible
+                                        else:
+                                            flash_surface.set_alpha(128)  # Semi-transparent
+                                        img_rect = flash_surface.get_rect(center=(int(render_px), int(render_py)))
+                                        screen.blit(flash_surface, img_rect)
+                                    else:
+                                        img_rect = rotated_enemy.get_rect(center=(int(render_px), int(render_py)))
+                                        screen.blit(rotated_enemy, img_rect)
                                 else:
                                     # Fallback to triangle if scaling fails
                                     # Romulans are green, Klingons are red

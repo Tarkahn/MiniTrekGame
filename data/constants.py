@@ -345,6 +345,20 @@ ROMULAN_LEARNING_RATE_MIN = 0.3     # Adapts to player tactics
 ROMULAN_LEARNING_RATE_MAX = 0.8     # Quick learner - adapts fast
 
 # ====================================================================
+# ROMULAN CLOAKING DEVICE PARAMETERS
+# ====================================================================
+# Romulans are always cloaked unless they raise shields or fire weapons.
+# Cloaked ships cannot be targeted by phasers and don't appear in scans.
+# They briefly decloak when hit by torpedoes or when attacking.
+
+ROMULAN_CLOAK_DECLOAK_ON_SHIELDS = True    # Shields up = decloak automatically
+ROMULAN_CLOAK_DECLOAK_ON_FIRE = True       # Firing weapons = decloak briefly
+ROMULAN_CLOAK_RECLOAK_DELAY = 3.0          # Seconds before recloaking after decloaking
+ROMULAN_CLOAK_FLASH_DURATION = 0.5         # Seconds visible after torpedo hit
+ROMULAN_CLOAK_SHIMMER_ALPHA = 30           # Faint shimmer when cloaked (0-255, lower = less visible)
+ROMULAN_CLOAK_MOVEMENT_SHIMMER = True      # Brief shimmer when moving while cloaked
+
+# ====================================================================
 # PLANET AND STAR CLASSIFICATION DATA
 # ====================================================================
 

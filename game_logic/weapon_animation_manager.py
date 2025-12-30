@@ -216,6 +216,11 @@ class WeaponAnimationManager:
                         # Apply the damage
                         updated_result = self.combat_manager.apply_damage_to_enemy(enemy_ship, fake_combat_result)
 
+                        # Trigger torpedo hit flash for cloaked Romulans
+                        if hasattr(enemy_ship, 'trigger_torpedo_hit_flash') and hasattr(enemy_ship, 'is_cloak_capable'):
+                            if enemy_ship.is_cloak_capable:
+                                enemy_ship.trigger_torpedo_hit_flash()
+
                         ring_hit_results.append({
                             'enemy': enemy,
                             'ring_index': ring_index,
@@ -481,7 +486,12 @@ class WeaponAnimationManager:
         updated_result = self.combat_manager.apply_damage_to_enemy(
             enemy_ship, self.torpedo_combat_result
         )
-        
+
+        # Trigger torpedo hit flash for cloaked Romulans
+        if hasattr(enemy_ship, 'trigger_torpedo_hit_flash') and hasattr(enemy_ship, 'is_cloak_capable'):
+            if enemy_ship.is_cloak_capable:
+                enemy_ship.trigger_torpedo_hit_flash()
+
         # Return explosion event for UI
         result = {
             'target_enemy': self.torpedo_target_enemy,

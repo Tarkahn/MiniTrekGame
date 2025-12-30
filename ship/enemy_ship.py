@@ -50,6 +50,13 @@ class EnemyShip(BaseShip):
         self.max_torpedo_capacity = constants.MAX_TORPEDO_CAPACITY
         self.pending_weapon_animations = []
 
+        # Cloaking device state (Romulans only)
+        self._is_cloaked = self.faction == 'romulan'  # Romulans start cloaked
+        self._cloak_capable = self.faction == 'romulan'  # Only Romulans have cloaking
+        self._decloak_time = 0  # Time when ship decloaked (for recloak delay)
+        self._torpedo_hit_flash_time = 0  # Time when hit by torpedo (for brief flash)
+        self._is_flashing = False  # Whether ship is in torpedo hit flash state
+
         # Initialize AI controller with faction-based personality
         self._personality = EnemyPersonality(faction=self.faction)
         self.ai = EnemyAI(self, self._personality)
@@ -196,6 +203,9 @@ class EnemyShip(BaseShip):
 
         # Update weapon cooldowns
         self._update_weapon_cooldowns()
+
+        # Update cloaking device state (Romulans only)
+        self.update_cloak_state(delta_time)
 
         # Update shield system (regeneration and energy consumption)
         if hasattr(self, 'shield_system') and self.shield_system:
@@ -389,3 +399,127 @@ class EnemyShip(BaseShip):
                     return True
 
         return False
+
+    # ====================================================================
+    # CLOAKING DEVICE SYSTEM (Romulans Only)
+    # ====================================================================
+
+    @property
+    def is_cloaked(self):
+        """Check if ship is currently cloaked."""
+        return self._is_cloaked and self._cloak_capable
+
+    @property
+    def is_cloak_capable(self):
+        """Check if ship has cloaking capability."""
+        return self._cloak_capable
+
+    @property
+    def is_visible(self):
+        """
+        Check if ship should be rendered/scannable.
+        Ship is visible if:
+        - Not cloak capable (Klingons)
+        - Currently decloaked
+        - In torpedo hit flash state
+        """
+        if not self._cloak_capable:
+            return True
+        if not self._is_cloaked:
+            return True
+        if self._is_flashing:
+            return True
+        return False
+
+    def decloak(self, reason="unknown"):
+        """
+        Decloak the ship, making it visible and scannable.
+
+        Args:
+            reason: Why the ship is decloaking (for logging)
+        """
+        if not self._cloak_capable:
+            return
+
+        if self._is_cloaked:
+            self._is_cloaked = False
+            self._decloak_time = time.time()
+            print(f"[ROMULAN] {self.name} DECLOAKING! Reason: {reason}")
+
+    def cloak(self):
+        """
+        Cloak the ship, making it invisible and unscannable.
+        Can only cloak if shields are down.
+        """
+        if not self._cloak_capable:
+            return False
+
+        # Cannot cloak if shields are up
+        if hasattr(self, 'shield_system') and self.shield_system.current_power_level > 0:
+            print(f"[ROMULAN] {self.name} cannot cloak - shields are active!")
+            return False
+
+        if not self._is_cloaked:
+            self._is_cloaked = True
+            self._is_flashing = False
+            print(f"[ROMULAN] {self.name} CLOAKING!")
+        return True
+
+    def trigger_torpedo_hit_flash(self):
+        """
+        Trigger a brief visibility flash when hit by a torpedo.
+        Ship becomes visible for a short duration.
+        """
+        if not self._cloak_capable:
+            return
+
+        self._torpedo_hit_flash_time = time.time()
+        self._is_flashing = True
+        print(f"[ROMULAN] {self.name} hit by torpedo - briefly visible!")
+
+    def update_cloak_state(self, delta_time):
+        """
+        Update cloaking device state each frame.
+        Handles flash timeout and recloak delay.
+        """
+        if not self._cloak_capable:
+            return
+
+        current_time = time.time()
+
+        # Check if flash state should end
+        if self._is_flashing:
+            flash_duration = constants.ROMULAN_CLOAK_FLASH_DURATION
+            if current_time - self._torpedo_hit_flash_time >= flash_duration:
+                self._is_flashing = False
+                # Ship was cloaked, so it stays cloaked after flash
+                if self._is_cloaked:
+                    print(f"[ROMULAN] {self.name} fading back into cloak...")
+
+        # Check if ship can recloak after decloaking
+        if not self._is_cloaked and self._decloak_time > 0:
+            recloak_delay = constants.ROMULAN_CLOAK_RECLOAK_DELAY
+            if current_time - self._decloak_time >= recloak_delay:
+                # Try to recloak (will fail if shields are up)
+                if self.cloak():
+                    self._decloak_time = 0
+
+    def raise_shields(self, power_level=5):
+        """
+        Raise shields, which forces decloak for Romulans.
+
+        Args:
+            power_level: Shield power level to set (0-9)
+        """
+        if hasattr(self, 'shield_system'):
+            # Romulans must decloak when raising shields
+            if self._cloak_capable and self._is_cloaked:
+                self.decloak(reason="raising shields")
+
+            self.shield_system.set_power_level(power_level)
+
+    def lower_shields(self):
+        """Lower shields to power level 0."""
+        if hasattr(self, 'shield_system'):
+            self.shield_system.set_power_level(0)
+            # Romulan can now cloak again after recloak delay

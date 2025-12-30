@@ -222,6 +222,13 @@ def perform_enemy_scan(enemy_obj, enemy_id, systems, game_state, enemy_scan_pane
     if player_ship and hasattr(player_ship, 'combat_manager'):
         enemy_ship = player_ship.combat_manager.get_or_create_enemy_ship(enemy_obj, player_ship)
 
+    # Check if enemy is cloaked - cloaked ships cannot be scanned
+    if enemy_ship and hasattr(enemy_ship, 'is_visible') and not enemy_ship.is_visible:
+        # Ship is cloaked - return without adding scan data
+        add_event_log(f"Sensor reading inconclusive - no contact at bearing {bearing:.0f}")
+        sound_manager.play_sound('scanner')
+        return
+
     # Get actual values from the EnemyShip if available
     if enemy_ship:
         enemy_name = enemy_ship.name

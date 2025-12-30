@@ -414,9 +414,15 @@ class EnemyAI:
         if not self.target:
             return
 
+        # Romulans must decloak to fire weapons
+        if hasattr(self.ship, 'is_cloaked') and self.ship.is_cloaked:
+            self.ship.decloak(reason="firing weapons")
+
         # Check if we should fire a torpedo instead of disruptor
         # Torpedoes are preferred at longer ranges and when torpedo is off cooldown
-        torpedo_off_cooldown = (current_time - self.ship.last_torpedo_fire_time) >= (constants.KLINGON_TORPEDO_COOLDOWN * 1000)
+        # Use faction-specific cooldown
+        torpedo_cooldown = constants.ROMULAN_TORPEDO_COOLDOWN if self.personality.faction == 'romulan' else constants.KLINGON_TORPEDO_COOLDOWN
+        torpedo_off_cooldown = (current_time - self.ship.last_torpedo_fire_time) >= (torpedo_cooldown * 1000)
 
         # Calculate distance to target for weapon selection
         target_pos = getattr(self.target, 'position', None)

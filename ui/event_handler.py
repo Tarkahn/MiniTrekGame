@@ -301,6 +301,15 @@ def _handle_fire_button(ctx: EventContext) -> bool:
     # Fire phasers at selected enemy (only works in system mode)
     if game_state.map_mode == 'system':
         if game_state.combat.selected_enemy is not None:
+            # Check if target is cloaked (cannot target cloaked ships with phasers)
+            selected_enemy = game_state.combat.selected_enemy
+            enemy_id = id(selected_enemy)
+            if hasattr(ctx.player_ship, 'combat_manager') and enemy_id in ctx.player_ship.combat_manager.enemy_ships:
+                enemy_ship = ctx.player_ship.combat_manager.enemy_ships[enemy_id]
+                if hasattr(enemy_ship, 'is_visible') and not enemy_ship.is_visible:
+                    add_event_log("Cannot lock phasers - target is cloaked! Use torpedoes instead.")
+                    return True
+
             player_obj = next((obj for obj in ctx.systems.get(ctx.current_system, [])
                               if obj.type == 'player'), None)
 
@@ -1046,19 +1055,32 @@ def handle_right_click(mx: int, my: int, ctx: EventContext) -> bool:
                 break
 
     if found_enemy is not None:
-        # Enemy found - set phaser target (tracks enemy) AND torpedo target (fixed hex)
-        enemy_id = ctx.get_enemy_id(found_enemy)
-        game_state.combat.selected_enemy = found_enemy
+        # Check if enemy is cloaked - cloaked enemies can't be targeted with phasers
+        enemy_obj_id = id(found_enemy)
+        is_cloaked = False
+        if hasattr(ctx.player_ship, 'combat_manager') and enemy_obj_id in ctx.player_ship.combat_manager.enemy_ships:
+            enemy_ship = ctx.player_ship.combat_manager.enemy_ships[enemy_obj_id]
+            if hasattr(enemy_ship, 'is_visible') and not enemy_ship.is_visible:
+                is_cloaked = True
 
-        if enemy_id in game_state.combat.targeted_enemies:
-            add_event_log(f"Switching target to {enemy_id}")
+        if is_cloaked:
+            # Cloaked enemy - can fire torpedoes at hex but can't target with phasers
+            add_event_log(f"Torpedo target set at ({q}, {r}) - sensor contact unclear")
+            add_event_log("Cloaked vessel detected! Phasers cannot lock on.")
         else:
-            game_state.combat.targeted_enemies[enemy_id] = found_enemy
-            add_event_log(f"Target {enemy_id} acquired at ({q}, {r})")
+            # Enemy found and visible - set phaser target (tracks enemy) AND torpedo target (fixed hex)
+            enemy_id = ctx.get_enemy_id(found_enemy)
+            game_state.combat.selected_enemy = found_enemy
 
-        add_event_log(f"Torpedo target locked at ({q}, {r})")
-        ctx.perform_enemy_scan(found_enemy, enemy_id)
-        sound_manager.play_sound('scanner')
+            if enemy_id in game_state.combat.targeted_enemies:
+                add_event_log(f"Switching target to {enemy_id}")
+            else:
+                game_state.combat.targeted_enemies[enemy_id] = found_enemy
+                add_event_log(f"Target {enemy_id} acquired at ({q}, {r})")
+
+            add_event_log(f"Torpedo target locked at ({q}, {r})")
+            ctx.perform_enemy_scan(found_enemy, enemy_id)
+            sound_manager.play_sound('scanner')
     else:
         # No enemy - set torpedo target only (phasers need an enemy)
         add_event_log(f"Torpedo target set at ({q}, {r}) - no enemy for phasers")
