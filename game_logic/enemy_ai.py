@@ -192,6 +192,8 @@ class EnemyAI:
     STATE_RETREAT = "retreat"
     STATE_FLANK = "flank"
     STATE_REPAIR = "repair"
+    STATE_STEALTH = "stealth"  # Romulan cloaked stalking state
+    STATE_AMBUSH = "ambush"    # Romulan hit-and-run attack
 
     def __init__(self, ship, personality=None):
         """
@@ -227,6 +229,12 @@ class EnemyAI:
         # Preferred combat range
         self.preferred_range = self.personality.attack_range
 
+        # Romulan stealth tracking
+        self._ambush_shots_fired = 0  # Count shots in current ambush
+        self._max_ambush_shots = 2    # Max shots before recloaking
+        self._last_ambush_time = 0    # When last ambush started
+        self._stealth_reposition_time = 0  # When last repositioned while cloaked
+
     def set_target(self, target):
         """Set the player ship as the target."""
         self.target = target
@@ -243,12 +251,26 @@ class EnemyAI:
 
         self.under_attack = True
         self.last_attacked_time = current_time
-        self.state = self.STATE_ATTACK
+
+        # Romulans react differently - they may flee and recloak instead of attacking
+        if self.personality.faction == 'romulan':
+            # Romulans are more cautious - retreat and recloak if taking damage
+            health_pct = self.ship.get_health_percentage()
+            if health_pct < 0.7 or random.random() < self.personality.damage_avoidance:
+                self.state = self.STATE_RETREAT
+                print(f"[ROMULAN] {self.ship.name} taking damage - retreating to recloak!")
+            else:
+                # Counter-attack briefly then retreat
+                self.state = self.STATE_AMBUSH
+                self._ambush_shots_fired = 0
+                print(f"[ROMULAN] {self.ship.name} counter-attacking!")
+        else:
+            # Klingons attack aggressively
+            self.state = self.STATE_ATTACK
+            print(f"[KLINGON] {self.ship.name} under attack! Engaging with extreme prejudice!")
 
         # Reset decision cooldown for immediate response
         self.last_decision_time = 0
-
-        print(f"[KLINGON] {self.ship.name} under attack! Engaging with extreme prejudice!")
 
     def record_damage(self, amount):
         """Record damage taken for AI reactions."""
@@ -308,6 +330,13 @@ class EnemyAI:
         distance_to_player = self._get_distance_to_target()
         health_percentage = self.ship.get_health_percentage()
 
+        # Romulan-specific stealth tactics
+        if self.personality.faction == 'romulan':
+            self._make_romulan_tactical_decision(current_time, distance_to_player, health_percentage)
+            return
+
+        # --- Klingon tactics below (aggressive) ---
+
         # Determine if we should retreat
         if health_percentage < self.personality.retreat_threshold:
             if (self.personality.courage < 0.5 or
@@ -336,6 +365,70 @@ class EnemyAI:
             else:
                 self.state = self.STATE_PATROL
 
+    def _make_romulan_tactical_decision(self, current_time, distance_to_player, health_percentage):
+        """
+        Romulan-specific tactical decisions emphasizing stealth and ambush tactics.
+        Romulans prefer to stay cloaked, stalk their prey, and only attack when advantageous.
+        """
+        is_cloaked = hasattr(self.ship, 'is_cloaked') and self.ship.is_cloaked
+
+        # Priority 1: If health is low, retreat and stay cloaked
+        if health_percentage < self.personality.retreat_threshold:
+            self.state = self.STATE_RETREAT
+            return
+
+        # Priority 2: If we just finished an ambush, go back to stealth
+        if self.state == self.STATE_AMBUSH and self._ambush_shots_fired >= self._max_ambush_shots:
+            self.state = self.STATE_STEALTH
+            self._ambush_shots_fired = 0
+            print(f"[ROMULAN] {self.ship.name} ambush complete - returning to stealth")
+            return
+
+        # Priority 3: If cloaked, prefer stealth stalking
+        if is_cloaked:
+            # Check if conditions are right for an ambush
+            ambush_conditions_met = (
+                distance_to_player <= self.preferred_range and  # In attack range
+                health_percentage > 0.5 and  # Healthy enough to fight
+                random.random() < self.personality.aggression  # Personality check
+            )
+
+            if ambush_conditions_met:
+                # Wait for tactical patience before attacking
+                if random.random() > self.personality.tactical_patience:
+                    self.state = self.STATE_AMBUSH
+                    self._ambush_shots_fired = 0
+                    self._last_ambush_time = current_time
+                    print(f"[ROMULAN] {self.ship.name} initiating ambush!")
+                else:
+                    # Continue stalking, waiting for better opportunity
+                    self.state = self.STATE_STEALTH
+            else:
+                # Stay in stealth, reposition as needed
+                self.state = self.STATE_STEALTH
+
+        # Priority 4: If not cloaked, try to recloak or retreat
+        else:
+            # If shields are down, we can try to cloak
+            if hasattr(self.ship, 'shield_system') and self.ship.shield_system.current_power_level == 0:
+                # Check if recloak delay has passed (handled by update_cloak_state)
+                # For now, retreat to a safe distance while waiting to recloak
+                if distance_to_player < self.preferred_range:
+                    self.state = self.STATE_RETREAT
+                else:
+                    self.state = self.STATE_STEALTH  # Will cloak when timer allows
+            else:
+                # Shields are up, can't cloak - fight or flee
+                if health_percentage < 0.5:
+                    # Lower shields and flee
+                    if hasattr(self.ship, 'lower_shields'):
+                        self.ship.lower_shields()
+                    self.state = self.STATE_RETREAT
+                else:
+                    # Brief engagement then disengage
+                    self.state = self.STATE_AMBUSH
+                    self._ambush_shots_fired = 0
+
     def _execute_state(self, current_time):
         """Execute actions based on current AI state."""
         if self.state == self.STATE_ATTACK:
@@ -348,6 +441,10 @@ class EnemyAI:
             self._execute_flank(current_time)
         elif self.state == self.STATE_REPAIR:
             self._execute_repair(current_time)
+        elif self.state == self.STATE_STEALTH:
+            self._execute_stealth(current_time)
+        elif self.state == self.STATE_AMBUSH:
+            self._execute_ambush(current_time)
         else:
             self._execute_patrol(current_time)
 
@@ -376,7 +473,15 @@ class EnemyAI:
         """Defensive retreat behavior."""
         self.move_away_from_target()
 
-        # Occasionally fire while retreating if brave enough
+        # Romulan-specific retreat: lower shields to allow recloaking
+        if self.personality.faction == 'romulan':
+            # Lower shields to enable cloaking
+            if hasattr(self.ship, 'lower_shields'):
+                self.ship.lower_shields()
+            # Don't fire while retreating - focus on escaping and cloaking
+            return
+
+        # Klingons occasionally fire while retreating if brave enough
         if (self.personality.courage > 0.3 and
                 random.random() < self.personality.firing_frequency * 0.5 and
                 self.ship.weapon_cooldown <= 0):
@@ -392,6 +497,53 @@ class EnemyAI:
     def _execute_patrol(self, current_time):
         """Random patrol movement."""
         self.move_randomly()
+
+    def _execute_stealth(self, current_time):
+        """
+        Romulan stealth behavior - cloaked stalking and repositioning.
+        The ship stays cloaked, moves to advantageous positions, and waits for ambush opportunities.
+        """
+        distance = self._get_distance_to_target()
+
+        # If too far from target, move closer while cloaked
+        if distance > self.preferred_range * 2:
+            self.move_toward_target()
+        # If too close, back off to maintain safe ambush distance
+        elif distance < self.preferred_range * 0.5:
+            self.move_away_from_target()
+        # At good distance - flank to get better position
+        elif random.random() < self.personality.flanking_tendency:
+            self.move_to_flank_position()
+        # Otherwise, occasional repositioning
+        elif random.random() < 0.1:  # 10% chance to reposition
+            self.move_randomly()
+
+        # No weapons fire while in stealth - we're waiting for ambush
+
+    def _execute_ambush(self, current_time):
+        """
+        Romulan ambush behavior - brief, devastating attack then retreat.
+        Decloaks, fires 1-2 shots, then retreats and recloaks.
+        """
+        # Fire weapon if ready
+        if self.ship.weapon_cooldown <= 0:
+            self._fire_weapon(current_time)
+            self._ambush_shots_fired += 1
+            print(f"[ROMULAN] {self.ship.name} ambush shot {self._ambush_shots_fired}/{self._max_ambush_shots}")
+
+        # Check if ambush is complete
+        if self._ambush_shots_fired >= self._max_ambush_shots:
+            # Ambush complete - retreat and prepare to recloak
+            self.state = self.STATE_RETREAT
+            print(f"[ROMULAN] {self.ship.name} ambush complete - disengaging!")
+            return
+
+        # During ambush, try to maintain optimal attack range
+        distance = self._get_distance_to_target()
+        if distance > self.preferred_range:
+            self.move_toward_target()
+        elif distance < self.preferred_range * 0.5:
+            self.move_away_from_target()
 
     def _get_distance_to_target(self):
         """Calculate distance to the target player."""
