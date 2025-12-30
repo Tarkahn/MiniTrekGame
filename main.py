@@ -51,8 +51,9 @@ def main():
     
     try:
         # Import and run the wireframe game
+        # The game loop runs at module import time and calls sys.exit() when done
         from ui import wireframe
-        wireframe.run_game()
+        del wireframe  # Explicitly mark as used (game runs on import)
     except ImportError as e:
         print(f"\nError: Failed to import game modules: {e}")
         print("Please ensthis ure all dependencies are installed:")

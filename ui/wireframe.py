@@ -604,7 +604,9 @@ try:
             # Check if target destroyed
             if combat_result['target_destroyed']:
                 add_event_log("Enemy ship destroyed!")
-                systems[current_system].remove(phaser_event['target_enemy'])
+                # Safely remove enemy from system (may already be removed by splash damage)
+                if phaser_event['target_enemy'] in systems[current_system]:
+                    systems[current_system].remove(phaser_event['target_enemy'])
                 if enemy_id:
                     enemy_scan_panel.remove_scan_result(enemy_id)
                 game_state.combat.selected_enemy = None
@@ -641,7 +643,9 @@ try:
             # Check if target destroyed
             if combat_result['target_destroyed']:
                 add_event_log("Enemy ship destroyed!")
-                systems[current_system].remove(target_enemy)
+                # Safely remove enemy from system (may already be removed by splash damage)
+                if target_enemy in systems[current_system]:
+                    systems[current_system].remove(target_enemy)
                 if enemy_id:
                     enemy_scan_panel.remove_scan_result(enemy_id)
                 game_state.combat.selected_enemy = None

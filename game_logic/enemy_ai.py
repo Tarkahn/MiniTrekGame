@@ -566,6 +566,12 @@ class EnemyAI:
         if not self.target:
             return
 
+        # Check if ship has enough energy for weapon fire
+        energy_cost = constants.PHASER_ENERGY_COST
+        if hasattr(self.ship, 'warp_core_energy') and self.ship.warp_core_energy < energy_cost:
+            # Not enough energy to fire - skip this shot
+            return
+
         # Romulans must decloak to fire weapons
         if hasattr(self.ship, 'is_cloaked') and self.ship.is_cloaked:
             self.ship.decloak(reason="firing weapons")
@@ -606,6 +612,7 @@ class EnemyAI:
             self.ship.torpedo_cooldown = constants.KLINGON_TORPEDO_COOLDOWN * 1000
             self.ship.last_torpedo_fire_time = current_time
             self.ship.torpedo_count -= 1  # Decrement torpedo count
+            # Torpedoes use ammo, not energy (minimal energy cost)
         else:
             weapon_animation = {
                 'type': 'disruptor',
@@ -616,8 +623,36 @@ class EnemyAI:
             }
             self.ship.weapon_cooldown = constants.ENEMY_WEAPON_COOLDOWN_SECONDS * 1000
             self.ship.last_weapon_fire_time = current_time
+            # Consume energy for disruptor fire
+            if hasattr(self.ship, 'consume_energy'):
+                self.ship.consume_energy(energy_cost)
 
         self.ship.pending_weapon_animations.append(weapon_animation)
+
+    def _consume_movement_energy(self, hex_distance):
+        """
+        Consume energy for movement, similar to player ship.
+
+        Args:
+            hex_distance: Number of hexes to move
+
+        Returns:
+            True if enough energy was available, False otherwise
+        """
+        if not hasattr(self.ship, 'warp_core_energy'):
+            return True  # No energy system, allow movement
+
+        energy_cost = hex_distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+        if self.ship.warp_core_energy < energy_cost:
+            # Not enough energy - can't move
+            return False
+
+        if hasattr(self.ship, 'consume_energy'):
+            self.ship.consume_energy(energy_cost)
+        else:
+            self.ship.warp_core_energy -= energy_cost
+
+        return True
 
     def move_toward_target(self):
         """Move closer to the target using hex-based navigation."""
@@ -651,6 +686,10 @@ class EnemyAI:
             if random.random() < self.personality.unpredictability:
                 new_hex_x += random.randint(-1, 1)
                 new_hex_y += random.randint(-1, 1)
+
+            # Check if we have enough energy for this movement
+            if not self._consume_movement_energy(move_distance):
+                return  # Not enough energy to move
 
             self.ship.start_movement((new_hex_x, new_hex_y))
 
@@ -689,6 +728,10 @@ class EnemyAI:
             new_hex_x += random.randint(-1, 1)
             new_hex_y += random.randint(-1, 1)
 
+        # Check if we have enough energy for this movement
+        if not self._consume_movement_energy(move_distance):
+            return  # Not enough energy to move
+
         self.ship.start_movement((new_hex_x, new_hex_y))
 
     def move_to_flank_position(self):
@@ -724,6 +767,13 @@ class EnemyAI:
         new_hex_x = target_hex[0] + flank_dx
         new_hex_y = target_hex[1] + flank_dy
 
+        # Calculate actual movement distance for energy cost
+        move_distance = max(abs(new_hex_x - current_hex[0]), abs(new_hex_y - current_hex[1]))
+        if move_distance > 0:
+            # Check if we have enough energy for this movement
+            if not self._consume_movement_energy(move_distance):
+                return  # Not enough energy to move
+
         self.ship.start_movement((new_hex_x, new_hex_y))
 
     def move_randomly(self):
@@ -741,11 +791,19 @@ class EnemyAI:
 
         direction = random.choice(directions)
 
+        # Skip if staying in place
+        if direction == (0, 0):
+            return
+
         max_move_distance = int(self.personality.move_distance)
         move_distance = random.randint(1, max_move_distance)
 
         new_hex_x = current_hex[0] + (direction[0] * move_distance)
         new_hex_y = current_hex[1] + (direction[1] * move_distance)
+
+        # Check if we have enough energy for this movement
+        if not self._consume_movement_energy(move_distance):
+            return  # Not enough energy to move
 
         self.ship.start_movement((new_hex_x, new_hex_y))
 

@@ -45,6 +45,7 @@ class BaseShip:
         self.ship_state = "operational"  # operational, hull_breach, warp_core_breach, destroyed
         self.hull_breach_start_time = None
         self.warp_core_breach_countdown = 0
+        self._last_breach_countdown_second = -1  # Track last printed countdown second
 
     def apply_damage(self, raw_damage: int, attacker_ship=None):
         """
@@ -290,11 +291,14 @@ class BaseShip:
             # Countdown to warp core breach
             if self.warp_core_breach_countdown > 0:
                 self.warp_core_breach_countdown -= delta_time_seconds
-                
-                # Warning messages at key intervals
-                if self.warp_core_breach_countdown <= 5 and int(self.warp_core_breach_countdown) % 1 == 0:
-                    print(f"WARP CORE BREACH IN {int(self.warp_core_breach_countdown)} SECONDS!")
-                
+
+                # Warning messages only when the second changes (not every frame)
+                current_second = int(self.warp_core_breach_countdown)
+                if current_second != self._last_breach_countdown_second and current_second >= 0:
+                    self._last_breach_countdown_second = current_second
+                    if current_second <= 5:
+                        print(f"WARP CORE BREACH IN {current_second} SECONDS!")
+
                 # Warp core breach occurs
                 if self.warp_core_breach_countdown <= 0:
                     self._trigger_warp_core_breach()
@@ -360,7 +364,8 @@ class BaseShip:
         self.ship_state = "operational"
         self.hull_breach_start_time = None
         self.warp_core_breach_countdown = 0
-        
+        self._last_breach_countdown_second = -1
+
         print(f"{self.name} fully repaired at starbase.")
 
     def allocate_power(self, system: str, power_level: int) -> bool:
