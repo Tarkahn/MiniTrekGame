@@ -18,6 +18,7 @@ class CombatManager:
     def __init__(self):
         self.enemy_ships = {}  # Maps enemy object ID to static EnemyShip instances
         self.weapon_animation_manager = None  # Will be set by game initialization
+        self.comms_manager = None  # Communications manager for enemy messages
 
     def calculate_phaser_damage(self, attacker, target, distance):
         """
@@ -136,6 +137,9 @@ class CombatManager:
         if damage > 0 and hasattr(target_enemy, 'apply_damage'):
             # Use the full damage system (same as player ship)
             target_enemy.apply_damage(damage)
+            # Trigger enemy communication when they take significant damage
+            if self.comms_manager and damage >= 10:
+                self.comms_manager.on_enemy_damaged(target_enemy)
         elif damage > 0:
             # Fallback for objects without apply_damage (legacy MapObjects)
             shield_damage_legacy = min(damage, target_enemy.shields) if hasattr(target_enemy, 'shields') else 0
@@ -309,11 +313,23 @@ class CombatManager:
             self.weapon_animation_manager.enemy_fire_torpedo(
                 enemy_ship, enemy_pixel_pos, player_pixel_pos, base_damage
             )
+            # Enemy taunts when firing torpedoes (more dramatic weapon)
+            if self.comms_manager:
+                self.comms_manager.send_enemy_message(enemy_ship, 'threat')
         elif weapon_type == 'disruptor' or weapon_type == 'phaser':
             self.weapon_animation_manager.enemy_fire_phaser(
                 enemy_ship, enemy_pixel_pos, player_pixel_pos, base_damage, weapon_type
             )
+            # Occasional taunt when firing phasers/disruptors
+            if self.comms_manager:
+                import random
+                if random.random() < 0.15:  # 15% chance
+                    self.comms_manager.send_enemy_message(enemy_ship, 'taunt')
     
     def set_weapon_animation_manager(self, manager):
         """Set the weapon animation manager reference"""
         self.weapon_animation_manager = manager
+
+    def set_comms_manager(self, manager):
+        """Set the communications manager reference for enemy messages"""
+        self.comms_manager = manager

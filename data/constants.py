@@ -5,7 +5,7 @@ STARTING_ENERGY = 1000  # Initial ship energy capacity.
 # SHIELD_REGEN_RATE = 10  # Shield regeneration rate (per minute).
 # Removed in favor of SHIELD_REGEN_RATE_PER_SECOND
 WARP_ENERGY_COST = 3  # Energy per sector hex during warp (reduced for gameplay balance)
-SHIELD_ABSORPTION_PER_LEVEL = 10  # Damage absorbed by shields per level.
+SHIELD_ABSORPTION_PER_LEVEL = 12  # Damage absorbed by shields per level (increased for better torpedo defense)
 PHASER_COOLDOWN_SECONDS = 4  # PRD: 4s real-time cooldown (reduced for better gameplay)
 KLINGON_DISRUPTOR_DAMAGE_MIN = 30  # Minimum Klingon disruptor damage.
 KLINGON_DISRUPTOR_DAMAGE_MAX = 50  # Maximum Klingon disruptor damage.
@@ -65,7 +65,7 @@ PLAYER_TORPEDO_ACCURACY = 0.85  # Player torpedo accuracy (85%)
 
 # Torpedo Proximity Explosion System
 TORPEDO_EXPLOSION_RADIUS = 8  # Maximum hex distance for explosion damage
-TORPEDO_DIRECT_HIT_MULTIPLIER = 1.25  # Reduced from 2.0 - direct hit is powerful but not instant-kill
+TORPEDO_DIRECT_HIT_MULTIPLIER = 1.15  # Reduced from 1.25 - direct hit bonus without one-shot potential
 TORPEDO_PROXIMITY_DAMAGE_FALLOFF = 0.6  # Damage falloff per hex distance (linear)
 TORPEDO_EXPLOSION_ANIMATION_WAVES = 10  # Number of expanding visual waves for larger effect
 TORPEDO_EXPLOSION_WAVE_DELAY = 50  # Milliseconds between wave expansions
@@ -79,7 +79,7 @@ SENSOR_ENERGY_COST_PER_SCAN = 5  # Backward compatibility
 # Enemy Ship Weaponry (Balanced for fair gameplay)
 ENEMY_PHASER_POWER = 4  # Reduced from 40 to 4 for balanced combat (same as player base)
 ENEMY_PHASER_RANGE = 7
-ENEMY_TORPEDO_POWER = 60  # Reduced from 80 to 60 for balance
+ENEMY_TORPEDO_POWER = 40  # Reduced from 60 to 40 - prevents one-shot kills at moderate shields
 ENEMY_TORPEDO_SPEED = 10
 ENEMY_TORPEDO_ACCURACY = 0.7
 ENEMY_WEAPON_COOLDOWN_SECONDS = 3.0  # Minimum seconds between enemy weapon shots

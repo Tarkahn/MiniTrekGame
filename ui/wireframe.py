@@ -44,6 +44,7 @@ from galaxy_generation.map_object import MapObject
 from ui.sound_manager import get_sound_manager
 from ui.ship_status_display import create_ship_status_display
 from ui.enemy_scan_panel import create_enemy_scan_panel
+from ui.communications_display import create_communications_display, EnemyCommunicationsManager
 from ship.player_ship import PlayerShip
 from game.game_state import GameState
 from data import constants
@@ -111,16 +112,30 @@ event_log_height = HEIGHT - STATUS_HEIGHT
 # Create the hex grid
 hex_grid = create_hex_grid_for_map(map_x, map_y, map_size, 20, 20)
 
-# Create ship status display
+# Create ship status display (takes upper portion)
 ship_status_x = map_size + event_log_width  # To the right of event log
 ship_status_y = STATUS_HEIGHT
 ship_status_width = SHIP_STATUS_WIDTH
-ship_status_height = HEIGHT - STATUS_HEIGHT
+COMMS_DISPLAY_HEIGHT = 200  # Height for communications display
+ship_status_height = HEIGHT - STATUS_HEIGHT - COMMS_DISPLAY_HEIGHT
 ship_status_display = create_ship_status_display(
-    ship_status_x, ship_status_y, 
-    ship_status_width, ship_status_height, 
+    ship_status_x, ship_status_y,
+    ship_status_width, ship_status_height,
     font
 )
+
+# Create communications display (below ship status)
+comms_display_x = ship_status_x
+comms_display_y = ship_status_y + ship_status_height
+comms_display_width = SHIP_STATUS_WIDTH
+comms_display = create_communications_display(
+    comms_display_x, comms_display_y,
+    comms_display_width, COMMS_DISPLAY_HEIGHT,
+    font
+)
+
+# Create communications manager for enemy messages
+comms_manager = EnemyCommunicationsManager(comms_display)
 
 # Create enemy scan panel to the right of ship status
 enemy_scan_x = ship_status_x + SHIP_STATUS_WIDTH  # To the right of ship status
@@ -204,6 +219,44 @@ game_state = GameState()
 
 # Initialize weapon animation manager with combat systems
 game_state.initialize_weapon_system(player_ship.combat_manager, player_ship)
+
+# Connect communications manager to combat manager for enemy messages
+player_ship.combat_manager.set_comms_manager(comms_manager)
+
+# Configure LLM for dynamic enemy communications (optional)
+# Load API key from environment variable or .env file
+def load_openai_api_key():
+    """Load OpenAI API key from environment or .env file."""
+    # First check environment variable
+    api_key = os.environ.get('OPENAI_API_KEY')
+    if api_key and api_key != 'paste-your-key-here':
+        return api_key
+
+    # Try to load from .env file
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('OPENAI_API_KEY=') and not line.startswith('#'):
+                        key = line.split('=', 1)[1].strip()
+                        if key and key != 'paste-your-key-here':
+                            return key
+        except Exception as e:
+            print(f"[COMMS] Error reading .env file: {e}")
+    return None
+
+openai_api_key = load_openai_api_key()
+if openai_api_key:
+    comms_manager.configure_llm(
+        api_key=openai_api_key,
+        endpoint="https://api.openai.com/v1/chat/completions",
+        model="gpt-3.5-turbo"  # Fast and cheap, or use "gpt-4" for better quality
+    )
+    print("[COMMS] LLM-powered enemy communications enabled!")
+else:
+    print("[COMMS] No API key found - using pre-written messages (set OPENAI_API_KEY in .env file)")
 
 # Set initial state from player position
 game_state.current_system = (ship_q, ship_r)
@@ -466,6 +519,8 @@ event_ctx.button_labels = button_labels
 event_ctx.map_rect = None  # Set inside game loop
 event_ctx.ship_status_display = ship_status_display
 event_ctx.enemy_scan_panel = enemy_scan_panel
+event_ctx.comms_display = comms_display
+event_ctx.comms_manager = comms_manager
 event_ctx.sound_manager = sound_manager
 event_ctx.star_coords = star_coords
 event_ctx.lazy_object_coords = lazy_object_coords
@@ -2144,6 +2199,9 @@ try:
 
         # Draw ship status display
         ship_status_display.draw(screen, player_ship)
+
+        # Draw communications display
+        comms_display.draw(screen)
 
         # Draw enemy scan panel with targeted enemy highlighting
         targeted_enemy_id = None
