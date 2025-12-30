@@ -79,11 +79,12 @@ class AnimatedImage:
 
 
 class BackgroundAndStarLoader:
-    """Manages loading and scaling of background, star, and planet images."""
-    
+    """Manages loading and scaling of background, star, planet, and anomaly images."""
+
     def __init__(self):
         self.star_images = {}
         self.planet_images = {}
+        self.anomaly_images = {}
         self.starbase_image = None
         self.player_ship_image = None
         self.enemy_ship_image = None
@@ -201,7 +202,42 @@ class BackgroundAndStarLoader:
             logging.info(f"[PLANETS] Loaded {len(self.planet_images)} planet images for maximum variety")
         else:
             logging.warning(f"[PLANETS] Planets directory not found: {planets_dir}")
-    
+
+        # Load anomaly images (supports .jpg, .jpeg, .png, .bmp, .gif, .webp)
+        anomalies_dir = os.path.join(assets_dir, 'anomalies')
+        if os.path.exists(anomalies_dir):
+            # Support multiple image formats
+            anomaly_files = []
+            for ext in ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.gif', '*.webp']:
+                anomaly_files.extend(glob.glob(os.path.join(anomalies_dir, ext)))
+
+            for anomaly_file in anomaly_files:
+                anomaly_name = os.path.splitext(os.path.basename(anomaly_file))[0]
+                file_ext = os.path.splitext(anomaly_file)[1].lower()
+                # Skip if we already have this anomaly (prefer .webp over .jpg)
+                if anomaly_name in self.anomaly_images:
+                    continue
+                try:
+                    if file_ext == '.gif':
+                        # Load as animated image
+                        anomaly_speed = 1.5  # Slightly slower than original
+                        animated_image = AnimatedImage(anomaly_file, speed_multiplier=anomaly_speed)
+                        if animated_image.frames:
+                            self.anomaly_images[anomaly_name] = animated_image
+                            logging.debug(f"[ANOMALIES] Loaded animated anomaly: {anomaly_name}")
+                        else:
+                            logging.error(f"[ANOMALIES] Failed to load animated anomaly: {anomaly_file}")
+                    else:
+                        # Load as static image
+                        image = pygame.image.load(anomaly_file)
+                        self.anomaly_images[anomaly_name] = image
+                        logging.debug(f"[ANOMALIES] Loaded anomaly image: {anomaly_name} ({file_ext})")
+                except Exception as e:
+                    logging.error(f"[ANOMALIES] Failed to load {anomaly_file}: {e}")
+            logging.info(f"[ANOMALIES] Loaded {len(self.anomaly_images)} anomaly images")
+        else:
+            logging.warning(f"[ANOMALIES] Anomalies directory not found: {anomalies_dir}")
+
     def get_scaled_background(self, width, height):
         """Get background image scaled to fit the map area."""
         if self.background_image and (self.scaled_background is None or 
@@ -263,7 +299,45 @@ class BackgroundAndStarLoader:
             target_size = int(base_size * size_multiplier)
             return pygame.transform.scale(image, (target_size, target_size))
         return None
-    
+
+    def get_random_anomaly_image(self):
+        """Get a random anomaly image (handles both static and animated)."""
+        if self.anomaly_images:
+            anomaly_obj = random.choice(list(self.anomaly_images.values()))
+            if isinstance(anomaly_obj, AnimatedImage):
+                return anomaly_obj.get_current_frame()
+            return anomaly_obj
+        return None
+
+    def get_anomaly_image_by_name(self, name):
+        """Get a specific anomaly image by name (handles both static and animated)."""
+        anomaly_obj = self.anomaly_images.get(name)
+        if isinstance(anomaly_obj, AnimatedImage):
+            return anomaly_obj.get_current_frame()
+        return anomaly_obj
+
+    def get_anomaly_names(self):
+        """Get list of all available anomaly image names."""
+        return list(self.anomaly_images.keys())
+
+    def scale_anomaly_image(self, image, base_radius, size_multiplier=1.5):
+        """Scale anomaly image to appropriate size.
+
+        Args:
+            image: The anomaly image to scale
+            base_radius: The hex grid radius
+            size_multiplier: Size multiplier (default 1.5 for medium visibility)
+
+        Returns:
+            Scaled pygame surface
+        """
+        if image:
+            # Anomalies are slightly larger than planets for visual impact
+            base_size = base_radius * 1.2
+            target_size = int(base_size * size_multiplier)
+            return pygame.transform.scale(image, (target_size, target_size))
+        return None
+
     def get_starbase_image(self):
         """Get the starbase image."""
         return self.starbase_image

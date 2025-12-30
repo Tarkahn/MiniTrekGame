@@ -465,6 +465,14 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, planet_o
         )
         for _ in range(starbase_count):
             objects_to_place.append(('starbase', {}))
+    # List of available anomaly types (matching image filenames in assets/anomalies)
+    anomaly_types = [
+        'blackHole', 'superMassiveBlackHole', 'protoStar', 'superNova1', 'superNova2',
+        'tTauriStar', 'wolfRayet', 'magnetar', 'quasar', 'wormHole1', 'wormHole2',
+        'whiteHole', 'cosmicString', 'einsteinRosenBridge', 'timeDialationField',
+        'kugelblitz', 'dysonSwarm', 'nexus'
+    ]
+
     # Add all other objects (no per-system limit)
     for obj_type in ['enemy', 'anomaly', 'player']:
         if obj_type in lazy_object_coords:
@@ -473,7 +481,7 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, planet_o
                 enemy_list = lazy_object_coords[obj_type]
                 log_debug(f"[GENERATE DEBUG] Enemy list type: {type(enemy_list)}")
                 log_debug(f"[GENERATE DEBUG] Enemy list length: {len(enemy_list) if enemy_list else 'None'}")
-                
+
                 # Check if the coordinate matches
                 coord_to_check = (q, r)
                 count = 0
@@ -482,7 +490,7 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, planet_o
                         if coord == coord_to_check:
                             count += 1
                             log_debug(f"[GENERATE DEBUG] Found match at index {i}: {coord} == {coord_to_check}")
-                
+
                 if count > 0:
                     log_debug(f"[GENERATE] System ({q}, {r}) should have {count} enemies")
                 else:
@@ -494,12 +502,18 @@ def generate_system_objects(q, r, lazy_object_coords, star_coords=None, planet_o
             else:
                 # Other types are sets
                 count = sum(1 for coord in lazy_object_coords[obj_type] if coord == (q, r))
-            
+
             if count > 0:
                 log_debug(f"[GENERATE] Adding {count} {obj_type} objects to system ({q}, {r})")
                 for i in range(count):
-                    objects_to_place.append((obj_type, {}))
-                    log_debug(f"[GENERATE DEBUG] Added {obj_type} #{i+1} to objects_to_place")
+                    if obj_type == 'anomaly':
+                        # Assign a random anomaly type
+                        anomaly_subtype = random.choice(anomaly_types)
+                        objects_to_place.append((obj_type, {'anomaly_type': anomaly_subtype}))
+                        log_debug(f"[GENERATE DEBUG] Added {obj_type} #{i+1} ({anomaly_subtype}) to objects_to_place")
+                    else:
+                        objects_to_place.append((obj_type, {}))
+                        log_debug(f"[GENERATE DEBUG] Added {obj_type} #{i+1} to objects_to_place")
     # Debug: show what we're about to place
     log_debug(f"[GENERATE DEBUG] objects_to_place has {len(objects_to_place)} items")
     obj_summary = {}

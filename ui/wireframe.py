@@ -35,6 +35,7 @@ from ui.enemy_popups import (create_enemy_popup as _create_enemy_popup,
                               get_enemy_id as _get_enemy_id)
 from ui.scan_functions import (perform_planet_scan as _perform_planet_scan,
                                 perform_star_scan as _perform_star_scan,
+                                perform_anomaly_scan as _perform_anomaly_scan,
                                 perform_enemy_scan as _perform_enemy_scan,
                                 get_enemy_current_position as _get_enemy_current_position,
                                 update_enemy_scan_positions as _update_enemy_scan_positions,
@@ -412,6 +413,15 @@ def perform_star_scan(star_q, star_r):
     current_scanned_image = star_image
 
 
+def perform_anomaly_scan(anomaly_obj):
+    """Perform a detailed scan of an anomaly and display results."""
+    global current_scanned_object, current_scanned_image
+    scan_data, anomaly_image = _perform_anomaly_scan(anomaly_obj, current_system,
+                                                      add_event_log, sound_manager)
+    current_scanned_object = scan_data
+    current_scanned_image = anomaly_image
+
+
 def add_event_log(message):
     # Split on newlines and handle each part
     for line in message.split('\n'):
@@ -461,6 +471,7 @@ event_ctx.create_enemy_popup = create_enemy_popup
 event_ctx.perform_enemy_scan = perform_enemy_scan
 event_ctx.perform_planet_scan = perform_planet_scan
 event_ctx.perform_star_scan = perform_star_scan
+event_ctx.perform_anomaly_scan = perform_anomaly_scan
 event_ctx.get_enemy_id = get_enemy_id
 event_ctx.get_enemy_current_position = get_enemy_current_position
 event_ctx.is_hex_blocked = is_hex_blocked
@@ -528,13 +539,15 @@ try:
         # Update ship systems and enemy AI continuously 
         delta_time = clock.get_time() / 1000.0  # Convert milliseconds to seconds
         
-        # Update player ship shield system (energy consumption, regeneration)
-        if hasattr(player_ship, 'shield_system'):
-            player_ship.shield_system.update(delta_time)
-
-        # Update player ship repair system (if repairs are active)
-        if hasattr(player_ship, 'update_repairs'):
-            player_ship.update_repairs(delta_time)
+        # Update player ship systems (shields, energy regeneration, repairs)
+        if hasattr(player_ship, 'update'):
+            player_ship.update(delta_time)
+        else:
+            # Fallback for older code structure
+            if hasattr(player_ship, 'shield_system'):
+                player_ship.shield_system.update(delta_time)
+            if hasattr(player_ship, 'update_repairs'):
+                player_ship.update_repairs(delta_time)
 
         # Update player ship critical state (hull breach, warp core breach countdown)
         if hasattr(player_ship, 'update_critical_state') and player_ship.ship_state != "operational":
@@ -734,7 +747,7 @@ try:
                         if obj.star_image:
                             # Scale image if not already done or if radius changed
                             if obj.scaled_star_image is None:
-                                obj.scaled_star_image = background_and_star_loader.scale_star_image(obj.star_image, hex_grid.radius * 3.6)
+                                obj.scaled_star_image = background_and_star_loader.scale_star_image(obj.star_image, hex_grid.radius * 4.5)
                             
                             if obj.scaled_star_image:
                                 # Center the image
@@ -745,12 +758,12 @@ try:
                                 # Fallback to circle if image scaling failed
                                 if not hasattr(obj, 'color'):
                                     obj.color = get_star_color()
-                                pygame.draw.circle(screen, obj.color, (int(center_x), int(center_y)), int(hex_grid.radius * 3.6))
+                                pygame.draw.circle(screen, obj.color, (int(center_x), int(center_y)), int(hex_grid.radius * 4.5))
                         else:
                             # Fallback to circle if no image available
                             if not hasattr(obj, 'color'):
                                 obj.color = get_star_color()
-                            pygame.draw.circle(screen, obj.color, (int(center_x), int(center_y)), int(hex_grid.radius * 3.6))
+                            pygame.draw.circle(screen, obj.color, (int(center_x), int(center_y)), int(hex_grid.radius * 4.5))
 
         # Draw the hex grid with conditional transparency based on map mode
         # Sector map: More visible for fog of war navigation, System map: Barely visible for clean aesthetics
@@ -793,22 +806,45 @@ try:
                                 grid_size=hex_grid.cols
                             )
                             systems[starbase_coord] = starbase_objects
-                
+
+                # Ensure anomaly systems are generated for sector map display (for testing)
+                if 'anomaly' in lazy_object_coords:
+                    for anomaly_coord in lazy_object_coords['anomaly']:
+                        if anomaly_coord not in systems:
+                            # Generate the missing anomaly system
+                            from galaxy_generation.object_placement import generate_system_objects
+                            anomaly_objects = generate_system_objects(
+                                anomaly_coord[0], anomaly_coord[1],
+                                lazy_object_coords,
+                                star_coords=star_coords,
+                                planet_orbits=planet_orbits,
+                                grid_size=hex_grid.cols
+                            )
+                            systems[anomaly_coord] = anomaly_objects
+
                 # NOTE: Don't add planet coordinates - they orbit around stars, they don't have their own systems
                 green_dots_drawn = 0
                 for q, r in occupied_hexes:
                     px, py = hex_grid.get_hex_center(q, r)
                     
-                    # Check if this system contains a starbase - use light green if so
+                    # Check if this system contains a starbase or anomaly
                     system_has_starbase = False
+                    system_has_anomaly = False
                     system_objects = systems.get((q, r), [])
                     for obj in system_objects:
                         if obj.type == 'starbase':
                             system_has_starbase = True
-                            break
-                    
+                        elif obj.type == 'anomaly':
+                            system_has_anomaly = True
+
                     # Draw dot with appropriate color
-                    dot_color = (144, 238, 144) if system_has_starbase else (100, 100, 130)  # Light green for starbase, default for others
+                    # Light green for starbase, purple/magenta for anomaly, default gray for others
+                    if system_has_starbase:
+                        dot_color = (144, 238, 144)  # Light green
+                    elif system_has_anomaly:
+                        dot_color = (180, 0, 255)  # Purple/magenta for anomalies
+                    else:
+                        dot_color = (100, 100, 130)  # Default gray
                     pygame.draw.circle(
                         screen, dot_color, (int(px), int(py)), 6
                     )
@@ -1116,8 +1152,27 @@ try:
                                     (int(render_px)+6, int(render_py)+4)
                                 ])
                         elif obj.type == 'anomaly':
-                            color = (255, 0, 255)
-                            pygame.draw.circle(screen, color, (int(px), int(py)), 5)
+                            # Get anomaly type from props, or use a random one
+                            anomaly_type = obj.props.get('anomaly_type', None)
+                            if anomaly_type:
+                                anomaly_img = background_and_star_loader.get_anomaly_image_by_name(anomaly_type)
+                            else:
+                                anomaly_img = background_and_star_loader.get_random_anomaly_image()
+
+                            if anomaly_img:
+                                # Scale anomaly image - make them LARGE and dangerous looking
+                                # Stars are sized at radius * 4.5 * 4 = radius * 18
+                                # Anomalies should be 2x star size, so use multiplier of 30 (1.2 * 30 = 36)
+                                scaled_anomaly = background_and_star_loader.scale_anomaly_image(anomaly_img, hex_grid.radius, 30.0)
+                                if scaled_anomaly:
+                                    # Center the image on the hex position
+                                    img_rect = scaled_anomaly.get_rect(center=(int(px), int(py)))
+                                    screen.blit(scaled_anomaly, img_rect)
+                            else:
+                                # Fallback to magenta circle if image not available
+                                # Match the scaled anomaly size (2x star size)
+                                color = (255, 0, 255)
+                                pygame.draw.circle(screen, color, (int(px), int(py)), int(hex_grid.radius * 4.5 * 2))
                         elif obj.type == 'player':
                             # Only draw player ship if it's not destroyed
                             if hasattr(player_ship, 'ship_state') and player_ship.ship_state == "destroyed":
@@ -1381,29 +1436,59 @@ try:
                 start_x, start_y = hex_grid.get_hex_center(ship_q, ship_r)
             end_x, end_y = hex_grid.get_hex_center(game_state.animation.dest_q, game_state.animation.dest_r)
             t = min(elapsed / game_state.animation.move_duration_ms, 1.0)
-            game_state.animation.ship_anim_x = start_x + (end_x - start_x) * t
-            game_state.animation.ship_anim_y = start_y + (end_y - start_y) * t
+            new_x = start_x + (end_x - start_x) * t
+            new_y = start_y + (end_y - start_y) * t
+
+            # Calculate distance traveled this frame and deduct energy continuously
+            if game_state.animation.last_anim_x is not None and game_state.animation.last_anim_y is not None:
+                frame_distance = math.hypot(new_x - game_state.animation.last_anim_x,
+                                           new_y - game_state.animation.last_anim_y)
+                game_state.animation.accumulated_pixel_distance += frame_distance
+
+                # Convert accumulated pixel distance to hex distance and deduct energy
+                hex_size_pixels = hex_grid.radius * 1.5  # Approximate hex size
+                hex_distance_traveled = game_state.animation.accumulated_pixel_distance / hex_size_pixels
+
+                # Deduct energy for each full hex traveled
+                if hex_distance_traveled >= 1.0:
+                    hexes_to_charge = int(hex_distance_traveled)
+                    base_energy_cost = hexes_to_charge * constants.WARP_ENERGY_COST
+                    energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
+                    player_ship.consume_energy(energy_cost)
+                    # Subtract the charged distance from accumulated
+                    game_state.animation.accumulated_pixel_distance -= hexes_to_charge * hex_size_pixels
+
+            # Update position tracking
+            game_state.animation.last_anim_x = new_x
+            game_state.animation.last_anim_y = new_y
+            game_state.animation.ship_anim_x = new_x
+            game_state.animation.ship_anim_y = new_y
+
             if t >= 1.0:
                 # Arrived at destination
                 game_state.animation.ship_anim_x, game_state.animation.ship_anim_y = end_x, end_y
-                
-                # Calculate and consume energy for the warp travel
-                dx = abs(game_state.animation.dest_q - ship_q)
-                dy = abs(game_state.animation.dest_r - ship_r)
-                distance = max(dx, dy)
-                base_energy_cost = constants.WARP_INITIATION_COST + (distance * constants.WARP_ENERGY_COST)
-                energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
-                player_ship.consume_energy(energy_cost)
-                
+
+                # Deduct any remaining accumulated distance as final energy cost
+                if game_state.animation.accumulated_pixel_distance > 0:
+                    hex_size_pixels = hex_grid.radius * 1.5
+                    remaining_hexes = game_state.animation.accumulated_pixel_distance / hex_size_pixels
+                    if remaining_hexes >= 0.5:  # Charge for partial hex if at least half
+                        base_energy_cost = constants.WARP_ENERGY_COST
+                        energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
+                        player_ship.consume_energy(energy_cost)
+                    game_state.animation.accumulated_pixel_distance = 0.0
+
                 ship_q, ship_r = game_state.animation.dest_q, game_state.animation.dest_r
                 game_state.animation.ship_moving = False
                 game_state.animation.move_start_time = None
-                
+                game_state.animation.last_anim_x = None
+                game_state.animation.last_anim_y = None
+
                 # Stop movement sound when warp completes
                 sound_manager.stop_movement_sound()
                 trajectory_start_x, trajectory_start_y = None, None  # Reset trajectory tracking
-                logging.info(f"[MOVE] Ship arrived at ({ship_q}, {ship_r}), consumed {energy_cost} energy")
-                add_event_log(f"Arrived at sector ({ship_q}, {ship_r}) - Energy: {player_ship.warp_core_energy}/{player_ship.max_warp_core_energy}")
+                logging.info(f"[MOVE] Ship arrived at ({ship_q}, {ship_r})")
+                add_event_log(f"Arrived at sector ({ship_q}, {ship_r}) - Energy: {int(player_ship.warp_core_energy)}/{int(player_ship.max_warp_core_energy)}")
                 # Check if there's a system here (star or any lazy object, but not individual planets)
                 system_here = (
                     (ship_q, ship_r) in star_coords or
@@ -1631,30 +1716,60 @@ try:
                         start_x, start_y = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
                     end_x, end_y = hex_grid.get_hex_center(system_dest_q, system_dest_r)
                     t = min(elapsed / system_move_duration_ms, 1.0)
-                    system_ship_anim_x = start_x + (end_x - start_x) * t
-                    system_ship_anim_y = start_y + (end_y - start_y) * t
+                    new_sys_x = start_x + (end_x - start_x) * t
+                    new_sys_y = start_y + (end_y - start_y) * t
+
+                    # Calculate distance traveled this frame and deduct energy continuously
+                    if game_state.animation.system_last_anim_x is not None and game_state.animation.system_last_anim_y is not None:
+                        frame_distance = math.hypot(new_sys_x - game_state.animation.system_last_anim_x,
+                                                   new_sys_y - game_state.animation.system_last_anim_y)
+                        game_state.animation.system_accumulated_pixel_distance += frame_distance
+
+                        # Convert accumulated pixel distance to hex distance and deduct energy
+                        hex_size_pixels = hex_grid.radius * 1.5  # Approximate hex size
+                        hex_distance_traveled = game_state.animation.system_accumulated_pixel_distance / hex_size_pixels
+
+                        # Deduct energy for each full hex traveled
+                        if hex_distance_traveled >= 1.0:
+                            hexes_to_charge = int(hex_distance_traveled)
+                            base_energy_cost = hexes_to_charge * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+                            energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
+                            player_ship.consume_energy(energy_cost)
+                            # Subtract the charged distance from accumulated
+                            game_state.animation.system_accumulated_pixel_distance -= hexes_to_charge * hex_size_pixels
+
+                    # Update position tracking
+                    game_state.animation.system_last_anim_x = new_sys_x
+                    game_state.animation.system_last_anim_y = new_sys_y
+                    system_ship_anim_x = new_sys_x
+                    system_ship_anim_y = new_sys_y
+
                     if t >= 1.0:
                         # Arrived at destination
                         system_ship_anim_x, system_ship_anim_y = end_x, end_y
-                        
-                        # Calculate and consume energy for the impulse movement
-                        dx = abs(system_dest_q - player_obj.system_q)
-                        dy = abs(system_dest_r - player_obj.system_r)
-                        distance = max(dx, dy)
-                        base_energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
-                        energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
-                        player_ship.consume_energy(energy_cost)
-                        
+
+                        # Deduct any remaining accumulated distance as final energy cost
+                        if game_state.animation.system_accumulated_pixel_distance > 0:
+                            hex_size_pixels = hex_grid.radius * 1.5
+                            remaining_hexes = game_state.animation.system_accumulated_pixel_distance / hex_size_pixels
+                            if remaining_hexes >= 0.5:  # Charge for partial hex if at least half
+                                base_energy_cost = constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
+                                energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
+                                player_ship.consume_energy(energy_cost)
+                            game_state.animation.system_accumulated_pixel_distance = 0.0
+
                         player_obj.system_q = system_dest_q
                         player_obj.system_r = system_dest_r
                         system_ship_moving = False
                         system_move_start_time = None
-                        
+                        game_state.animation.system_last_anim_x = None
+                        game_state.animation.system_last_anim_y = None
+
                         # Stop movement sound when impulse completes
                         sound_manager.stop_movement_sound()
                         system_trajectory_start_x, system_trajectory_start_y = None, None  # Reset system trajectory tracking
-                        add_event_log(f"Arrived at system hex ({system_dest_q}, {system_dest_r}) - Energy: {player_ship.warp_core_energy}/{player_ship.max_warp_core_energy}")
-                        print(f"System ship arrived at hex ({system_dest_q}, {system_dest_r}), consumed {energy_cost} energy")
+                        add_event_log(f"Arrived at system hex ({system_dest_q}, {system_dest_r}) - Energy: {int(player_ship.warp_core_energy)}/{int(player_ship.max_warp_core_energy)}")
+                        print(f"System ship arrived at hex ({system_dest_q}, {system_dest_r})")
                         
                         # Check for starbase docking at this hex
                         system_objects = systems.get(current_system, [])

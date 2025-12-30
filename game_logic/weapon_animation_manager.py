@@ -634,7 +634,7 @@ class WeaponAnimationManager:
     def enemy_fire_torpedo(self, enemy_ship, start_pos, target_pos, damage):
         """
         Start an enemy torpedo animation targeting the player.
-        
+
         Args:
             enemy_ship: Enemy ship object firing
             start_pos: Starting position in pixels (enemy position)
@@ -642,16 +642,20 @@ class WeaponAnimationManager:
             damage: Damage amount to apply when torpedo hits
         """
         import pygame
-        
+
         # Calculate torpedo flight time
         distance_pixels = math.hypot(target_pos[0] - start_pos[0], target_pos[1] - start_pos[1])
         flight_time = (distance_pixels / self.enemy_torpedo_speed) * 1000  # Convert to milliseconds
-        
+        explosion_duration = 1200  # ms - Duration for explosion animation
+
         # Create enemy torpedo animation
         animation = {
             'type': 'torpedo',
-            'start_time': pygame.time.get_ticks(),  # Use pygame time consistently
-            'duration': flight_time,
+            'state': 'traveling',  # 'traveling' or 'exploding'
+            'start_time': pygame.time.get_ticks(),
+            'flight_duration': flight_time,
+            'explosion_duration': explosion_duration,
+            'explosion_start_time': None,
             'enemy_ship': enemy_ship,
             'start_pos': start_pos,
             'target_pos': target_pos,
@@ -659,8 +663,13 @@ class WeaponAnimationManager:
             'damage': damage,
             'applied': False
         }
-        
+
         self.enemy_torpedo_animations.append(animation)
+
+        # Play enemy torpedo sound
+        from ui.sound_manager import get_sound_manager
+        sound_manager = get_sound_manager()
+        sound_manager.play_sound('torpedo')  # Reuse torpedo sound
     
     def update_enemy_animations(self, current_time_ms):
         """
@@ -687,24 +696,48 @@ class WeaponAnimationManager:
         # Update enemy torpedo animations
         for animation in self.enemy_torpedo_animations[:]:  # Copy list to avoid modification during iteration
             elapsed = current_time_ms - animation['start_time']
-            progress = elapsed / animation['duration']
-            
-            if progress >= 1.0:
-                # Torpedo hits target - apply damage
-                if not animation['applied']:
-                    self.player_ship.apply_damage(animation['damage'], animation['enemy_ship'])
-                    animation['applied'] = True
-                
-                # Remove completed animation
-                self.enemy_torpedo_animations.remove(animation)
+
+            # Handle state-based animation
+            if animation.get('state') == 'traveling':
+                flight_duration = animation.get('flight_duration', animation.get('duration', 1000))
+                progress = elapsed / flight_duration
+
+                if progress >= 1.0:
+                    # Torpedo reached target - transition to explosion
+                    animation['state'] = 'exploding'
+                    animation['explosion_start_time'] = current_time_ms
+                    animation['current_pos'] = animation['target_pos']
+
+                    # Play explosion sound
+                    from ui.sound_manager import get_sound_manager
+                    sound_manager = get_sound_manager()
+                    sound_manager.play_sound('explosion')
+
+                    # Mark that we need to check for damage (will be done in draw phase with current player pos)
+                    animation['damage_check_pending'] = True
+                else:
+                    # Update torpedo position during flight
+                    start_x, start_y = animation['start_pos']
+                    target_x, target_y = animation['target_pos']
+
+                    current_x = start_x + (target_x - start_x) * progress
+                    current_y = start_y + (target_y - start_y) * progress
+                    animation['current_pos'] = (current_x, current_y)
+
+            elif animation.get('state') == 'exploding':
+                # Check if explosion animation is complete
+                explosion_elapsed = current_time_ms - animation['explosion_start_time']
+                explosion_duration = animation.get('explosion_duration', 1200)
+
+                if explosion_elapsed >= explosion_duration:
+                    # Remove completed animation
+                    self.enemy_torpedo_animations.remove(animation)
             else:
-                # Update torpedo position during flight
-                start_x, start_y = animation['start_pos']
-                target_x, target_y = animation['target_pos']
-                
-                current_x = start_x + (target_x - start_x) * progress
-                current_y = start_y + (target_y - start_y) * progress
-                animation['current_pos'] = (current_x, current_y)
+                # Legacy handling for animations without state (backwards compatibility)
+                # Upgrade to new state-based system
+                animation['state'] = 'traveling'
+                animation['flight_duration'] = animation.get('duration', 1000)
+                animation['explosion_duration'] = 1200
     
     def draw_enemy_weapon_animations(self, screen, current_time_ms, hex_grid=None, player_render_pos=None):
         """
@@ -762,18 +795,186 @@ class WeaponAnimationManager:
                 if alpha > 0:
                     pygame.draw.line(screen, color[:3], start_pos, target_pos, thickness)
         
-        # Draw enemy torpedo animations
+        # Draw enemy torpedo animations with distinct red/crimson style
         for animation in self.enemy_torpedo_animations:
-            elapsed = current_time_ms - animation['start_time']
-            progress = elapsed / animation['duration']
-            
-            if 0 <= progress <= 1.0:
-                current_pos = animation['current_pos']
-                
-                # Draw red enemy torpedo (different from player's blue/green)
-                pygame.draw.circle(screen, (255, 100, 100), (int(current_pos[0]), int(current_pos[1])), 3)
-                # Add red glow effect
-                pygame.draw.circle(screen, (255, 150, 150, 100), (int(current_pos[0]), int(current_pos[1])), 6, 2)
+            current_pos = animation['current_pos']
+            state = animation.get('state', 'traveling')
+
+            if state == 'traveling':
+                # Draw TARGET INDICATOR at the torpedo's destination
+                # This warns the player where the torpedo is aimed
+                target_x, target_y = animation['target_pos']
+                target_x, target_y = int(target_x), int(target_y)
+
+                # Pulsing effect for target reticle
+                pulse = abs(math.sin(current_time_ms / 150.0))
+                reticle_alpha = int(100 + pulse * 80)  # Pulsing transparency
+
+                # Calculate time remaining for urgency indication
+                flight_duration = animation.get('flight_duration', 1000)
+                elapsed = current_time_ms - animation['start_time']
+                progress = min(1.0, elapsed / flight_duration)
+                time_remaining_ratio = 1.0 - progress
+
+                # Reticle shrinks as torpedo approaches (more urgent)
+                base_radius = 40
+                reticle_radius = int(base_radius * (0.5 + time_remaining_ratio * 0.5))
+
+                # Color becomes more intense (brighter red) as torpedo approaches
+                red_intensity = int(150 + (1.0 - time_remaining_ratio) * 105)
+                reticle_color = (red_intensity, 30, 30)
+
+                # Draw outer targeting circle
+                pygame.draw.circle(screen, reticle_color, (target_x, target_y), reticle_radius, 2)
+
+                # Draw inner crosshairs
+                crosshair_size = int(reticle_radius * 0.6)
+                pygame.draw.line(screen, reticle_color,
+                    (target_x - crosshair_size, target_y),
+                    (target_x + crosshair_size, target_y), 2)
+                pygame.draw.line(screen, reticle_color,
+                    (target_x, target_y - crosshair_size),
+                    (target_x, target_y + crosshair_size), 2)
+
+                # Draw corner brackets for tactical look
+                bracket_size = int(reticle_radius * 0.3)
+                bracket_offset = reticle_radius - 5
+                # Top-left bracket
+                pygame.draw.line(screen, reticle_color,
+                    (target_x - bracket_offset, target_y - bracket_offset),
+                    (target_x - bracket_offset + bracket_size, target_y - bracket_offset), 2)
+                pygame.draw.line(screen, reticle_color,
+                    (target_x - bracket_offset, target_y - bracket_offset),
+                    (target_x - bracket_offset, target_y - bracket_offset + bracket_size), 2)
+                # Top-right bracket
+                pygame.draw.line(screen, reticle_color,
+                    (target_x + bracket_offset, target_y - bracket_offset),
+                    (target_x + bracket_offset - bracket_size, target_y - bracket_offset), 2)
+                pygame.draw.line(screen, reticle_color,
+                    (target_x + bracket_offset, target_y - bracket_offset),
+                    (target_x + bracket_offset, target_y - bracket_offset + bracket_size), 2)
+                # Bottom-left bracket
+                pygame.draw.line(screen, reticle_color,
+                    (target_x - bracket_offset, target_y + bracket_offset),
+                    (target_x - bracket_offset + bracket_size, target_y + bracket_offset), 2)
+                pygame.draw.line(screen, reticle_color,
+                    (target_x - bracket_offset, target_y + bracket_offset),
+                    (target_x - bracket_offset, target_y + bracket_offset - bracket_size), 2)
+                # Bottom-right bracket
+                pygame.draw.line(screen, reticle_color,
+                    (target_x + bracket_offset, target_y + bracket_offset),
+                    (target_x + bracket_offset - bracket_size, target_y + bracket_offset), 2)
+                pygame.draw.line(screen, reticle_color,
+                    (target_x + bracket_offset, target_y + bracket_offset),
+                    (target_x + bracket_offset, target_y + bracket_offset - bracket_size), 2)
+
+                # Draw menacing red/orange enemy torpedo projectile
+                # Distinct from player's white/yellow torpedo
+                tx, ty = int(current_pos[0]), int(current_pos[1])
+
+                # Pulsing effect based on time
+                pulse = abs(math.sin(current_time_ms / 100.0))
+
+                # Outer crimson glow (larger, semi-transparent)
+                glow_radius = int(10 + pulse * 3)
+                pygame.draw.circle(screen, (180, 30, 30), (tx, ty), glow_radius, 3)
+
+                # Middle orange ring
+                pygame.draw.circle(screen, (255, 100, 0), (tx, ty), 7, 2)
+
+                # Inner red core
+                pygame.draw.circle(screen, (255, 50, 50), (tx, ty), 5)
+
+                # Bright center highlight
+                pygame.draw.circle(screen, (255, 200, 150), (tx, ty), 2)
+
+                # Draw trajectory line from torpedo to target (faint)
+                pygame.draw.line(screen, (100, 30, 30), (tx, ty), (target_x, target_y), 1)
+
+            elif state == 'exploding':
+                # Check for damage based on actual player position (only once when explosion starts)
+                if animation.get('damage_check_pending') and not animation.get('applied'):
+                    explosion_center = current_pos
+                    damage_radius = 120  # pixels - same as visual max_radius
+
+                    # Get current player position
+                    if player_render_pos:
+                        player_pos = player_render_pos
+                    elif hex_grid and self.player_ship:
+                        player_hex_pos = getattr(self.player_ship, 'position', (10, 10))
+                        player_pos = hex_grid.get_hex_center(player_hex_pos[0], player_hex_pos[1])
+                    else:
+                        player_pos = None
+
+                    if player_pos:
+                        # Calculate distance from explosion to player
+                        dx = player_pos[0] - explosion_center[0]
+                        dy = player_pos[1] - explosion_center[1]
+                        distance = math.hypot(dx, dy)
+
+                        # Only apply damage if player is within explosion radius
+                        if distance <= damage_radius:
+                            # Damage falls off with distance (quadratic falloff)
+                            distance_ratio = distance / damage_radius
+                            damage_multiplier = max(0, 1.0 - (distance_ratio * distance_ratio))
+                            actual_damage = int(animation['damage'] * damage_multiplier)
+
+                            if actual_damage > 0:
+                                self.player_ship.apply_damage(actual_damage, animation['enemy_ship'])
+
+                    animation['applied'] = True
+                    animation['damage_check_pending'] = False
+
+                # Draw distinctive enemy torpedo explosion
+                # Uses crimson/red expanding rings (vs player's white/yellow/orange)
+                explosion_elapsed = current_time_ms - animation['explosion_start_time']
+                explosion_duration = animation.get('explosion_duration', 1200)
+                explosion_progress = min(1.0, explosion_elapsed / explosion_duration)
+
+                ex, ey = int(current_pos[0]), int(current_pos[1])
+
+                # Draw multiple expanding crimson rings
+                num_rings = 6
+                max_radius = 120  # Maximum explosion radius
+
+                for ring_idx in range(num_rings):
+                    # Stagger ring appearance
+                    ring_delay = ring_idx * 80  # ms between each ring
+                    ring_elapsed = explosion_elapsed - ring_delay
+
+                    if ring_elapsed > 0:
+                        # Calculate ring properties
+                        ring_progress = min(1.0, ring_elapsed / (explosion_duration * 0.7))
+                        ring_radius = int(10 + ring_progress * max_radius)
+
+                        # Fade out as ring expands
+                        ring_alpha = int(255 * (1.0 - ring_progress))
+
+                        if ring_alpha > 0:
+                            # Color gradient: bright crimson center to dark red outer
+                            if ring_idx == 0:
+                                color = (255, 100, 50)   # Orange-red center
+                            elif ring_idx == 1:
+                                color = (255, 50, 50)    # Bright red
+                            elif ring_idx == 2:
+                                color = (200, 30, 30)    # Crimson
+                            elif ring_idx == 3:
+                                color = (150, 20, 50)    # Dark crimson
+                            else:
+                                color = (100, 10, 30)    # Deep maroon
+
+                            # Draw ring with thickness decreasing as it expands
+                            thickness = max(1, int(4 * (1.0 - ring_progress)))
+                            pygame.draw.circle(screen, color, (ex, ey), ring_radius, thickness)
+
+                # Draw central flash at start of explosion
+                if explosion_progress < 0.3:
+                    flash_intensity = 1.0 - (explosion_progress / 0.3)
+                    flash_radius = int(15 + explosion_progress * 30)
+                    flash_alpha = int(200 * flash_intensity)
+                    if flash_alpha > 0:
+                        pygame.draw.circle(screen, (255, 200, 100), (ex, ey), flash_radius)
+                        pygame.draw.circle(screen, (255, 255, 200), (ex, ey), int(flash_radius * 0.5))
 
     def stop_all_animations(self):
         """Force stop all weapon animations (emergency cleanup)."""

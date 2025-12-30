@@ -58,6 +58,10 @@ class EnemyPersonality:
             constants.KLINGON_WEAPON_ACCURACY_MIN,
             constants.KLINGON_WEAPON_ACCURACY_MAX
         )
+        self.torpedo_preference = random.uniform(
+            constants.KLINGON_TORPEDO_PREFERENCE_MIN,
+            constants.KLINGON_TORPEDO_PREFERENCE_MAX
+        )
 
         # Tactical traits
         self.flanking_tendency = random.uniform(
@@ -379,25 +383,61 @@ class EnemyAI:
     def should_fire_weapon(self):
         """Determine if we should fire a weapon this turn."""
         base_firing_chance = self.personality.firing_frequency
-        firing_chance_per_frame = base_firing_chance * 0.005
+        # Increased multiplier for more aggressive Klingon behavior (was 0.005)
+        firing_chance_per_frame = base_firing_chance * 0.025
         return random.random() < firing_chance_per_frame
 
     def _fire_weapon(self, current_time):
-        """Fire disruptors at the target."""
+        """Fire disruptors or torpedo at the target."""
         if not self.target:
             return
 
-        weapon_animation = {
-            'type': 'disruptor',
-            'start_time': current_time,
-            'target': self.target,
-            'accuracy': self.personality.weapon_accuracy,
-            'power': self.personality.weapon_power
-        }
+        # Check if we should fire a torpedo instead of disruptor
+        # Torpedoes are preferred at longer ranges and when torpedo is off cooldown
+        torpedo_off_cooldown = (current_time - self.ship.last_torpedo_fire_time) >= (constants.KLINGON_TORPEDO_COOLDOWN * 1000)
+
+        # Calculate distance to target for weapon selection
+        target_pos = getattr(self.target, 'position', None)
+        if target_pos:
+            dx = target_pos[0] - self.ship.position[0]
+            dy = target_pos[1] - self.ship.position[1]
+            distance = math.sqrt(dx * dx + dy * dy)
+        else:
+            distance = 5  # Default distance
+
+        # Prefer torpedoes at longer range (3+ hexes) and based on personality
+        # Also check if we have torpedoes remaining
+        has_torpedoes = hasattr(self.ship, 'torpedo_count') and self.ship.torpedo_count > 0
+        use_torpedo = (
+            has_torpedoes and
+            torpedo_off_cooldown and
+            random.random() < self.personality.torpedo_preference and
+            distance >= 3  # Minimum range for torpedo use
+        )
+
+        if use_torpedo:
+            weapon_animation = {
+                'type': 'torpedo',
+                'start_time': current_time,
+                'target': self.target,
+                'accuracy': self.personality.weapon_accuracy,
+                'power': constants.ENEMY_TORPEDO_POWER
+            }
+            self.ship.torpedo_cooldown = constants.KLINGON_TORPEDO_COOLDOWN * 1000
+            self.ship.last_torpedo_fire_time = current_time
+            self.ship.torpedo_count -= 1  # Decrement torpedo count
+        else:
+            weapon_animation = {
+                'type': 'disruptor',
+                'start_time': current_time,
+                'target': self.target,
+                'accuracy': self.personality.weapon_accuracy,
+                'power': self.personality.weapon_power
+            }
+            self.ship.weapon_cooldown = constants.ENEMY_WEAPON_COOLDOWN_SECONDS * 1000
+            self.ship.last_weapon_fire_time = current_time
 
         self.ship.pending_weapon_animations.append(weapon_animation)
-        self.ship.weapon_cooldown = constants.ENEMY_WEAPON_COOLDOWN_SECONDS * 1000
-        self.ship.last_weapon_fire_time = current_time
 
     def move_toward_target(self):
         """Move closer to the target using hex-based navigation."""

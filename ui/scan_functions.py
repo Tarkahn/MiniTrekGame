@@ -9,7 +9,7 @@ import os
 import math
 import random
 import pygame
-from data.constants import (PLANET_CLASSES, STAR_CLASSES,
+from data.constants import (PLANET_CLASSES, STAR_CLASSES, ANOMALY_CLASSES,
                             ENEMY_HULL_STRENGTH, ENEMY_SHIELD_CAPACITY)
 
 
@@ -113,6 +113,75 @@ def perform_star_scan(star_q, star_r, current_system, add_event_log, sound_manag
     sound_manager.play_sound('scanner')
 
     return scan_data, star_image
+
+
+def perform_anomaly_scan(anomaly_obj, current_system, add_event_log, sound_manager):
+    """Perform a detailed scan of an anomaly and return results.
+
+    Args:
+        anomaly_obj: The anomaly MapObject to scan
+        current_system: Current system coordinates tuple
+        add_event_log: Function to add messages to event log
+        sound_manager: Sound manager instance
+
+    Returns:
+        Tuple of (scan_data dict, anomaly_image or None)
+    """
+    # Get anomaly type from the object's props
+    anomaly_type = anomaly_obj.props.get('anomaly_type', None)
+
+    # If no type stored, pick one randomly based on position for consistency
+    if not anomaly_type:
+        position_seed = f"{anomaly_obj.system_q}_{anomaly_obj.system_r}_{current_system}"
+        anomaly_types = list(ANOMALY_CLASSES.keys())
+        anomaly_type = anomaly_types[hash(position_seed) % len(anomaly_types)]
+
+    # Get anomaly info from constants
+    anomaly_info = ANOMALY_CLASSES.get(anomaly_type, {
+        'name': 'Unknown Anomaly',
+        'description': 'Unidentified spatial phenomenon. Recommend caution.',
+        'danger_level': 'UNKNOWN',
+        'images': []
+    })
+
+    # Select image for this anomaly
+    available_images = anomaly_info.get('images', [])
+    image_filename = None
+    if available_images:
+        position_seed = f"{anomaly_obj.system_q}_{anomaly_obj.system_r}_{current_system}_image"
+        image_filename = available_images[hash(position_seed) % len(available_images)]
+
+    # Load the anomaly image
+    anomaly_image = None
+    if image_filename:
+        try:
+            image_path = os.path.join('assets', 'anomalies', image_filename)
+            anomaly_image = pygame.image.load(image_path)
+        except pygame.error as e:
+            print(f"Failed to load anomaly image {image_filename}: {e}")
+
+    # Create scan data
+    scan_data = {
+        'type': 'anomaly',
+        'anomaly_type': anomaly_type,
+        'name': anomaly_info['name'],
+        'description': anomaly_info['description'],
+        'danger_level': anomaly_info.get('danger_level', 'UNKNOWN'),
+        'position': (anomaly_obj.system_q, anomaly_obj.system_r),
+        'image': image_filename
+    }
+
+    # Log the scan with danger level color coding
+    danger_level = anomaly_info.get('danger_level', 'UNKNOWN')
+    add_event_log(f"*** ANOMALY DETECTED ***")
+    add_event_log(f"Scanning {anomaly_info['name']} at ({anomaly_obj.system_q}, {anomaly_obj.system_r})")
+    add_event_log(f"Danger Level: {danger_level}")
+    add_event_log(f"{anomaly_info['description']}")
+
+    # Play scan sound
+    sound_manager.play_sound('scanner')
+
+    return scan_data, anomaly_image
 
 
 def perform_enemy_scan(enemy_obj, enemy_id, systems, game_state, enemy_scan_panel,

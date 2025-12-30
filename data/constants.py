@@ -48,6 +48,7 @@ PHASER_LONG_MULTIPLIER = 0.6    # 60% damage at long range (10-18 hexes)
 
 # Energy Regeneration
 ENERGY_REGEN_RATE_PER_TURN = 15  # Energy regenerated per turn (increased for gameplay balance)
+WARP_CORE_REGEN_RATE_PER_SECOND = 4  # Warp core energy regeneration per second (automatic)
 
 # Shield Systems (PRD Compliant)
 SHIELD_ENERGY_COST_PER_LEVEL = 3  # Reduced for better gameplay balance - each level costs 3 energy/sec to maintain
@@ -104,7 +105,7 @@ NUM_STARS = 30  # Reduced from 100 to allow more room for planets
 NUM_PLANETS = 35  # Increased to ensure at least 1 planet per star (30) plus extras
 NUM_STARBases = 3
 NUM_ENEMY_SHIPS = 30
-NUM_ANOMALIES = 1
+NUM_ANOMALIES = 6  # Rare but enough for variety (black holes, wormholes, etc.)
 
 # Placement rules
 MIN_STAR_PLANET_DISTANCE = 6  # Minimum hexes between any star and planet
@@ -167,14 +168,19 @@ KLINGON_CLOSING_TENDENCY_MAX = 0.95 # Extremely aggressive closing behavior (95%
 
 # Weapon System Parameters
 # ------------------------
-KLINGON_WEAPON_POWER_MIN = 5        # Higher minimum weapon power allocation
+KLINGON_WEAPON_POWER_MIN = 6        # Higher minimum weapon power allocation
 KLINGON_WEAPON_POWER_MAX = 9        # Maximum weapon power allocation
 
-KLINGON_FIRING_FREQUENCY_MIN = 0.6   # Very aggressive firing (60% chance per turn)
-KLINGON_FIRING_FREQUENCY_MAX = 0.9   # Extremely high firing rate (90% chance per turn)
+KLINGON_FIRING_FREQUENCY_MIN = 0.8   # Very aggressive firing (80% chance per turn)
+KLINGON_FIRING_FREQUENCY_MAX = 0.95  # Extremely high firing rate (95% chance per turn)
 
-KLINGON_WEAPON_ACCURACY_MIN = 0.5   # Poor marksmanship (50% accuracy)
+KLINGON_WEAPON_ACCURACY_MIN = 0.6   # Decent marksmanship (60% accuracy)
 KLINGON_WEAPON_ACCURACY_MAX = 0.9   # Expert marksmanship (90% accuracy)
+
+KLINGON_TORPEDO_PREFERENCE_MIN = 0.2  # Sometimes uses torpedoes (20% preference)
+KLINGON_TORPEDO_PREFERENCE_MAX = 0.5  # Frequently uses torpedoes (50% preference)
+
+KLINGON_TORPEDO_COOLDOWN = 5.0        # Seconds between torpedo shots (reduced for aggression)
 
 # Tactical Intelligence Parameters
 # ---------------------------------
@@ -182,31 +188,31 @@ KLINGON_FLANKING_TENDENCY_MIN = 0.0 # Never attempts flanking maneuvers
 KLINGON_FLANKING_TENDENCY_MAX = 0.8 # Frequently attempts flanking maneuvers
 
 KLINGON_EVASION_SKILL_MIN = 0.2     # Poor evasion patterns (20% effectiveness)
-KLINGON_EVASION_SKILL_MAX = 0.8     # Excellent evasion patterns (80% effectiveness)
+KLINGON_EVASION_SKILL_MAX = 0.6     # Moderate evasion patterns (60% effectiveness)
 
 KLINGON_TACTICAL_PATIENCE_MIN = 0   # Attacks immediately, no waiting
 KLINGON_TACTICAL_PATIENCE_MAX = 0   # No patience - immediate engagement
 
-# Defensive Behavior Parameters  
+# Defensive Behavior Parameters
 # -----------------------------
-KLINGON_RETREAT_THRESHOLD_MIN = 0.1 # Fights to the death (retreats at 10% health)
-KLINGON_RETREAT_THRESHOLD_MAX = 0.7 # Cowardly, retreats early (retreats at 70% health)
+KLINGON_RETREAT_THRESHOLD_MIN = 0.05 # Fights to the death (retreats at 5% health)
+KLINGON_RETREAT_THRESHOLD_MAX = 0.25 # Most retreat only when badly wounded (25% health)
 
-KLINGON_SHIELD_PRIORITY_MIN = 0.2   # Low shield management priority
-KLINGON_SHIELD_PRIORITY_MAX = 0.9   # High shield management priority
+KLINGON_SHIELD_PRIORITY_MIN = 0.3   # Low shield management priority
+KLINGON_SHIELD_PRIORITY_MAX = 0.7   # Moderate shield management priority
 
 KLINGON_DAMAGE_AVOIDANCE_MIN = 0.1  # Reckless, ignores incoming damage
-KLINGON_DAMAGE_AVOIDANCE_MAX = 0.9  # Cautious, actively avoids damage
+KLINGON_DAMAGE_AVOIDANCE_MAX = 0.5  # Moderate caution (Klingons are aggressive)
 
 # Personality Trait Parameters
 # ----------------------------
-KLINGON_COURAGE_MIN = 0.2           # Cowardly disposition
-KLINGON_COURAGE_MAX = 0.95          # Fearless warrior disposition
+KLINGON_COURAGE_MIN = 0.7           # Brave warrior disposition (minimum)
+KLINGON_COURAGE_MAX = 0.99          # Fearless warrior disposition
 
 KLINGON_UNPREDICTABILITY_MIN = 0.1  # Highly predictable behavior patterns
-KLINGON_UNPREDICTABILITY_MAX = 0.8  # Chaotic, unpredictable behavior patterns
+KLINGON_UNPREDICTABILITY_MAX = 0.6  # Some unpredictability
 
-KLINGON_HONOR_CODE_MIN = 0.0        # Dishonorable, uses any tactics
+KLINGON_HONOR_CODE_MIN = 0.3        # Most have some honor
 KLINGON_HONOR_CODE_MAX = 0.9        # Honorable warrior, follows combat ethics
 
 KLINGON_VENGEANCE_FACTOR_MIN = 0.1  # Quickly forgets damage taken
@@ -343,5 +349,117 @@ STAR_CLASSES = {
         'name': 'Hypergiant Star',
         'description': 'Extremely massive and luminous star. Among the most powerful objects in the galaxy.',
         'images': ['hyperGiant.png']
+    }
+}
+
+# Anomaly Classification (Spatial Phenomena and Exotic Objects)
+ANOMALY_CLASSES = {
+    'blackHole': {
+        'name': 'Black Hole',
+        'description': 'Stellar-mass singularity with immense gravitational pull. Light cannot escape its event horizon.',
+        'danger_level': 'EXTREME',
+        'images': ['blackHole.webp', 'blackHole.jpg']
+    },
+    'superMassiveBlackHole': {
+        'name': 'Supermassive Black Hole',
+        'description': 'Galactic-core singularity with mass of millions of suns. Warps spacetime dramatically.',
+        'danger_level': 'EXTREME',
+        'images': ['superMassiveBlackHole.webp', 'superMassiveBlackHole.jpg']
+    },
+    'protoStar': {
+        'name': 'Protostar',
+        'description': 'Young star still forming from collapsing gas cloud. Intense radiation and stellar winds.',
+        'danger_level': 'HIGH',
+        'images': ['protoStar.webp', 'protoStar.jpg']
+    },
+    'superNova1': {
+        'name': 'Supernova Remnant',
+        'description': 'Expanding shell of stellar debris from massive star explosion. Rich in heavy elements.',
+        'danger_level': 'HIGH',
+        'images': ['superNova1.webp', 'superNova1.jpg']
+    },
+    'superNova2': {
+        'name': 'Active Supernova',
+        'description': 'Cataclysmic stellar explosion in progress. Releases more energy than entire galaxies.',
+        'danger_level': 'EXTREME',
+        'images': ['superNova2.webp', 'superNova2.jpg']
+    },
+    'tTauriStar': {
+        'name': 'T Tauri Star',
+        'description': 'Young variable star with powerful stellar winds. Proto-planetary disk may be forming.',
+        'danger_level': 'MODERATE',
+        'images': ['tTauriStar.webp', 'tTauriStar.jpg']
+    },
+    'wolfRayet': {
+        'name': 'Wolf-Rayet Star',
+        'description': 'Massive star with extreme stellar winds. Losing mass rapidly before eventual supernova.',
+        'danger_level': 'HIGH',
+        'images': ['wolfRayet.webp', 'wolfRayet.jpg']
+    },
+    'magnetar': {
+        'name': 'Magnetar',
+        'description': 'Neutron star with extraordinarily powerful magnetic field. Emits intense gamma radiation.',
+        'danger_level': 'EXTREME',
+        'images': ['magnetar.webp', 'magnetar.jpg']
+    },
+    'quasar': {
+        'name': 'Quasar',
+        'description': 'Active galactic nucleus powered by supermassive black hole. Brightest objects in universe.',
+        'danger_level': 'EXTREME',
+        'images': ['quasar.webp', 'quasar.jpg']
+    },
+    'wormHole1': {
+        'name': 'Stable Wormhole',
+        'description': 'Traversable spacetime tunnel connecting distant regions. Origin unknown but potentially navigable.',
+        'danger_level': 'MODERATE',
+        'images': ['wormHole1.webp', 'wormHole1.jpg']
+    },
+    'wormHole2': {
+        'name': 'Unstable Wormhole',
+        'description': 'Fluctuating spacetime anomaly. Destination unpredictable, may collapse without warning.',
+        'danger_level': 'HIGH',
+        'images': ['wormHole2.webp', 'wormHole2.jpg']
+    },
+    'whiteHole': {
+        'name': 'White Hole',
+        'description': 'Theoretical reverse of black hole. Expels matter and energy, nothing can enter.',
+        'danger_level': 'HIGH',
+        'images': ['whiteHole.webp', 'whiteHole.jpg']
+    },
+    'cosmicString': {
+        'name': 'Cosmic String',
+        'description': 'One-dimensional topological defect in spacetime. Extreme gravitational lensing effects.',
+        'danger_level': 'EXTREME',
+        'images': ['cosmicString.webp', 'cosmicString.jpg']
+    },
+    'einsteinRosenBridge': {
+        'name': 'Einstein-Rosen Bridge',
+        'description': 'Wormhole connecting two black holes. Theoretical but detected energy signatures match.',
+        'danger_level': 'EXTREME',
+        'images': ['einsteinRosenBridge.webp', 'einsteinRosenBridge.jpg']
+    },
+    'timeDialationField': {
+        'name': 'Time Dilation Field',
+        'description': 'Region of warped spacetime where time flows differently. Temporal displacement possible.',
+        'danger_level': 'HIGH',
+        'images': ['timeDialationField.webp', 'timeDialationField.jpg']
+    },
+    'kugelblitz': {
+        'name': 'Kugelblitz',
+        'description': 'Black hole created from concentrated radiation energy. Extremely unstable and unpredictable.',
+        'danger_level': 'EXTREME',
+        'images': ['kugelblitz.webp', 'kugelblitz.jpg']
+    },
+    'dysonSwarm': {
+        'name': 'Dyson Swarm',
+        'description': 'Megastructure of solar collectors around a star. Evidence of advanced civilization.',
+        'danger_level': 'LOW',
+        'images': ['dysonSwarm.webp', 'dysonSwarm.jpg']
+    },
+    'nexus': {
+        'name': 'The Nexus',
+        'description': 'Extra-dimensional energy ribbon traversing the galaxy. Contains temporal anomalies.',
+        'danger_level': 'HIGH',
+        'images': ['nexus.webp', 'nexus.jpg']
     }
 }

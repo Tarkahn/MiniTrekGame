@@ -20,6 +20,14 @@ class AnimationState:
     move_frames: int = 120  # 2 seconds at 60 FPS
     dest_q: Optional[int] = None
     dest_r: Optional[int] = None
+    # Track actual distance traveled for energy calculation (sector movement)
+    last_anim_x: Optional[float] = None
+    last_anim_y: Optional[float] = None
+    accumulated_pixel_distance: float = 0.0  # Total pixels traveled since movement started
+    # Track actual distance traveled for energy calculation (system movement)
+    system_last_anim_x: Optional[float] = None
+    system_last_anim_y: Optional[float] = None
+    system_accumulated_pixel_distance: float = 0.0  # Total pixels traveled in system since movement started
 
 
 @dataclass

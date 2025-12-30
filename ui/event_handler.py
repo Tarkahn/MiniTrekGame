@@ -82,6 +82,7 @@ class EventContext:
         self.perform_enemy_scan = None
         self.perform_planet_scan = None
         self.perform_star_scan = None
+        self.perform_anomaly_scan = None
         self.get_enemy_id = None
         self.get_enemy_current_position = None
         self.is_hex_blocked = None
@@ -243,10 +244,13 @@ def _fire_torpedo_at_hex(ctx: EventContext, target_q: int, target_r: int) -> boo
     )
 
     if result['success']:
+        # Decrement torpedo count
+        player_ship.torpedo_count -= 1
+
         if target_enemy:
-            add_event_log(f"Torpedo launched at enemy position ({target_q}, {target_r})!")
+            add_event_log(f"Torpedo launched at enemy position ({target_q}, {target_r})! ({player_ship.torpedo_count} remaining)")
         else:
-            add_event_log(f"Torpedo launched at hex ({target_q}, {target_r})!")
+            add_event_log(f"Torpedo launched at hex ({target_q}, {target_r})! ({player_ship.torpedo_count} remaining)")
 
         if player_ship.torpedo_count <= 3 and player_ship.torpedo_count > 0:
             add_event_log(f"*** LOW TORPEDO SUPPLY: {player_ship.torpedo_count} remaining ***")
@@ -592,21 +596,33 @@ def handle_sector_map_click(mx: int, my: int, ctx: EventContext, result: EventRe
         return False
 
     # Determine starting position for trajectory calculation
-    if game_state.animation.ship_moving:
+    if game_state.animation.ship_moving and game_state.animation.ship_anim_x is not None:
+        # Ship is mid-flight - calculate distance from current pixel position
+        # Convert current pixel position to hex for display purposes
         start_hex_q, start_hex_r = hex_grid.pixel_to_hex(
             game_state.animation.ship_anim_x, game_state.animation.ship_anim_y)
         if start_hex_q is None or start_hex_r is None:
             start_hex_q, start_hex_r = ctx.ship_q, ctx.ship_r
-        log_debug(f"[REDIRECT] Ship redirecting mid-flight from ({start_hex_q}, {start_hex_r}) to ({q}, {r})")
+
+        # Calculate actual pixel distance and convert to hex distance
+        # This ensures we charge for actual distance, not just hex difference
+        current_px, current_py = game_state.animation.ship_anim_x, game_state.animation.ship_anim_y
+        target_px, target_py = hex_grid.get_hex_center(q, r)
+        pixel_distance = math.hypot(target_px - current_px, target_py - current_py)
+
+        # Convert pixel distance to hex distance (approximate hex size)
+        hex_size_pixels = hex_grid.radius * 1.5  # Approximate distance between hex centers
+        distance = max(1, int(pixel_distance / hex_size_pixels + 0.5))  # Round to nearest, min 1
+
+        log_debug(f"[REDIRECT] Ship redirecting mid-flight from pixel ({current_px:.0f}, {current_py:.0f}) to ({q}, {r}), distance={distance} hexes")
         action_msg = "Changing course"
     else:
         start_hex_q, start_hex_r = ctx.ship_q, ctx.ship_r
         action_msg = "Setting course"
-
-    # Calculate distance and energy cost
-    dx = abs(q - start_hex_q)
-    dy = abs(r - start_hex_r)
-    distance = max(dx, dy)
+        # Calculate distance from current hex
+        dx = abs(q - start_hex_q)
+        dy = abs(r - start_hex_r)
+        distance = max(dx, dy)
 
     if game_state.animation.ship_moving:
         energy_cost = distance * constants.WARP_ENERGY_COST
@@ -636,6 +652,14 @@ def handle_sector_map_click(mx: int, my: int, ctx: EventContext, result: EventRe
     dynamic_energy_cost = player_ship.get_movement_energy_cost(energy_cost)
 
     if player_ship.warp_core_energy >= dynamic_energy_cost:
+        # Energy is now deducted continuously as ship travels, not upfront
+        # Initialize tracking for accumulated distance
+        if not game_state.animation.ship_moving:
+            # Starting fresh movement - reset accumulated distance
+            game_state.animation.accumulated_pixel_distance = 0.0
+        game_state.animation.last_anim_x = game_state.animation.ship_anim_x
+        game_state.animation.last_anim_y = game_state.animation.ship_anim_y
+
         base_duration = 2000
         movement_duration = player_ship.get_movement_duration(base_duration)
 
@@ -651,9 +675,9 @@ def handle_sector_map_click(mx: int, my: int, ctx: EventContext, result: EventRe
 
         efficiency = player_ship.get_engine_efficiency()
         add_event_log(f"{action_msg} for sector ({q}, {r}) - Engine Power: {engine_power} - Duration: {movement_duration/1000:.1f}s")
-        add_event_log(f"Energy cost: {dynamic_energy_cost} - Engine efficiency: {efficiency:.1f}x")
+        add_event_log(f"Estimated energy cost: {dynamic_energy_cost} - Engine efficiency: {efficiency:.1f}x")
     else:
-        add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
+        add_event_log(f"Insufficient energy! Need {energy_cost}, have {int(player_ship.warp_core_energy)}")
         sound_manager.play_sound('error')
 
     return True
@@ -798,6 +822,11 @@ def _move_to_planet(q: int, r: int, planet_px: float, planet_py: float, key: tup
     energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
 
     if player_ship.warp_core_energy >= energy_cost:
+        # Energy is now deducted continuously as ship travels, not upfront
+        # Initialize tracking for accumulated distance
+        if not ctx.system_ship_moving:
+            game_state.animation.system_accumulated_pixel_distance = 0.0
+
         result.pending_orbit_center = (planet_px, planet_py)
         result.pending_orbit_key = key
 
@@ -809,6 +838,8 @@ def _move_to_planet(q: int, r: int, planet_px: float, planet_py: float, key: tup
         if ctx.system_ship_anim_x is not None and ctx.system_ship_anim_y is not None:
             result.system_trajectory_start_x = ctx.system_ship_anim_x
             result.system_trajectory_start_y = ctx.system_ship_anim_y
+            game_state.animation.system_last_anim_x = ctx.system_ship_anim_x
+            game_state.animation.system_last_anim_y = ctx.system_ship_anim_y
         else:
             start_pos_x, start_pos_y = hex_grid.get_hex_center(
                 current_player_obj.system_q, current_player_obj.system_r)
@@ -816,13 +847,15 @@ def _move_to_planet(q: int, r: int, planet_px: float, planet_py: float, key: tup
             result.system_ship_anim_y = start_pos_y
             result.system_trajectory_start_x = start_pos_x
             result.system_trajectory_start_y = start_pos_y
+            game_state.animation.system_last_anim_x = start_pos_x
+            game_state.animation.system_last_anim_y = start_pos_y
 
         game_state.orbital.player_orbiting_planet = False
         game_state.orbital.player_orbit_center = None
 
-        add_event_log(f"Moving to planet at ({q}, {r}) to enter orbit")
+        add_event_log(f"Moving to planet at ({q}, {r}) to enter orbit - Estimated energy: {energy_cost}")
     else:
-        add_event_log(f"Insufficient energy to reach planet. Need {energy_cost}, have {player_ship.warp_core_energy}")
+        add_event_log(f"Insufficient energy to reach planet. Need {energy_cost}, have {int(player_ship.warp_core_energy)}")
 
 
 def _handle_system_movement(q: int, r: int, player_obj, ctx: EventContext, result: EventResult) -> bool:
@@ -834,19 +867,31 @@ def _handle_system_movement(q: int, r: int, player_obj, ctx: EventContext, resul
     sound_manager = ctx.sound_manager
 
     # Determine starting position
-    if ctx.system_ship_moving:
+    if ctx.system_ship_moving and ctx.system_ship_anim_x is not None:
+        # Ship is mid-flight - calculate distance from current pixel position
         start_hex_q, start_hex_r = hex_grid.pixel_to_hex(ctx.system_ship_anim_x, ctx.system_ship_anim_y)
         if start_hex_q is None or start_hex_r is None:
             start_hex_q, start_hex_r = player_obj.system_q, player_obj.system_r
+
+        # Calculate actual pixel distance and convert to hex distance
+        # This ensures we charge for actual distance, not just hex difference
+        current_px, current_py = ctx.system_ship_anim_x, ctx.system_ship_anim_y
+        target_px, target_py = hex_grid.get_hex_center(q, r)
+        pixel_distance = math.hypot(target_px - current_px, target_py - current_py)
+
+        # Convert pixel distance to hex distance (approximate hex size)
+        hex_size_pixels = hex_grid.radius * 1.5  # Approximate distance between hex centers
+        distance = max(1, int(pixel_distance / hex_size_pixels + 0.5))  # Round to nearest, min 1
+
         action_msg = "Changing course"
     else:
         start_hex_q, start_hex_r = player_obj.system_q, player_obj.system_r
         action_msg = "Setting course"
+        # Calculate distance from current hex
+        dx = abs(q - start_hex_q)
+        dy = abs(r - start_hex_r)
+        distance = max(dx, dy)
 
-    # Calculate distance and energy cost
-    dx = abs(q - start_hex_q)
-    dy = abs(r - start_hex_r)
-    distance = max(dx, dy)
     base_energy_cost = distance * constants.LOCAL_MOVEMENT_ENERGY_COST_PER_HEX
 
     # Check movement capability
@@ -871,6 +916,21 @@ def _handle_system_movement(q: int, r: int, player_obj, ctx: EventContext, resul
     energy_cost = player_ship.get_movement_energy_cost(base_energy_cost)
 
     if player_ship.warp_core_energy >= energy_cost:
+        # Energy is now deducted continuously as ship travels, not upfront
+        # Initialize tracking for accumulated distance
+        if not ctx.system_ship_moving:
+            # Starting fresh movement - reset accumulated distance
+            game_state.animation.system_accumulated_pixel_distance = 0.0
+
+        # Set initial tracking position
+        if ctx.system_ship_anim_x is not None and ctx.system_ship_anim_y is not None:
+            game_state.animation.system_last_anim_x = ctx.system_ship_anim_x
+            game_state.animation.system_last_anim_y = ctx.system_ship_anim_y
+        else:
+            start_pos_x, start_pos_y = hex_grid.get_hex_center(player_obj.system_q, player_obj.system_r)
+            game_state.animation.system_last_anim_x = start_pos_x
+            game_state.animation.system_last_anim_y = start_pos_y
+
         base_duration = 1000
         movement_duration = player_ship.get_movement_duration(base_duration)
 
@@ -894,9 +954,9 @@ def _handle_system_movement(q: int, r: int, player_obj, ctx: EventContext, resul
 
         efficiency = player_ship.get_engine_efficiency()
         add_event_log(f"{action_msg} for system hex ({q}, {r}) - Engine Power: {engine_power} - Duration: {movement_duration/1000:.1f}s")
-        add_event_log(f"Energy cost: {energy_cost} - Engine efficiency: {efficiency:.1f}x")
+        add_event_log(f"Estimated energy cost: {energy_cost} - Engine efficiency: {efficiency:.1f}x")
     else:
-        add_event_log(f"Insufficient energy! Need {energy_cost}, have {player_ship.warp_core_energy}")
+        add_event_log(f"Insufficient energy! Need {energy_cost}, have {int(player_ship.warp_core_energy)}")
         sound_manager.play_sound('error')
 
     return True
@@ -956,6 +1016,21 @@ def handle_right_click(mx: int, my: int, ctx: EventContext) -> bool:
                     break
 
     if scanned_celestial:
+        return True
+
+    # Check for anomalies at clicked location
+    found_anomaly = None
+    for obj in systems.get(current_system, []):
+        if obj.type == 'anomaly' and hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
+            if obj.system_q == q and obj.system_r == r:
+                found_anomaly = obj
+                break
+
+    if found_anomaly is not None:
+        # Anomaly found - scan it
+        ctx.perform_anomaly_scan(found_anomaly)
+        # Also set torpedo target for the hex
+        game_state.set_torpedo_target_hex(q, r)
         return True
 
     # Always set torpedo target hex for any right-clicked location

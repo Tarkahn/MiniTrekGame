@@ -111,11 +111,11 @@ class ShipStatusDisplay:
         pygame.draw.rect(screen, color, fill_rect)
         pygame.draw.rect(screen, self.border_color, bar_rect, 1)
         
-        # Energy text - show damage indicator if warp core is damaged
+        # Energy text - show damage indicator if warp core is damaged (display as integers)
         if effective_max_energy < ship.max_warp_core_energy:
-            energy_text = f"{ship.warp_core_energy}/{effective_max_energy} (MAX: {ship.max_warp_core_energy})"
+            energy_text = f"{int(ship.warp_core_energy)}/{int(effective_max_energy)} (MAX: {int(ship.max_warp_core_energy)})"
         else:
-            energy_text = f"{ship.warp_core_energy}/{effective_max_energy}"
+            energy_text = f"{int(ship.warp_core_energy)}/{int(effective_max_energy)}"
         text_surface = self.small_font.render(energy_text, True, self.text_color)
         text_rect = text_surface.get_rect(center=bar_rect.center)
         screen.blit(text_surface, text_rect)

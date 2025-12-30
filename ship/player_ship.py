@@ -150,6 +150,40 @@ class PlayerShip(BaseShip):
         """
         return self.repair_system.update(delta_time_seconds)
 
+    def update(self, delta_time_seconds: float):
+        """
+        Main update method - handles all time-based updates for the player ship.
+        Should be called each frame.
+
+        Args:
+            delta_time_seconds: Time elapsed since last update
+        """
+        # Update shield system (regeneration and energy consumption)
+        if hasattr(self, 'shield_system') and self.shield_system:
+            self.shield_system.update(delta_time_seconds)
+
+        # Update warp core energy regeneration
+        self._update_energy_regeneration(delta_time_seconds)
+
+        # Update repairs
+        self.repair_system.update(delta_time_seconds)
+
+    def _update_energy_regeneration(self, delta_time: float):
+        """Regenerate warp core energy over time."""
+        # Only regenerate if below max
+        if self.warp_core_energy >= self.max_warp_core_energy:
+            return
+
+        # Calculate energy to regenerate based on delta_time
+        regen_rate = constants.WARP_CORE_REGEN_RATE_PER_SECOND
+        energy_to_add = regen_rate * delta_time
+
+        # Add energy, capped at max
+        self.warp_core_energy = min(
+            self.max_warp_core_energy,
+            self.warp_core_energy + energy_to_add
+        )
+
     def is_repairing(self) -> bool:
         """Check if repairs are currently in progress."""
         return self.repair_system.is_repairing

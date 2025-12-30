@@ -239,7 +239,8 @@ class CombatManager:
             weapon_animations = enemy_ship.get_pending_weapon_animations()
             for animation in weapon_animations:
                 # Start visual/audio weapon animation using animation manager
-                self._start_enemy_weapon_animation(animation, enemy_ship, player_ship, hex_grid)
+                # Pass system_objects so we can find the player's actual system position
+                self._start_enemy_weapon_animation(animation, enemy_ship, player_ship, hex_grid, systems[current_system])
     
     def cleanup_enemy_ships(self, systems, current_system):
         """Remove enemy ship instances for enemies that no longer exist"""
@@ -261,33 +262,47 @@ class CombatManager:
         for enemy_id in enemy_ids_to_remove:
             del self.enemy_ships[enemy_id]
     
-    def _start_enemy_weapon_animation(self, weapon_animation, enemy_ship, player_ship, hex_grid):
+    def _start_enemy_weapon_animation(self, weapon_animation, enemy_ship, player_ship, hex_grid, system_objects=None):
         """Start visual/audio weapon animation using the weapon animation manager"""
         if not self.weapon_animation_manager:
             return  # No animation manager available
-            
+
         weapon_power = weapon_animation.get('power', 5)
         weapon_type = weapon_animation.get('type', 'disruptor')
-        
-        
-        
+
         # Calculate damage based on weapon power
         base_damage = int(weapon_power * 3)  # Increased damage for more visible effects
-        
+
         # Convert hex positions to pixel positions for animation using proper hex grid
         enemy_pos = enemy_ship.get_render_position()
-        player_pos = player_ship.position
-        
+
+        # Get player's SYSTEM position (not sector position)
+        # The player's system position is stored on the player MapObject, not player_ship
+        player_system_pos = None
+        if system_objects:
+            for obj in system_objects:
+                if obj.type == 'player' and hasattr(obj, 'system_q') and hasattr(obj, 'system_r'):
+                    player_system_pos = (obj.system_q, obj.system_r)
+                    break
+
+        # Fallback to player_ship.position if we can't find the player object
+        # (this would be wrong but better than crashing)
+        if player_system_pos is None:
+            player_system_pos = player_ship.position
+
         # Use proper hex-to-pixel conversion
         enemy_pixel_pos = hex_grid.get_hex_center(enemy_pos[0], enemy_pos[1])
-        player_pixel_pos = hex_grid.get_hex_center(player_pos[0], player_pos[1])
+        player_pixel_pos = hex_grid.get_hex_center(player_system_pos[0], player_system_pos[1])
         
         # Start the appropriate weapon animation
-        if weapon_type == 'disruptor' or weapon_type == 'phaser':
+        if weapon_type == 'torpedo':
+            self.weapon_animation_manager.enemy_fire_torpedo(
+                enemy_ship, enemy_pixel_pos, player_pixel_pos, base_damage
+            )
+        elif weapon_type == 'disruptor' or weapon_type == 'phaser':
             self.weapon_animation_manager.enemy_fire_phaser(
                 enemy_ship, enemy_pixel_pos, player_pixel_pos, base_damage, weapon_type
             )
-        # Could add torpedo animations here later if needed
     
     def set_weapon_animation_manager(self, manager):
         """Set the weapon animation manager reference"""

@@ -481,11 +481,28 @@ def draw_image_display_panel(ctx):
 
         if ctx.current_scanned_object['type'] == 'planet':
             class_text = font.render(f"Class {ctx.current_scanned_object['class']}", True, ctx.color_text)
-        else:
+            screen.blit(class_text, (20, info_y))
+        elif ctx.current_scanned_object['type'] == 'anomaly':
+            # Display danger level for anomalies
+            danger_level = ctx.current_scanned_object.get('danger_level', 'UNKNOWN')
+            # Color code danger level
+            if danger_level == 'EXTREME':
+                danger_color = (255, 50, 50)  # Red
+            elif danger_level == 'HIGH':
+                danger_color = (255, 150, 50)  # Orange
+            elif danger_level == 'MODERATE':
+                danger_color = (255, 255, 50)  # Yellow
+            elif danger_level == 'LOW':
+                danger_color = (50, 255, 50)  # Green
+            else:
+                danger_color = ctx.color_text
+            danger_text = font.render(f"Danger: {danger_level}", True, danger_color)
+            screen.blit(danger_text, (20, info_y))
+        elif 'class' in ctx.current_scanned_object:
             class_text = font.render(
                 ctx.current_scanned_object['class'].replace('_', ' ').title(), True, ctx.color_text
             )
-        screen.blit(class_text, (20, info_y))
+            screen.blit(class_text, (20, info_y))
     else:
         # Show instructions when no object is scanned
         instruction_text = font.render('Right-click on a planet or star to scan', True, ctx.color_text)

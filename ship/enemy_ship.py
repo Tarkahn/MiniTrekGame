@@ -41,6 +41,10 @@ class EnemyShip(BaseShip):
         # Weapon state
         self.weapon_cooldown = 0
         self.last_weapon_fire_time = 0
+        self.torpedo_cooldown = 0
+        self.last_torpedo_fire_time = 0
+        self.torpedo_count = constants.STARTING_TORPEDO_COUNT  # Limited torpedo supply
+        self.max_torpedo_capacity = constants.MAX_TORPEDO_CAPACITY
         self.pending_weapon_animations = []
 
         # Initialize AI controller with personality
@@ -192,12 +196,34 @@ class EnemyShip(BaseShip):
         if hasattr(self, 'shield_system') and self.shield_system:
             self.shield_system.update(delta_time)
 
+        # Update warp core energy regeneration
+        self._update_energy_regeneration(delta_time)
+
         # Update repair system if repairs are active
         if hasattr(self, 'repair_system'):
             self.repair_system.update(delta_time)
 
         # Delegate to AI controller
         self.ai.update(delta_time)
+
+    def _update_energy_regeneration(self, delta_time):
+        """Regenerate warp core energy over time."""
+        if not hasattr(self, 'warp_core_energy') or not hasattr(self, 'max_warp_core_energy'):
+            return
+
+        # Only regenerate if below max
+        if self.warp_core_energy >= self.max_warp_core_energy:
+            return
+
+        # Calculate energy to regenerate based on delta_time
+        regen_rate = constants.WARP_CORE_REGEN_RATE_PER_SECOND
+        energy_to_add = regen_rate * delta_time
+
+        # Add energy, capped at max
+        self.warp_core_energy = min(
+            self.max_warp_core_energy,
+            self.warp_core_energy + energy_to_add
+        )
 
     def _update_movement_animation(self):
         """Update position if currently moving."""
