@@ -88,24 +88,37 @@ class BackgroundAndStarLoader:
         self.starbase_image = None
         self.player_ship_image = None
         self.enemy_ship_image = None
-        self.background_image = None
+        self.background_image = None  # System map background (MapBackground.jpg)
+        self.sector_background_image = None  # Sector map background (SectorBackground.png)
         self.scaled_background = None
+        self.scaled_sector_background = None
         self.load_images()
     
     def load_images(self):
         """Load background image, all star images, and all planet images."""
         assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')
         
-        # Load background image
+        # Load system map background image
         bg_path = os.path.join(assets_dir, 'MapBackground.jpg')
         if os.path.exists(bg_path):
             try:
                 self.background_image = pygame.image.load(bg_path)
-                logging.debug(f"[BACKGROUND] Loaded background image: MapBackground.jpg")
+                logging.debug(f"[BACKGROUND] Loaded system background image: MapBackground.jpg")
             except Exception as e:
-                logging.error(f"[BACKGROUND] Failed to load background: {e}")
+                logging.error(f"[BACKGROUND] Failed to load system background: {e}")
         else:
-            logging.warning(f"[BACKGROUND] Background image not found: {bg_path}")
+            logging.warning(f"[BACKGROUND] System background image not found: {bg_path}")
+
+        # Load sector map background image
+        sector_bg_path = os.path.join(assets_dir, 'SectorBackground.png')
+        if os.path.exists(sector_bg_path):
+            try:
+                self.sector_background_image = pygame.image.load(sector_bg_path)
+                logging.debug(f"[BACKGROUND] Loaded sector background image: SectorBackground.png")
+            except Exception as e:
+                logging.error(f"[BACKGROUND] Failed to load sector background: {e}")
+        else:
+            logging.warning(f"[BACKGROUND] Sector background image not found: {sector_bg_path}")
         
         # Load starbase image
         starbase_path = os.path.join(assets_dir, 'starbase2.png')
@@ -254,17 +267,46 @@ class BackgroundAndStarLoader:
             logging.warning(f"[ANOMALIES] Anomalies directory not found: {anomalies_dir}")
 
     def get_scaled_background(self, width, height):
-        """Get background image scaled to fit the map area."""
-        if self.background_image and (self.scaled_background is None or 
+        """Get system map background image scaled to fit the map area."""
+        if self.background_image and (self.scaled_background is None or
                                      self.scaled_background.get_size() != (width, height)):
             try:
                 self.scaled_background = pygame.transform.scale(self.background_image, (width, height))
-                logging.debug(f"[BACKGROUND] Scaled background to {width}x{height}")
+                logging.debug(f"[BACKGROUND] Scaled system background to {width}x{height}")
             except Exception as e:
-                logging.error(f"[BACKGROUND] Failed to scale background: {e}")
+                logging.error(f"[BACKGROUND] Failed to scale system background: {e}")
                 return None
         return self.scaled_background
-    
+
+    def get_scaled_sector_background(self, width, height, opacity=0.3):
+        """Get sector map background image scaled to fit the map area with transparency.
+
+        Args:
+            width: Target width in pixels
+            height: Target height in pixels
+            opacity: Opacity level (0.0 = fully transparent, 1.0 = fully opaque). Default 0.3 (30%)
+
+        Returns:
+            Scaled and semi-transparent background surface
+        """
+        if self.sector_background_image and (self.scaled_sector_background is None or
+                                             self.scaled_sector_background.get_size() != (width, height)):
+            try:
+                # Scale the image first
+                scaled = pygame.transform.scale(self.sector_background_image, (width, height))
+                # Create a surface with alpha support
+                self.scaled_sector_background = pygame.Surface((width, height), pygame.SRCALPHA)
+                # Blit the scaled image onto the alpha surface
+                self.scaled_sector_background.blit(scaled, (0, 0))
+                # Set the alpha value (30% opacity = 77 out of 255)
+                alpha_value = int(255 * opacity)
+                self.scaled_sector_background.set_alpha(alpha_value)
+                logging.debug(f"[BACKGROUND] Scaled sector background to {width}x{height} with {int(opacity*100)}% opacity")
+            except Exception as e:
+                logging.error(f"[BACKGROUND] Failed to scale sector background: {e}")
+                return None
+        return self.scaled_sector_background
+
     def get_random_star_image(self):
         """Get a random star image (handles both static and animated)."""
         if self.star_images:

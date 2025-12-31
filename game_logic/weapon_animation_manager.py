@@ -53,7 +53,44 @@ class WeaponAnimationManager:
         self.torpedo_speed = 200  # pixels per second
         self.enemy_phaser_duration = 600  # ms - normal animation duration
         self.enemy_torpedo_speed = 150  # pixels per second - slightly slower than player
-        
+
+        # Event log callback (set by wireframe)
+        self.add_event_log = None
+
+    def _check_player_evasion(self, weapon_type='phaser'):
+        """
+        Check if player evades enemy weapon based on engine power allocation.
+        High engine power (7+) gives evasion chance: 7=20%, 8=35%, 9=50%
+        Torpedoes are harder to evade (guided weapons) - half the chance.
+
+        Args:
+            weapon_type: 'phaser' or 'torpedo'
+
+        Returns:
+            True if player evades (damage should NOT be applied)
+        """
+        engine_power = self.player_ship.power_allocation.get('engines', 5)
+        if engine_power < constants.ENGINE_EVASION_MIN_POWER:
+            print(f"[EVASION] Engine power {engine_power} < {constants.ENGINE_EVASION_MIN_POWER}, no evasion possible")
+            return False
+
+        # Calculate evasion chance (7=20%, 8=35%, 9=50%)
+        base_evasion = constants.ENGINE_EVASION_BASE_CHANCE + \
+                       (engine_power - constants.ENGINE_EVASION_MIN_POWER + 1) * constants.ENGINE_EVASION_PER_LEVEL
+
+        # Apply engine integrity modifier - damaged engines reduce evasion
+        engine_integrity = self.player_ship.system_integrity.get('engines', 100)
+        effective_evasion = base_evasion * (engine_integrity / 100)
+
+        # Torpedoes are guided weapons - harder to evade
+        if weapon_type == 'torpedo':
+            effective_evasion *= constants.ENGINE_EVASION_TORPEDO_MODIFIER
+
+        roll = random.random()
+        evaded = roll < effective_evasion
+        print(f"[EVASION] Engine power {engine_power}, evasion chance {effective_evasion*100:.0f}%, roll {roll:.2f} -> {'EVADED!' if evaded else 'HIT'}")
+        return evaded
+
     def fire_phaser(self, target_enemy, distance):
         """
         Fire phasers at target - calculates damage and starts animation.
@@ -695,11 +732,17 @@ class WeaponAnimationManager:
             
             
             if progress >= 1.0:
-                # Phaser animation complete - apply damage
+                # Phaser animation complete - check evasion then apply damage
                 if not animation['applied']:
-                    self.player_ship.apply_damage(animation['damage'], animation['enemy_ship'])
+                    if self._check_player_evasion('phaser'):
+                        # Evasion successful - log it
+                        if self.add_event_log:
+                            self.add_event_log("Evasive maneuvers! Enemy disruptor missed!")
+                    else:
+                        # No evasion - apply damage
+                        self.player_ship.apply_damage(animation['damage'], animation['enemy_ship'])
                     animation['applied'] = True
-                
+
                 # Remove completed animation
                 self.enemy_phaser_animations.remove(animation)
         
@@ -930,7 +973,14 @@ class WeaponAnimationManager:
                             actual_damage = int(animation['damage'] * damage_multiplier)
 
                             if actual_damage > 0:
-                                self.player_ship.apply_damage(actual_damage, animation['enemy_ship'])
+                                # Check evasion before applying torpedo damage
+                                if self._check_player_evasion('torpedo'):
+                                    # Evasion successful - log it
+                                    if self.add_event_log:
+                                        self.add_event_log("Evasive maneuvers! Avoided torpedo blast!")
+                                else:
+                                    # No evasion - apply damage
+                                    self.player_ship.apply_damage(actual_damage, animation['enemy_ship'])
 
                     animation['applied'] = True
                     animation['damage_check_pending'] = False

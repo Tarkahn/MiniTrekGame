@@ -4,37 +4,43 @@ import math
 
 class HexGrid:
     """A flat-topped hex grid that creates a proper honeycomb pattern."""
-    
-    def __init__(self, rows, cols, map_x, map_y, map_size):
+
+    def __init__(self, rows, cols, map_x, map_y, map_size, margin_left=0, margin_top=0):
         self.rows = rows
         self.cols = cols
         self.map_x = map_x
         self.map_y = map_y
         self.map_size = map_size
-        
+        self.margin_left = margin_left  # Space for Y-axis coordinate labels
+        self.margin_top = margin_top    # Space for X-axis coordinate labels
+
         # For flat-topped hexes:
         # Width = 2 * radius
         # Height = sqrt(3) * radius
         # Horizontal spacing = 3/2 * radius (hexes overlap horizontally)
         # Vertical spacing = sqrt(3) * radius (hexes touch vertically)
-        
+
+        # Calculate usable area after margins
+        usable_width = map_size - margin_left
+        usable_height = map_size - margin_top
+
         # Calculate the radius that fits the grid perfectly
         # Grid width = radius * (3 * cols + 1) / 2
         # Grid height = radius * sqrt(3) * (rows + 0.5)
-        
-        radius_by_width = (map_size * 0.95) / ((3 * cols + 1) / 2)
-        radius_by_height = (map_size * 0.95) / \
+
+        radius_by_width = (usable_width * 0.95) / ((3 * cols + 1) / 2)
+        radius_by_height = (usable_height * 0.95) / \
             (math.sqrt(3) * (rows + 0.5))
-        
+
         self.radius = min(radius_by_width, radius_by_height)
-        
+
         # Calculate actual grid dimensions
         self.grid_width = self.radius * (3 * cols + 1) / 2
         self.grid_height = self.radius * math.sqrt(3) * (rows + 0.5)
-        
-        # Center the grid in the map area
-        self.offset_x = map_x + (map_size - self.grid_width) / 2
-        self.offset_y = map_y + (map_size - self.grid_height) / 2
+
+        # Center the grid in the usable area (after margins)
+        self.offset_x = map_x + margin_left + (usable_width - self.grid_width) / 2
+        self.offset_y = map_y + margin_top + (usable_height - self.grid_height) / 2
 
     @property
     def hex_size(self):
@@ -162,10 +168,37 @@ class HexGrid:
         blit_y = int(center_y - hex_diameter // 2)
         surface.blit(fog_surf, (blit_x, blit_y))
 
+    def draw_coordinate_labels(self, surface, font=None, color=(150, 150, 180)):
+        """Draw X (column) and Y (row) coordinate labels along the edges of the grid."""
+        if font is None:
+            font = pygame.font.SysFont('arial', 10)
 
-def create_hex_grid_for_map(map_x, map_y, map_size, rows=20, cols=20):
-    """Create a hex grid that fits nicely in the given map area."""
-    return HexGrid(rows, cols, map_x, map_y, map_size)
+        # Draw X-axis labels (columns) along the top
+        for col in range(self.cols):
+            # Get the center of the hex in the first row for this column
+            cx, _ = self.get_hex_center(col, 0)
+            # Position label above the grid
+            label_y = self.offset_y - 12
+            label_text = str(col)
+            text_surface = font.render(label_text, True, color)
+            text_rect = text_surface.get_rect(center=(cx, label_y))
+            surface.blit(text_surface, text_rect)
+
+        # Draw Y-axis labels (rows) along the left side
+        for row in range(self.rows):
+            # Get the center of the hex in the first column for this row
+            _, cy = self.get_hex_center(0, row)
+            # Position label to the left of the grid
+            label_x = self.offset_x - 15
+            label_text = str(row)
+            text_surface = font.render(label_text, True, color)
+            text_rect = text_surface.get_rect(center=(label_x, cy))
+            surface.blit(text_surface, text_rect)
+
+
+def create_hex_grid_for_map(map_x, map_y, map_size, rows=20, cols=20, margin_left=25, margin_top=20):
+    """Create a hex grid that fits nicely in the given map area with margins for coordinate labels."""
+    return HexGrid(rows, cols, map_x, map_y, map_size, margin_left, margin_top)
 
 
 # Test the grid

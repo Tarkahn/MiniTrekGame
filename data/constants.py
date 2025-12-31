@@ -84,6 +84,12 @@ ENEMY_TORPEDO_SPEED = 10
 ENEMY_TORPEDO_ACCURACY = 0.7
 ENEMY_WEAPON_COOLDOWN_SECONDS = 3.0  # Minimum seconds between enemy weapon shots
 
+# Engine Evasion System - High engine power allows dodging enemy weapons
+ENGINE_EVASION_MIN_POWER = 7      # Minimum engine power for evasion
+ENGINE_EVASION_BASE_CHANCE = 0.05  # 5% base at power 7
+ENGINE_EVASION_PER_LEVEL = 0.15   # +15% per level above 6 (7=20%, 8=35%, 9=50%)
+ENGINE_EVASION_TORPEDO_MODIFIER = 0.5  # Torpedoes 50% harder to evade (guided weapons)
+
 # Critical Hit System (PRD Compliant)
 CRITICAL_HIT_CHANCE = 0.15  # 15% base chance for a critical hit
 CRITICAL_HIT_CHANCE_SHIELDS_DOWN = 0.10  # PRD: 10% chance when shields are down

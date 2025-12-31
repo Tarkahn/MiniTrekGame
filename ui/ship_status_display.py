@@ -421,7 +421,21 @@ class ShipStatusDisplay:
             engine_surface = self.small_font.render(engine_text, True, efficiency_color)
             screen.blit(engine_surface, (self.rect.x + 10, y))
             y += 18
-            
+
+            # Evasion chance display (only when engine power >= 7)
+            if engine_power >= ENGINE_EVASION_MIN_POWER:
+                # Calculate evasion chance (same formula as weapon_animation_manager)
+                base_evasion = ENGINE_EVASION_BASE_CHANCE + \
+                               (engine_power - ENGINE_EVASION_MIN_POWER + 1) * ENGINE_EVASION_PER_LEVEL
+                effective_evasion = base_evasion * (engine_integrity / 100)
+                evasion_percent = int(effective_evasion * 100)
+                torpedo_evasion = int(effective_evasion * ENGINE_EVASION_TORPEDO_MODIFIER * 100)
+
+                evasion_text = f"EVASION: {evasion_percent}% vs Phasers, {torpedo_evasion}% vs Torpedoes"
+                evasion_surface = self.small_font.render(evasion_text, True, (100, 255, 150))  # Light green
+                screen.blit(evasion_surface, (self.rect.x + 10, y))
+                y += 18
+
             # Engine status
             if engine_integrity < 100:
                 damage_text = f"Engine Damage: {100-engine_integrity:.0f}% (Reduces Speed)"

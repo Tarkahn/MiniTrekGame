@@ -115,7 +115,14 @@ def draw_status_bar(ctx):
     # Status/Tooltip Panel (top)
     status_rect = pygame.Rect(0, 0, width, ctx.status_height)
     pygame.draw.rect(screen, ctx.color_status, status_rect)
-    status_label = label_font.render('Status/Tooltip Panel', True, ctx.color_text)
+
+    # Get sector coordinates from game_state
+    sector_coords = ""
+    if ctx.game_state and hasattr(ctx.game_state, 'current_system'):
+        sector_x, sector_y = ctx.game_state.current_system
+        sector_coords = f"  [Sector {sector_x},{sector_y}]"
+
+    status_label = label_font.render(f'Status/Tooltip Panel{sector_coords}', True, ctx.color_text)
     screen.blit(status_label, (10, 8))
 
     # Weapon Cooldown Display (just left of stardate)
@@ -257,7 +264,7 @@ def draw_fog_of_war(ctx):
             for col in range(hex_grid.cols):
                 if (col, row) not in game_state.scan.scanned_systems:
                     cx, cy = hex_grid.get_hex_center(col, row)
-                    hex_grid.draw_fog_hex(screen, cx, cy, color=(200, 200, 200), alpha=153)
+                    hex_grid.draw_fog_hex(screen, cx, cy, color=(200, 200, 200), alpha=25)
 
 
 def draw_sector_objects(ctx, add_event_log_func=None):

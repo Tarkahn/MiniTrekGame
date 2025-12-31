@@ -89,14 +89,16 @@ class BaseShip:
 
             # Sync system_integrity['hull'] with hull_strength for repair system
             self.system_integrity['hull'] = self.hull_strength
-            
+
             # Check for hull breach (hull reaches zero or near-zero)
-            # Use threshold of 1.0 to account for floating-point damage calculations
-            if old_hull >= 1 and self.hull_strength < 1:
+            # Trigger if: (1) hull crosses below 1, or (2) hull is below 1 and not already in breach
+            # This handles cases where repairs kept hull alive but below critical threshold
+            if self.hull_strength < 1 and self.ship_state == "operational":
                 print(f"CRITICAL: {self.name} hull breach detected! All systems failing!")
                 self.hull_strength = 0  # Ensure hull is set to exactly 0
+                self.system_integrity['hull'] = 0
                 self._handle_hull_breach()
-            elif self.hull_strength > 0:
+            elif self.hull_strength > 0 and self.ship_state == "operational":
                 # Hull damage can now penetrate to systems based on hull integrity
                 hull_penetration_damage = self._calculate_hull_penetration_damage(remaining_damage)
                 if hull_penetration_damage > 0:
@@ -428,7 +430,8 @@ class BaseShip:
         self.warp_core_energy = min(self.max_warp_core_energy, self.warp_core_energy + constants.ENERGY_REGEN_RATE_PER_TURN)
 
     def is_alive(self):
-        return self.ship_state not in ["warp_core_breach", "destroyed"] and self.hull_strength > 0 
+        # Ship is dead if in critical/destroyed state or if hull is below 1 (critical threshold)
+        return self.ship_state not in ["hull_breach", "warp_core_breach", "destroyed"] and self.hull_strength >= 1 
     
     def consume_torpedo(self) -> bool:
         """

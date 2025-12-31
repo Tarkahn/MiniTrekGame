@@ -114,6 +114,12 @@ class RepairSystem:
         if not self.is_repairing:
             return {}
 
+        # Stop repairs if ship is in critical state
+        if self.ship.ship_state in ["hull_breach", "warp_core_breach", "destroyed"]:
+            print("CRITICAL: Repairs halted - ship in critical state!")
+            self.stop_repairs()
+            return {}
+
         # Check if repairs are still needed
         if not self._needs_repair():
             print("All repairs complete! Systems restored to full operational status.")

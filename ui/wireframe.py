@@ -539,6 +539,10 @@ event_ctx.get_enemy_id = get_enemy_id
 event_ctx.get_enemy_current_position = get_enemy_current_position
 event_ctx.is_hex_blocked = is_hex_blocked
 
+# Set up weapon animation manager callback for evasion messages
+if game_state.weapon_animation_manager:
+    game_state.weapon_animation_manager.add_event_log = add_event_log
+
 # Create render context for the renderer module
 render_ctx = RenderContext()
 render_ctx.screen = screen
@@ -777,8 +781,13 @@ try:
 
         # --- Removed map mode label as requested ---
 
-        # Draw background image (lowest layer)
-        background_img = background_and_star_loader.get_scaled_background(map_size, map_size)
+        # Draw background image (lowest layer) - different for sector vs system map
+        if game_state.map_mode == 'sector':
+            # Sector map uses SectorBackground.png at 30% opacity
+            background_img = background_and_star_loader.get_scaled_sector_background(map_size, map_size, opacity=0.3)
+        else:
+            # System maps use MapBackground.jpg at full opacity
+            background_img = background_and_star_loader.get_scaled_background(map_size, map_size)
         if background_img:
             screen.blit(background_img, (map_x, map_y))
 
@@ -837,6 +846,9 @@ try:
         grid_alpha = 64 if game_state.map_mode == 'sector' else 20
         hex_grid.draw_grid(screen, HEX_OUTLINE, alpha=grid_alpha)
 
+        # Draw coordinate labels along the edges
+        hex_grid.draw_coordinate_labels(screen, small_font, color=(120, 120, 150))
+
         # --- FOG OF WAR OVERLAY (draw early to hide objects) ---
         # Only apply fog of war to sector map, not system maps
         if game_state.map_mode == 'sector':
@@ -844,7 +856,7 @@ try:
                 for col in range(hex_grid.cols):
                     if (col, row) not in game_state.scan.scanned_systems:
                         cx, cy = hex_grid.get_hex_center(col, row)
-                        hex_grid.draw_fog_hex(screen, cx, cy, color=(200, 200, 200), alpha=153)
+                        hex_grid.draw_fog_hex(screen, cx, cy, color=(200, 200, 200), alpha=25)
 
         # Calculate delta time for smooth ship rotation
         delta_time = clock.get_time() / 1000.0  # Convert milliseconds to seconds
